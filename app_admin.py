@@ -494,13 +494,16 @@ elif not belum_ada and data.baca("roster").empty and not st.session_state.get("v
 
 st.markdown("<h1 class='judul'>WELCOME ADMIN QC TOTO</h1>", unsafe_allow_html=True)
 
-atas1, atas2, atas3 = st.columns([1, 4, 2])
+atas1, atas2, atas3 = st.columns([1, 3, 3])
 with atas1, st.container(key="lonceng"):
     if st.button("🔔" + (f" :red-badge[{jumlah}]" if jumlah else ""), key="bel"):
         dlg_lonceng(baru, tanpa, bentrok)
 atas2.markdown("<div class='judul-update'>UPDATE DATA</div>", unsafe_allow_html=True)
 with atas3, st.container(key="awal"):
-    c1, c2 = st.columns([2, 1])
+    c0, c1, c2 = st.columns([1.3, 1.2, 1])
+    if c0.button("Verifikasi", icon=":material/how_to_reg:", width="stretch"):
+        st.session_state["max_verif"] = False
+        dlg_verif()
     if c1.button("Data awal", icon=":material/settings:", width="stretch"):
         st.session_state["max_awal"] = False
         dlg_awal()
