@@ -68,6 +68,17 @@ if not opsi:
                  "Secrets app ini (Manage app → Settings → Secrets). Isi sama persis dengan Secrets app admin.")
         st.stop()
     st.info("Belum ada data hasil kerja. Admin perlu mengupload file SAP terlebih dahulu.")
+    with st.expander("Info koneksi (untuk admin)", expanded=True):
+        try:
+            sh = data.store().sh
+            st.write(f"Terhubung ke Google Sheet: **{sh.title}**")
+            st.write("Tab yang terbaca:", ", ".join(w.title for w in sh.worksheets()) or "(kosong)")
+        except Exception as e:
+            st.error(f"Gagal membaca Google Sheet: {type(e).__name__}: {e}")
+        if st.button("Muat ulang data"):
+            st.cache_data.clear()
+            st.cache_resource.clear()
+            st.rerun()
     st.stop()
 kol, _ = st.columns([1, 3])
 bulan = kol.selectbox("BULAN", opsi[::-1], format_func=nama_bulan)
