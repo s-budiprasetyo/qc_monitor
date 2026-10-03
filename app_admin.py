@@ -14,7 +14,7 @@ from core.hub import hub
 
 BULAN = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS",
          "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"]
-FILE_INFO = ["FILE HASIL KERJA", "LEMBUR", "EVALUASI KARYAWAN", "ABSENSI", "JADWAL KERJA"]
+FILE_INFO = ["FILE HASIL KERJA", "LEMBUR", "EVALUASI KARYAWAN", "ABSENSI", "JADWAL KERJA", "RIWAYAT GOOGLE SHEET"]
 PILIHAN_ABSEN = ["Sakit", "Ijin", "Cuti", "Dispen", "Resign", "Hapus catatan"]
 
 st.set_page_config(page_title="Welcome Admin QC TOTO", page_icon="⚙️", layout="wide")
@@ -139,6 +139,11 @@ def sukses(pesan, nama_file=None, verifikasi=True):
     jendela verifikasi (✕) otomatis terbuka setelah OK."""
     if nama_file:
         data.catat_update(nama_file)
+    if nama_file in (None, "FILE HASIL KERJA", "LEMBUR", "JADWAL KERJA"):
+        try:  # riwayat di Google Sheet; kegagalan tidak boleh menggagalkan upload
+            data.sinkron_riwayat()
+        except Exception as e:
+            pesan += f" (riwayat Google Sheet belum terbarui: {type(e).__name__})"
     st.session_state["sukses"] = pesan
     if verifikasi and logic.belum_diverifikasi():
         st.session_state["verif"] = True

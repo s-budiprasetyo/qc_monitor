@@ -1,4 +1,5 @@
 """Jembatan Streamlit ke penyimpanan: cache baca, simpan hasil, catatan update."""
+import time
 from datetime import datetime, timedelta, timezone
 import pandas as pd
 import streamlit as st
@@ -16,20 +17,38 @@ def store():
     return buat_store(rahasia)
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_resource
+def _tembolok():
+    return {}
+
+
+TTL = 180  # detik; tulis() menghapus tembolok tabel yang diubah
+
+
 def baca(nama):
-    return store().read(nama)
+    c, sekarang_ = _tembolok(), time.time()
+    if nama in c and sekarang_ - c[nama][0] < TTL:
+        return c[nama][1].copy()
+    df = store().read(nama)
+    c[nama] = (sekarang_, df)
+    return df.copy()
 
 
-@st.cache_data(ttl=60, show_spinner=False)
 def daftar_bulan():
-    return sorted(t[6:] for t in store().tables() if t.startswith("hasil_"))
+    c, sekarang_ = _tembolok(), time.time()
+    if "_bulan" in c and sekarang_ - c["_bulan"][0] < TTL:
+        return list(c["_bulan"][1])
+    hasil = sorted(t[6:] for t in store().tables() if t.startswith("hasil_"))
+    c["_bulan"] = (sekarang_, hasil)
+    return list(hasil)
 
 
 def tulis(nama, df):
     store().write(nama, df)
-    baca.clear()
-    daftar_bulan.clear()
+    c = _tembolok()
+    c.pop(nama, None)
+    c.pop("_bulan", None)
+    c[nama] = (time.time(), df.fillna("").astype(str).reset_index(drop=True))
 
 
 def simpan_hasil(df):
@@ -72,3 +91,22 @@ def pakai_google_sheet():
     """True bila penyimpanan memakai Google Sheet (secrets lengkap); False = folder lokal sementara."""
     from core.store import SheetsStore
     return isinstance(store(), SheetsStore)
+
+
+KOLOM_ALASAN = ["JAM", "TANGGAL POSTING", "EMAIL", "NAMA", "TANGGAL TIDAK TARGET", "ALASAN", "MENIT MASALAH"]
+
+
+def sinkron_riwayat():
+    """Tulis ulang tab 'HASIL KERJA KARYAWAN' di Google Sheet dari seluruh data. Aman dipanggil berulang."""
+    from core import logic
+    df = logic.laporan_riwayat()
+    store().write_laporan("HASIL KERJA KARYAWAN", df)
+    catat_update("RIWAYAT GOOGLE SHEET")
+    return len(df)
+
+
+def catat_alasan(email, nama, tgl_tidak_target, alasan, menit=""):
+    """Tambah satu baris ke tab 'ALASAN TIDAK TARGET' (jejak, tidak bisa ditimpa)."""
+    w = datetime.now(WIB)
+    store().tambah_baris("ALASAN TIDAK TARGET", KOLOM_ALASAN,
+                         [w.strftime("%H:%M:%S"), w.strftime("%Y-%m-%d"), email, nama, tgl_tidak_target, alasan, menit])

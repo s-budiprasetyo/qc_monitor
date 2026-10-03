@@ -1,6 +1,7 @@
 """Penyimpanan data: CSV lokal (uji coba) atau Google Sheet (produksi).
 Semua nilai disimpan sebagai teks supaya kode karyawan seperti 0023 tidak berubah."""
 import os
+import time
 import pandas as pd
 
 KOLOM = {
@@ -14,6 +15,7 @@ KOLOM = {
     "roster": ["prn", "status"],  # status: ya (tampil di monitor) | tidak (disilang admin)
     "target_abaikan": ["grup", "type", "op"],
 }
+TAB_LAPORAN = ("HASIL KERJA KARYAWAN", "ALASAN TIDAK TARGET")
 KOLOM_HASIL = ["tgl", "nama_sap", "type", "lokasi", "grup", "op", "periksa"]
 
 
@@ -45,18 +47,44 @@ class LocalStore:
     def tables(self):
         return [f[:-4] for f in os.listdir(self.folder) if f.endswith(".csv")]
 
+    def write_laporan(self, nama, df):
+        df.to_csv(self._path("laporan_" + nama.replace(" ", "_")), index=False)
+
+    def tambah_baris(self, nama, kolom, baris):
+        p = self._path("laporan_" + nama.replace(" ", "_"))
+        ada = os.path.exists(p)
+        pd.DataFrame([baris], columns=kolom).to_csv(p, mode="a", header=not ada, index=False)
+
 
 class SheetsStore:
+    """Google Sheet. Hemat kuota API (batas baca 60 per menit): daftar tab dibaca sekali lalu disimpan,
+    dan permintaan yang ditolak karena kuota (429/5xx) diulang otomatis dengan jeda."""
     def __init__(self, creds, sheet_id):
         import gspread
         self._gs = gspread
-        self.sh = gspread.service_account_from_dict(creds).open_by_key(sheet_id)
+        self.sh = self._retry(lambda: gspread.service_account_from_dict(creds).open_by_key(sheet_id))
+        self._tabs = None
+
+    def _retry(self, fn):
+        for i in range(6):
+            try:
+                return fn()
+            except self._gs.exceptions.APIError as e:
+                kode = getattr(getattr(e, "response", None), "status_code", 0)
+                if kode not in (429, 500, 502, 503) or i == 5:
+                    raise
+                time.sleep(3 * (i + 1))
+
+    def _sheets(self, segar=False):
+        if self._tabs is None or segar:
+            self._tabs = {w.title: w for w in self._retry(self.sh.worksheets)}
+        return self._tabs
 
     def read(self, nama):
-        try:
-            v = self.sh.worksheet(nama).get_all_values()
-        except self._gs.WorksheetNotFound:
+        ws = self._sheets().get(nama)
+        if ws is None:
             return pd.DataFrame(columns=kolom_tabel(nama))
+        v = self._retry(ws.get_all_values)
         if not v:
             return pd.DataFrame(columns=kolom_tabel(nama))
         return pd.DataFrame(v[1:], columns=v[0])
@@ -64,17 +92,64 @@ class SheetsStore:
     def write(self, nama, df):
         df = df.fillna("").astype(str)
         baris, kol = max(len(df) + 10, 100), max(len(df.columns), 6)
-        try:
-            ws = self.sh.worksheet(nama)
-        except self._gs.WorksheetNotFound:
-            ws = self.sh.add_worksheet(nama, rows=baris, cols=kol)
-        ws.clear()
-        ws.resize(rows=baris, cols=kol)
-        ws.update(range_name="A1", values=[list(df.columns)] + df.values.tolist(),
-                  value_input_option="RAW")
+        ws = self._sheets().get(nama)
+        if ws is None:
+            ws = self._retry(lambda: self.sh.add_worksheet(nama, rows=baris, cols=kol))
+            self._tabs[nama] = ws
+        self._retry(ws.clear)
+        self._retry(lambda: ws.resize(rows=baris, cols=kol))
+        self._retry(lambda: ws.update(range_name="A1", values=[list(df.columns)] + df.values.tolist(),
+                                      value_input_option="RAW"))
 
     def tables(self):
-        return [w.title for w in self.sh.worksheets()]
+        return [t for t in self._sheets(segar=True) if t not in TAB_LAPORAN]
+
+    # --- dua tab yang terlihat untuk admin (laporan); tab data aplikasi disembunyikan
+    def _tab_laporan(self, nama, kolom, baris):
+        ws = self._sheets().get(nama)
+        if ws is None:
+            kosong = self._sheets().get("Sheet1")
+            if kosong is not None and not any(t in self._tabs for t in TAB_LAPORAN) and len(self._retry(kosong.get_all_values)) == 0:
+                self._retry(lambda: kosong.update_title(nama))
+                del self._tabs["Sheet1"]
+                self._tabs[nama] = ws = kosong
+            else:
+                ws = self._retry(lambda: self.sh.add_worksheet(nama, rows=baris, cols=max(len(kolom), 6)))
+                self._tabs[nama] = ws
+        return ws
+
+    def sembunyikan_data_aplikasi(self):
+        """Sembunyikan tab data internal supaya yang tampak hanya dua tab laporan."""
+        for t, ws in list(self._sheets().items()):
+            if t not in TAB_LAPORAN:
+                try:
+                    self._retry(ws.hide)
+                except Exception:
+                    pass
+
+    def write_laporan(self, nama, df):
+        df = df.fillna("")
+        ws = self._tab_laporan(nama, list(df.columns), max(len(df) + 50, 200))
+        self._retry(ws.clear)
+        self._retry(lambda: ws.resize(rows=max(len(df) + 50, 200), cols=max(len(df.columns), 6)))
+        self._retry(lambda: ws.update(range_name="A1", values=[list(df.columns)] + df.values.tolist(),
+                                      value_input_option="USER_ENTERED"))
+        try:
+            self._retry(lambda: ws.freeze(rows=1))
+            self._retry(lambda: ws.format("1:1", {"textFormat": {"bold": True}}))
+        except Exception:
+            pass
+        self.sembunyikan_data_aplikasi()
+
+    def tambah_baris(self, nama, kolom, baris):
+        ws = self._tab_laporan(nama, kolom, 1000)
+        if not self._retry(lambda: ws.get("A1:A1")):
+            self._retry(lambda: ws.update(range_name="A1", values=[kolom], value_input_option="USER_ENTERED"))
+            try:
+                self._retry(lambda: ws.format("1:1", {"textFormat": {"bold": True}}))
+            except Exception:
+                pass
+        self._retry(lambda: ws.append_row(baris, value_input_option="USER_ENTERED"))
 
 
 def buat_store(secrets=None):

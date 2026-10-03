@@ -188,3 +188,41 @@ def masalah_bulan(bulan):
         elif jadwal and libur(p, t, bulan, jadwal, default):
             out.append(dict(prn=p, nama=n, tgl=t, jenis="libur", ket="ada hasil kerja di hari libur menurut jadwal"))
     return sorted(out, key=lambda x: (x["tgl"], x["nama"]))
+
+
+KOLOM_RIWAYAT = ["TANGGAL", "NAMA", "PRN", "TYPE", "OPERATION", "PERIKSA", "TARGET", "% TYPE", "% HARIAN", "STATUS"]
+
+
+def laporan_riwayat():
+    """Riwayat hasil kerja semua bulan, satu baris per orang per hari per type, lengkap dengan status target.
+    Hanya karyawan yang ada di daftar pantau."""
+    k, a, t = data.baca("karyawan"), data.baca("alias"), data.baca("target")
+    peta, nama, tampil = calc.peta_nama(k, a), peta_nama_prn(), set(karyawan_dikenal())
+    t = t.assign(target=pd.to_numeric(t["target"], errors="coerce"))
+    baris = []
+    for b in data.daftar_bulan():
+        h = data.baca(f"hasil_{b}")
+        h = h.assign(prn=h["nama_sap"].map(peta)).dropna(subset=["prn"])
+        h = h[h["prn"].isin(tampil)]
+        if h.empty:
+            continue
+        harian, _ = harian_bulan(b)
+        pers = {(p, d): v for p, d, v in zip(harian["prn"], harian["tgl"], harian["persen"])}
+        m = h.merge(t, on=["grup", "type", "op"], how="left")
+        m["periksa"] = pd.to_numeric(m["periksa"], errors="coerce")
+        for r in m.itertuples():
+            ada = pd.notna(r.target)
+            hari = pers.get((r.prn, r.tgl))
+            if not ada:
+                status = "TANPA TARGET (OP107)" if str(r.op) == OP_TANPA_TARGET else "TANPA TARGET"
+            elif hari is None:
+                status = "TANPA TARGET"
+            else:
+                status = "TARGET" if round(hari) >= 100 else "TIDAK TARGET"
+            baris.append([r.tgl, nama.get(r.prn, r.prn), r.prn, r.type, str(r.op),
+                          float(r.periksa) if pd.notna(r.periksa) else "",
+                          float(r.target) if ada else "",
+                          round(r.periksa / r.target * 100, 1) if ada and pd.notna(r.periksa) else "",
+                          round(hari, 1) if hari is not None else "", status])
+    df = pd.DataFrame(baris, columns=KOLOM_RIWAYAT)
+    return df.sort_values(["TANGGAL", "NAMA", "TYPE"]).reset_index(drop=True)
