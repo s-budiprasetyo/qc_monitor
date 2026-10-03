@@ -80,10 +80,10 @@ def usulan_verifikasi():
         if p in putus:
             silang = putus[p] == "tidak"
         else:  # usulan awal: silang bila tidak ada di SAP (admin sendiri tidak disilang)
-            silang = bool(sap) and p not in sap and p != adm
+            silang = False  # semua ikut tampil; admin hanya mencentang ✕ pada yang tidak boleh
         baris.append({"prn": p, "nama": n, "ada_sap": p in sap, "ada_jadwal": p in ada_jadwal,
                       "baru": p not in putus, "silang": silang})
-    return pd.DataFrame(baris).sort_values(["baru", "nama"], ascending=[False, True]).reset_index(drop=True)
+    return pd.DataFrame(baris).sort_values(["baru", "ada_sap", "nama"], ascending=[False, True, True]).reset_index(drop=True)
 
 
 def catatan_otomatis(bulan):

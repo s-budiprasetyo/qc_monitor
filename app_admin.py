@@ -348,9 +348,9 @@ def dlg_verif():
     if u.empty:
         st.warning("Belum ada data karyawan. Upload data awal dulu.")
         return
-    st.caption("Centang **✕ KELUARKAN** pada orang yang TIDAK boleh tampil di monitor (misalnya departemen lain). "
-               "Usulan awal: yang tidak ada di file SAP sudah ditandai ✕; admin sendiri tidak. Ubah sesuai kebutuhan, "
-               "lalu SIMPAN. Daftar ini dipakai di tabel monitor, Lembur, Absensi, dan Jadwal Kerja.")
+    st.caption("Semua karyawan sudah ikut tampil. Centang **✕ KELUARKAN** hanya pada orang yang TIDAK boleh tampil "
+               "di monitor, lalu SIMPAN. Yang tidak ada di file SAP (DI SAP: —) diurutkan paling atas. "
+               "Daftar ini dipakai di tabel monitor, Lembur, Absensi, dan Jadwal Kerja.")
     tabel = pd.DataFrame({"NAMA": u["nama"], "PRN": u["prn"],
                           "DI SAP": u["ada_sap"].map({True: "✔", False: "—"}),
                           "DI JADWAL": u["ada_jadwal"].map({True: "✔", False: "—"}),

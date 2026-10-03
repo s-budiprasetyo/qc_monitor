@@ -66,3 +66,9 @@ def upsert(nama, baru, kunci, hapus=None):
         lama = lama[[tuple(r) not in k for r in lama[kunci].astype(str).values]]
         lama = pd.concat([lama, baru], ignore_index=True)
     tulis(nama, lama)
+
+
+def pakai_google_sheet():
+    """True bila penyimpanan memakai Google Sheet (secrets lengkap); False = folder lokal sementara."""
+    from core.store import SheetsStore
+    return isinstance(store(), SheetsStore)

@@ -63,6 +63,10 @@ def tabel_html(baris, tahun, bln):
 st.markdown("<h1 class='judul'>MONITORING HASIL KERJA KARYAWAN</h1>", unsafe_allow_html=True)
 opsi = data.daftar_bulan()
 if not opsi:
+    if not data.pakai_google_sheet():
+        st.error("Aplikasi ini belum terhubung ke Google Sheet: **sheet_id** dan **[gcp_service_account]** belum ada di "
+                 "Secrets app ini (Manage app → Settings → Secrets). Isi sama persis dengan Secrets app admin.")
+        st.stop()
     st.info("Belum ada data hasil kerja. Admin perlu mengupload file SAP terlebih dahulu.")
     st.stop()
 kol, _ = st.columns([1, 3])
