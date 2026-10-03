@@ -41,10 +41,9 @@ def karyawan_dikenal(sampai_bulan=None):
     Bila admin belum pernah verifikasi sama sekali, dipakai karyawan yang ada di file SAP."""
     r = data.baca("roster")
     nama = peta_nama_prn()
-    if len(r):
-        hasil = set(r.loc[r["status"] == "ya", "prn"])
-    else:
-        hasil = karyawan_sap(sampai_bulan)
+    hasil = set(r.loc[r["status"] == "ya", "prn"])
+    if not hasil:  # belum diverifikasi (atau semua tersilang): jangan kosongkan daftar
+        hasil = karyawan_sap(sampai_bulan) or set(data.baca("karyawan")["prn"])
     return sorted(hasil, key=lambda p: nama.get(p, p))
 
 
@@ -81,7 +80,7 @@ def usulan_verifikasi():
         if p in putus:
             silang = putus[p] == "tidak"
         else:  # usulan awal: silang bila tidak ada di SAP (admin sendiri tidak disilang)
-            silang = p not in sap and p != adm
+            silang = bool(sap) and p not in sap and p != adm
         baris.append({"prn": p, "nama": n, "ada_sap": p in sap, "ada_jadwal": p in ada_jadwal,
                       "baru": p not in putus, "silang": silang})
     return pd.DataFrame(baris).sort_values(["baru", "nama"], ascending=[False, True]).reset_index(drop=True)
