@@ -353,21 +353,21 @@ def dlg_verif():
     if u.empty:
         st.warning("Belum ada data karyawan. Upload data awal dulu.")
         return
-    st.caption("Semua karyawan sudah ikut tampil. Centang **✕ KELUARKAN** hanya pada orang yang TIDAK boleh tampil "
-               "di monitor, lalu SIMPAN. Yang tidak ada di file SAP (DI SAP: —) diurutkan paling atas. "
+    st.caption("Semua karyawan sudah **tercentang ✔ (tampil)**. Cukup **hilangkan centang** pada orang yang TIDAK boleh "
+               "tampil di monitor (jadi ✕), lalu SIMPAN. Yang tidak ada di file SAP (DI SAP: —) diurutkan paling atas. "
                "Daftar ini dipakai di tabel monitor, Lembur, Absensi, dan Jadwal Kerja.")
     tabel = pd.DataFrame({"NAMA": u["nama"], "PRN": u["prn"],
                           "DI SAP": u["ada_sap"].map({True: "✔", False: "—"}),
                           "DI JADWAL": u["ada_jadwal"].map({True: "✔", False: "—"}),
                           "BARU": u["baru"].map({True: "baru", False: ""}),
-                          "✕ KELUARKAN": u["silang"]})
+                          "TAMPIL ✔ / ✕": ~u["silang"]})
     ed = st.data_editor(tabel, hide_index=True, width="stretch", height=460, key="verif_ed",
                         disabled=["NAMA", "PRN", "DI SAP", "DI JADWAL", "BARU"],
-                        column_config={"✕ KELUARKAN": st.column_config.CheckboxColumn("✕ KELUARKAN", width="small")})
-    n_x = int(ed["✕ KELUARKAN"].sum())
+                        column_config={"TAMPIL ✔ / ✕": st.column_config.CheckboxColumn("TAMPIL ✔ / ✕", width="small")})
+    n_x = int((~ed["TAMPIL ✔ / ✕"]).sum())
     st.write(f"**{len(ed) - n_x} orang tampil**, {n_x} dikeluarkan.")
     if st.button("SIMPAN", type="primary", key="verif_simpan"):
-        roster = pd.DataFrame({"prn": ed["PRN"], "status": ["tidak" if x else "ya" for x in ed["✕ KELUARKAN"]]})
+        roster = pd.DataFrame({"prn": ed["PRN"], "status": ["ya" if x else "tidak" for x in ed["TAMPIL ✔ / ✕"]]})
         data.tulis("roster", roster)
         sukses("DAFTAR PANTAU BERHASIL DI SIMPAN", verifikasi=False)
 

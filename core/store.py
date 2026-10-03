@@ -80,26 +80,48 @@ class SheetsStore:
             self._tabs = {w.title: w for w in self._retry(self.sh.worksheets)}
         return self._tabs
 
+    def _segarkan_bila_tab_hilang(self, fn):
+        """Tab bisa dihapus/diganti manual di Google Sheet; daftar tab yang tersimpan jadi basi (error 400).
+        Dalam kasus itu daftar tab dibaca ulang lalu perintah diulang sekali."""
+        try:
+            return fn()
+        except self._gs.exceptions.APIError as e:
+            kode = getattr(getattr(e, "response", None), "status_code", 0)
+            if kode not in (400, 404):
+                raise
+            self._sheets(segar=True)
+            return fn()
+
     def read(self, nama):
-        ws = self._sheets().get(nama)
-        if ws is None:
-            return pd.DataFrame(columns=kolom_tabel(nama))
-        v = self._retry(ws.get_all_values)
-        if not v:
-            return pd.DataFrame(columns=kolom_tabel(nama))
-        return pd.DataFrame(v[1:], columns=v[0])
+        def kerja():
+            ws = self._sheets().get(nama)
+            if ws is None:
+                return pd.DataFrame(columns=kolom_tabel(nama))
+            v = self._retry(ws.get_all_values)
+            if not v:
+                return pd.DataFrame(columns=kolom_tabel(nama))
+            return pd.DataFrame(v[1:], columns=v[0])
+        return self._segarkan_bila_tab_hilang(kerja)
 
     def write(self, nama, df):
         df = df.fillna("").astype(str)
         baris, kol = max(len(df) + 10, 100), max(len(df.columns), 6)
-        ws = self._sheets().get(nama)
-        if ws is None:
-            ws = self._retry(lambda: self.sh.add_worksheet(nama, rows=baris, cols=kol))
-            self._tabs[nama] = ws
-        self._retry(ws.clear)
-        self._retry(lambda: ws.resize(rows=baris, cols=kol))
-        self._retry(lambda: ws.update(range_name="A1", values=[list(df.columns)] + df.values.tolist(),
-                                      value_input_option="RAW"))
+
+        def kerja():
+            ws = self._sheets().get(nama)
+            if ws is None:
+                ws = self._retry(lambda: self.sh.add_worksheet(nama, rows=baris, cols=kol))
+                self._tabs[nama] = ws
+            self._retry(ws.clear)
+            self._retry(lambda: ws.resize(rows=baris, cols=kol))
+            self._retry(lambda: ws.update(range_name="A1", values=[list(df.columns)] + df.values.tolist(),
+                                          value_input_option="RAW"))
+        self._segarkan_bila_tab_hilang(kerja)
+        if nama not in TAB_LAPORAN:
+            try:
+                self._retry(self._tabs[nama].hide)
+            except Exception:
+                pass
 
     def tables(self):
         return [t for t in self._sheets(segar=True) if t not in TAB_LAPORAN]
@@ -129,11 +151,15 @@ class SheetsStore:
 
     def write_laporan(self, nama, df):
         df = df.fillna("")
-        ws = self._tab_laporan(nama, list(df.columns), max(len(df) + 50, 200))
-        self._retry(ws.clear)
-        self._retry(lambda: ws.resize(rows=max(len(df) + 50, 200), cols=max(len(df.columns), 6)))
-        self._retry(lambda: ws.update(range_name="A1", values=[list(df.columns)] + df.values.tolist(),
-                                      value_input_option="USER_ENTERED"))
+
+        def kerja():
+            ws = self._tab_laporan(nama, list(df.columns), max(len(df) + 50, 200))
+            self._retry(ws.clear)
+            self._retry(lambda: ws.resize(rows=max(len(df) + 50, 200), cols=max(len(df.columns), 6)))
+            self._retry(lambda: ws.update(range_name="A1", values=[list(df.columns)] + df.values.tolist(),
+                                          value_input_option="USER_ENTERED"))
+            return ws
+        ws = self._segarkan_bila_tab_hilang(kerja)
         try:
             self._retry(lambda: ws.freeze(rows=1))
             self._retry(lambda: ws.format("1:1", {"textFormat": {"bold": True}}))
@@ -142,6 +168,9 @@ class SheetsStore:
         self.sembunyikan_data_aplikasi()
 
     def tambah_baris(self, nama, kolom, baris):
+        self._segarkan_bila_tab_hilang(lambda: self._tambah_baris(nama, kolom, baris))
+
+    def _tambah_baris(self, nama, kolom, baris):
         ws = self._tab_laporan(nama, kolom, 1000)
         if not self._retry(lambda: ws.get("A1:A1")):
             self._retry(lambda: ws.update(range_name="A1", values=[kolom], value_input_option="USER_ENTERED"))
