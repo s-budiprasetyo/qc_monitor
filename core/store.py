@@ -14,9 +14,10 @@ KOLOM = {
     "absensi": ["prn", "tgl", "kode", "keterangan", "waktu"],
     "roster": ["prn", "status"],  # status: ya (tampil di monitor) | tidak (disilang admin)
     "target_abaikan": ["grup", "type", "op"],
+    "masalah_abaikan": ["prn", "tgl"],  # ketidaksesuaian jadwal yang diputuskan admin: abaikan
 }
 TAB_LAPORAN = ("HASIL KERJA KARYAWAN", "ALASAN TIDAK TARGET")
-KOLOM_HASIL = ["tgl", "nama_sap", "type", "lokasi", "grup", "op", "periksa"]
+KOLOM_HASIL = ["tgl", "nama_sap", "type", "lokasi", "grup", "op", "periksa", "trx"]  # trx = Transaction Date (hari kerja sebenarnya)
 
 
 def kolom_tabel(nama):

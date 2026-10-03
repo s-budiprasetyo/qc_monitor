@@ -169,25 +169,44 @@ def rekap_bulan(bulan):
 
 
 def masalah_bulan(bulan):
-    """Peringatan untuk lonceng: hasil kerja SAP di hari libur, absen, atau setelah resign.
-    Tiap item: dict(prn, nama, tgl, jenis, ket). jenis = libur | absen | resign."""
-    nama = peta_nama_prn()
-    harian, _ = harian_bulan(bulan)
+    """Ketidaksesuaian untuk lonceng: orang yang menghasilkan pekerjaan pada HARI KERJA SEBENARNYA (Transaction Date)
+    yang menurut jadwal libur, tercatat absen, atau sudah resign. Tampilan tabel tetap memakai Posting Date.
+    Tiap item: dict(prn, nama, tgl, tgl_posting, bulan, jenis, ket). jenis = libur | absen | resign.
+    Yang sudah diputuskan 'abaikan' oleh admin tidak muncul lagi."""
+    nama, tampil = peta_nama_prn(), set(karyawan_dikenal())
+    k, a = data.baca("karyawan"), data.baca("alias")
+    peta = calc.peta_nama(k, a)
+    h = data.baca(f"hasil_{bulan}")
+    h = h.assign(prn=h["nama_sap"].map(peta)).dropna(subset=["prn"])
+    h = h[h["prn"].isin(tampil)]
+    posting = {}
+    for p, t, d in zip(h["prn"], h["trx"], h["tgl"]):
+        posting[(p, t)] = min(d, posting.get((p, t), d))
     abs_ = data.baca("absensi")
     abs_ = {(p, t): c for p, t, c in zip(abs_["prn"], abs_["tgl"], abs_["kode"])}
     rs = resign_dari()
-    jadwal, default = jadwal_peta(bulan), hari_libur_default(bulan)
-    out = []
-    for p, t in zip(harian["prn"], harian["tgl"]):
+    ab = data.baca("masalah_abaikan")
+    abaikan = set(zip(ab["prn"], ab["tgl"]))
+    cache, out = {}, []
+    for (p, t), d in sorted(posting.items(), key=lambda x: (x[0][1], nama.get(x[0][0], ""))):
+        if (p, t) in abaikan:
+            continue
+        bln = t[:7]
+        if bln not in cache:
+            cache[bln] = (jadwal_peta(bln), hari_libur_default(bln))
+        jadwal, default = cache[bln]
         n = nama.get(p, p)
+        tambah = f" (hasilnya tercatat di tanggal posting {d[8:]}-{d[5:7]})" if d != t else ""
         if p in rs and t >= rs[p]:
-            out.append(dict(prn=p, nama=n, tgl=t, jenis="resign", ket="ada hasil kerja padahal tercatat resign"))
+            ket, jenis = "ada hasil kerja padahal tercatat resign", "resign"
         elif (p, t) in abs_ and abs_[(p, t)] != "R":
-            k = NAMA_ABSEN.get(abs_[(p, t)], abs_[(p, t)])
-            out.append(dict(prn=p, nama=n, tgl=t, jenis="absen", ket=f"ada hasil kerja padahal tercatat {k}"))
-        elif jadwal and libur(p, t, bulan, jadwal, default):
-            out.append(dict(prn=p, nama=n, tgl=t, jenis="libur", ket="ada hasil kerja di hari libur menurut jadwal"))
-    return sorted(out, key=lambda x: (x["tgl"], x["nama"]))
+            ket, jenis = f"ada hasil kerja padahal tercatat {NAMA_ABSEN.get(abs_[(p, t)], abs_[(p, t)])}", "absen"
+        elif jadwal and libur(p, t, bln, jadwal, default):
+            ket, jenis = "bekerja di hari libur menurut jadwal", "libur"
+        else:
+            continue
+        out.append(dict(prn=p, nama=n, tgl=t, tgl_posting=d, bulan=bln, jenis=jenis, ket=ket + tambah))
+    return out
 
 
 KOLOM_RIWAYAT = ["TANGGAL", "NAMA", "PRN", "TYPE", "OPERATION", "PERIKSA", "TARGET", "% TYPE", "% HARIAN", "STATUS"]

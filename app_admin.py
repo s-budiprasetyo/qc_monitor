@@ -137,16 +137,19 @@ def dlg_sukses(pesan):
 def sukses(pesan, nama_file=None, verifikasi=True):
     """Catat update, tampilkan jendela berhasil. Bila ada karyawan yang belum diverifikasi,
     jendela verifikasi (✕) otomatis terbuka setelah OK."""
-    if nama_file:
-        data.catat_update(nama_file)
-    if nama_file in (None, "FILE HASIL KERJA", "LEMBUR", "JADWAL KERJA"):
-        try:  # riwayat di Google Sheet; kegagalan tidak boleh menggagalkan upload
-            data.sinkron_riwayat()
-        except Exception as e:
-            pesan += f" (riwayat Google Sheet belum terbarui: {type(e).__name__})"
+    with st.spinner("Menyimpan ke Google Sheet… tunggu sebentar, jangan klik lagi."):
+        if nama_file:
+            data.catat_update(nama_file)
+        if nama_file in (None, "FILE HASIL KERJA", "LEMBUR", "JADWAL KERJA"):
+            try:  # riwayat di Google Sheet; kegagalan tidak boleh menggagalkan upload
+                data.sinkron_riwayat()
+            except Exception as e:
+                pesan += f" (riwayat Google Sheet belum terbarui: {type(e).__name__})"
     st.session_state["sukses"] = pesan
     if verifikasi and logic.belum_diverifikasi():
         st.session_state["verif"] = True
+    if nama_file in ("FILE HASIL KERJA", "JADWAL KERJA", "ABSENSI"):
+        st.session_state["bel_buka"] = True  # tampilkan notifikasi ketidaksesuaian bila ada
     st.rerun()
 
 
@@ -168,13 +171,20 @@ def dlg_hasil():
              f"{df['nama_sap'].nunique()} karyawan.")
     for c in catatan:
         st.warning(c)
+    lama = {t for b in df["tgl"].str[:7].unique() for t in data.baca(f"hasil_{b}")["tgl"]}
+    baru_t, timpa = sorted(set(df["tgl"]) - lama), sorted(set(df["tgl"]) & lama)
+    st.info(f"Tanggal yang **menimpa data lama** (dilengkapi, tidak dobel): {len(timpa)}"
+            + (f" ({timpa[0][8:]}–{timpa[-1][8:]})" if timpa else "")
+            + f". Tanggal **baru**: {len(baru_t)}"
+            + (f" ({baru_t[0][8:]}–{baru_t[-1][8:]})" if baru_t else "") + ".")
     luar = (df["tgl"].str[:7] != pilih).sum()
     if luar:
         st.warning(f"{luar} baris memiliki tanggal di luar bulan yang dipilih. Baris itu tetap disimpan "
                    "pada bulannya masing-masing.")
     if st.button("UPLOAD", type="primary"):
-        data.simpan_hasil(df)
-        sukses("FILE BERHASIL DI UPDATE", "FILE HASIL KERJA")
+        with st.spinner("Menyimpan ke Google Sheet… tunggu sebentar, jangan klik lagi."):
+            data.simpan_hasil(df)
+            sukses("FILE BERHASIL DI UPDATE", "FILE HASIL KERJA")
 
 
 @st.dialog("DATA AWAL", width="large")
@@ -186,6 +196,7 @@ def dlg_awal():
     fk = st.file_uploader("DATA_KARYAWAN.xlsx", type=["xlsx"], key="fk")
     ft = st.file_uploader("PENCAPAIAN_KERJA_QC.xlsx", type=["xlsx"], key="ft")
     if st.button("SIMPAN", type="primary", disabled=not (fk or ft)):
+        st.info("Menyimpan ke Google Sheet… tunggu sebentar, jangan klik lagi.")
         try:
             hasil = []
             if fk:
@@ -386,8 +397,12 @@ def cari_masalah():
         h = h[~h["nama_sap"].isin(abaikan)]
         baru |= set(h["nama_sap"]) - set(peta)
         tanpa.append(calc.hitung_harian(h.assign(prn=h["nama_sap"].map(peta)), target)[1])
+    lihat = set()
     for b in bulan_ada[-2:]:
-        bentrok += [dict(m, bulan=b) for m in logic.masalah_bulan(b)]
+        for m in logic.masalah_bulan(b):
+            if (m["prn"], m["tgl"]) not in lihat:
+                lihat.add((m["prn"], m["tgl"]))
+                bentrok.append(m)
     tanpa = pd.concat(tanpa) if tanpa else pd.DataFrame()
     if len(tanpa):
         ok = [str(o) != logic.OP_TANPA_TARGET and (g, t, o) not in kebal  # OP107 = catatan otomatis
@@ -395,6 +410,12 @@ def cari_masalah():
         tanpa = tanpa[ok]
         tanpa = tanpa.groupby(["grup", "type", "op"]).size().reset_index(name="baris")
     return sorted(baru), tanpa, bentrok
+
+
+@st.cache_data(ttl=180, show_spinner=False, max_entries=2)
+def masalah_cache(versi_data):
+    """Hitungan berat (pemeriksaan masalah) hanya diulang bila data berubah, bukan tiap klik."""
+    return cari_masalah()
 
 
 def hitung_jumlah(baru, tanpa, bentrok):
@@ -467,17 +488,44 @@ def dlg_lonceng(baru, tanpa, bentrok):
             st.rerun()
         st.divider()
     if bentrok:
-        st.markdown(f"**Hasil kerja tidak sesuai jadwal atau absensi** ({len(bentrok)} kasus). "
-                    "Hasil SAP tetap dipakai dan ditampilkan.")
-        st.dataframe(pd.DataFrame(bentrok)[["nama", "tgl", "ket"]].rename(
-            columns={"nama": "NAMA", "tgl": "TANGGAL", "ket": "KETERANGAN"}), hide_index=True, width="stretch")
-        lib = [m for m in bentrok if m["jenis"] == "libur"]
-        if lib and st.button(f"Jadikan {len(lib)} hari itu hari masuk di jadwal", key="fix_libur"):
-            for bln in sorted({m["bulan"] for m in lib}):
-                sub = pd.DataFrame([{"prn": m["prn"], "tgl": m["tgl"], "status": "O"} for m in lib
-                                    if m["bulan"] == bln])
-                data.upsert("jadwal_" + bln, sub, ["prn", "tgl"])
-            data.catat_update("JADWAL KERJA")
+        st.markdown(f"**Hasil kerja tidak sesuai jadwal atau absensi ({len(bentrok)} kasus).** Dicocokkan dengan "
+                    "*hari kerja sebenarnya* (Transaction Date). Hasil tetap dihitung di tanggal posting. "
+                    "Pilih keputusan tiap baris, lalu klik TERAPKAN.")
+        pil = {"libur": ["— belum diputuskan —", "Ubah jadwal jadi MASUK", "Abaikan"],
+               "absen": ["— belum diputuskan —", "Hapus catatan absen", "Abaikan"],
+               "resign": ["— belum diputuskan —", "Abaikan"]}
+        tbl = pd.DataFrame({"NAMA": [m["nama"] for m in bentrok], "TANGGAL KERJA": [m["tgl"] for m in bentrok],
+                            "MASALAH": [m["ket"] for m in bentrok], "KEPUTUSAN": ["— belum diputuskan —"] * len(bentrok)})
+        ed = st.data_editor(tbl, hide_index=True, width="stretch", key="bentrok_ed", height=min(420, 60 + 36 * len(tbl)),
+                            disabled=["NAMA", "TANGGAL KERJA", "MASALAH"],
+                            column_config={"KEPUTUSAN": st.column_config.SelectboxColumn(
+                                "KEPUTUSAN", options=sorted({o for v in pil.values() for o in v}, key=lambda x: (x[0] != "—", x)),
+                                width="medium")})
+        if st.button("TERAPKAN", type="primary", key="bentrok_ok"):
+            ubah, hapus_abs, abaikan = {}, [], []
+            for m, kep in zip(bentrok, ed["KEPUTUSAN"]):
+                if kep not in pil[m["jenis"]]:
+                    continue
+                if kep == "Ubah jadwal jadi MASUK":
+                    ubah.setdefault(m["bulan"], []).append({"prn": m["prn"], "tgl": m["tgl"], "status": "O"})
+                elif kep == "Hapus catatan absen":
+                    hapus_abs.append({"prn": m["prn"], "tgl": m["tgl"]})
+                elif kep == "Abaikan":
+                    abaikan.append({"prn": m["prn"], "tgl": m["tgl"]})
+            for bln, baris in ubah.items():
+                data.upsert("jadwal_" + bln, pd.DataFrame(baris), ["prn", "tgl"])
+            if hapus_abs:
+                data.upsert("absensi", pd.DataFrame(columns=["prn", "tgl", "kode", "keterangan", "waktu"]),
+                            ["prn", "tgl"], hapus=pd.DataFrame(hapus_abs))
+            if abaikan:
+                data.upsert("masalah_abaikan", pd.DataFrame(abaikan), ["prn", "tgl"])
+            if ubah:
+                data.catat_update("JADWAL KERJA")
+            if ubah or hapus_abs or abaikan:
+                try:
+                    data.sinkron_riwayat()
+                except Exception:
+                    pass
             st.rerun()
 
 
@@ -485,7 +533,7 @@ def dlg_lonceng(baru, tanpa, bentrok):
 gerbang()
 st.markdown(CSS, unsafe_allow_html=True)
 belum_ada = data.baca("karyawan").empty or data.baca("target").empty
-baru, tanpa, bentrok = ([], pd.DataFrame(), []) if belum_ada else cari_masalah()
+baru, tanpa, bentrok = ([], pd.DataFrame(), []) if belum_ada else masalah_cache(data.versi())
 jumlah = hitung_jumlah(baru, tanpa, bentrok) if not belum_ada else 0
 
 pesan = st.session_state.pop("sukses", None)
@@ -493,6 +541,8 @@ if pesan:
     dlg_sukses(pesan)
 elif st.session_state.pop("verif", False):
     dlg_verif()
+elif st.session_state.pop("bel_buka", False) and jumlah:
+    dlg_lonceng(baru, tanpa, bentrok)
 elif not belum_ada and data.baca("roster").empty and not st.session_state.get("verif_ditawari"):
     st.session_state["verif_ditawari"] = True  # sekali per sesi: daftar pantau belum pernah diverifikasi
     dlg_verif()

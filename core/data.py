@@ -30,6 +30,8 @@ def baca(nama):
     if nama in c and sekarang_ - c[nama][0] < TTL:
         return c[nama][1].copy()
     df = store().read(nama)
+    if nama.startswith("hasil_") and "trx" not in df.columns:  # data lama sebelum kolom trx ada
+        df["trx"] = df["tgl"]
     c[nama] = (sekarang_, df)
     return df.copy()
 
@@ -46,6 +48,7 @@ def daftar_bulan():
 def tulis(nama, df):
     store().write(nama, df)
     c = _tembolok()
+    c["_v"] = c.get("_v", 0) + 1
     c.pop(nama, None)
     c.pop("_bulan", None)
     c[nama] = (time.time(), df.fillna("").astype(str).reset_index(drop=True))
@@ -110,3 +113,8 @@ def catat_alasan(email, nama, tgl_tidak_target, alasan, menit=""):
     w = datetime.now(WIB)
     store().tambah_baris("ALASAN TIDAK TARGET", KOLOM_ALASAN,
                          [w.strftime("%H:%M:%S"), w.strftime("%Y-%m-%d"), email, nama, tgl_tidak_target, alasan, menit])
+
+
+def versi():
+    """Naik tiap ada data yang ditulis; dipakai sebagai kunci cache hitungan berat."""
+    return _tembolok().get("_v", 0)

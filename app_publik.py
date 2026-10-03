@@ -83,7 +83,12 @@ if not opsi:
 kol, _ = st.columns([1, 3])
 bulan = kol.selectbox("BULAN", opsi[::-1], format_func=nama_bulan)
 
-baris = logic.rekap_bulan(bulan)
+@st.cache_data(ttl=180, show_spinner="Memuat data…")
+def rekap(bln):
+    return logic.rekap_bulan(bln)
+
+
+baris = rekap(bulan)
 st.markdown(tabel_html(baris, int(bulan[:4]), int(bulan[5:])), unsafe_allow_html=True)
 st.markdown("<div class='ket'><span style='background:#fff'></span>masuk"
             "<span style='background:#ffff00'></span>tidak masuk (S sakit, I ijin, CT cuti, D dispen, R resign)"

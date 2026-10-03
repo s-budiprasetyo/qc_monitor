@@ -20,6 +20,9 @@ def baca_sap(file):
     hilang = [c for c in WAJIB_SAP if c not in df.columns]
     if hilang:
         raise ValueError("Kolom tidak ditemukan di file SAP: " + ", ".join(hilang))
+    kunci = [c for c in df.columns if c != "No."]  # nomor urut baris tidak ikut dibandingkan
+    n_kembar = int(df.duplicated(subset=kunci).sum())  # sama persis di semua kolom selain No. = data dobel
+    df = df.drop_duplicates(subset=kunci)
     lok = df["Lokasi"].astype(str).str.upper()
     out = pd.DataFrame({
         "tgl": pd.to_datetime(df["Posting Date"], errors="coerce").dt.strftime("%Y-%m-%d"),
@@ -30,10 +33,15 @@ def baca_sap(file):
         "op": lok.str.extract(r"OP\s*(\d+)")[0],
         "periksa": pd.to_numeric(df["Total Periksa"], errors="coerce"),
     })
+    # Transaction Date = hari kerja sebenarnya (dipakai untuk mencocokkan jadwal); Posting Date tetap dipakai untuk tampilan
+    trx = pd.to_datetime(df["Transaction Date"], errors="coerce").dt.strftime("%Y-%m-%d") if "Transaction Date" in df.columns else out["tgl"]
+    out["trx"] = trx.fillna(out["tgl"])
     awal = len(out)
     out = out.dropna(subset=["tgl", "op", "periksa"])
     out = out[out["nama_sap"] != "NAN"]
     catatan = []
+    if n_kembar:
+        catatan.append(f"{n_kembar} baris kembar (sama persis di semua kolom selain No.) dibuang otomatis agar tidak terhitung dua kali.")
     if len(out) < awal:
         catatan.append(f"{awal - len(out)} baris dibuang karena tanggal, operation atau jumlah periksa tidak terbaca.")
     out["op"] = out["op"].astype(int).astype(str)
