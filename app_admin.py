@@ -49,7 +49,8 @@ h1.judul{text-align:center;font-weight:800;letter-spacing:.5px;margin:0 0 .6rem 
 .kp img{height:42px;width:42px;object-fit:contain;background:#fff;border-radius:50%;border:2px solid #000}
 .kp span{font-weight:800;font-size:1.15rem;letter-spacing:.4px;color:#000}
 .st-key-hub{margin-top:0}
-.st-key-lonceng button{border:none;background:transparent;font-size:1.7rem;padding:0 .3rem;box-shadow:none}
+.st-key-lonceng button{border:none;background:transparent;padding:.2rem .5rem;box-shadow:none;height:auto;min-height:0}
+.st-key-lonceng button p{font-size:2.2rem !important;line-height:1.1}
 .st-key-lonceng{width:fit-content}
 button[data-testid="stBaseButton-secondary"]:not(.x){border-color:#00B0F0}
 .st-key-awal button{font-size:.85rem}
@@ -73,8 +74,10 @@ def kontrol_jendela(nama):
     kunci = f"max_{nama}"
     besar = st.session_state.get(kunci, False)
     if besar:
-        st.markdown("<style>div[data-testid='stDialog'] div[role='dialog']"
-                    "{width:96vw !important;max-width:96vw !important;}</style>", unsafe_allow_html=True)
+        st.markdown("<style>[data-testid='stDialog'] [role='dialog']"
+                    "{position:fixed !important;inset:0 !important;width:100vw !important;max-width:100vw !important;"
+                    "height:100vh !important;max-height:100vh !important;margin:0 !important;border-radius:0 !important;"
+                    "overflow:auto !important;background:#fff !important;z-index:1000002 !important}</style>", unsafe_allow_html=True)
     _, kanan = st.columns([5, 1])
     kanan.button("❐ Kecilkan" if besar else "⛶ Perbesar", key=f"tb_{kunci}", width="stretch",
                  on_click=lambda: st.session_state.update({kunci: not besar}))
@@ -484,6 +487,9 @@ pesan = st.session_state.pop("sukses", None)
 if pesan:
     dlg_sukses(pesan)
 elif st.session_state.pop("verif", False):
+    dlg_verif()
+elif not belum_ada and data.baca("roster").empty and not st.session_state.get("verif_ditawari"):
+    st.session_state["verif_ditawari"] = True  # sekali per sesi: daftar pantau belum pernah diverifikasi
     dlg_verif()
 
 st.markdown("<h1 class='judul'>WELCOME ADMIN QC TOTO</h1>", unsafe_allow_html=True)

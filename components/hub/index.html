@@ -54,7 +54,7 @@ function build(){
     b.onclick=function(){post("streamlit:setComponentValue",{value:{id:it.id,n:Date.now()},dataType:"json"});};
     box.appendChild(b);
   });
-  post("streamlit:setFrameHeight",{height:document.documentElement.scrollHeight+6});
+  post("streamlit:setFrameHeight",{height:Math.ceil(document.getElementById("stage").getBoundingClientRect().height)+8});
 }
 window.addEventListener("message",function(e){
   if(e.data&&e.data.type==="streamlit:render"){items=e.data.args.items||[];
