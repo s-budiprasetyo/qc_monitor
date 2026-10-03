@@ -43,9 +43,26 @@ def simpan_hasil(df):
         tulis(nama, baru.sort_values(["tgl", "nama_sap"]))
 
 
+def sekarang():
+    return datetime.now(WIB).strftime("%H:%M, %d-%m-%Y")
+
+
 def catat_update(nama_file):
     log = store().read("update_log")
     log = log[log["nama_file"] != nama_file]
-    sekarang = datetime.now(WIB).strftime("%H:%M, %d-%m-%Y")
-    tulis("update_log", pd.concat([log, pd.DataFrame([{"nama_file": nama_file, "waktu": sekarang}])],
+    tulis("update_log", pd.concat([log, pd.DataFrame([{"nama_file": nama_file, "waktu": sekarang()}])],
                                   ignore_index=True))
+
+
+def upsert(nama, baru, kunci, hapus=None):
+    """Gabungkan baris baru ke tabel: baris lama dengan kunci yang sama diganti.
+    hapus (opsional): DataFrame berisi kolom kunci yang barisnya dihapus dari tabel."""
+    lama = store().read(nama)
+    if hapus is not None and len(hapus):
+        k = set(map(tuple, hapus[kunci].astype(str).values))
+        lama = lama[[tuple(r) not in k for r in lama[kunci].astype(str).values]]
+    if len(baru):
+        k = set(map(tuple, baru[kunci].astype(str).values))
+        lama = lama[[tuple(r) not in k for r in lama[kunci].astype(str).values]]
+        lama = pd.concat([lama, baru], ignore_index=True)
+    tulis(nama, lama)

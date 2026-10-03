@@ -78,3 +78,64 @@ def baca_karyawan(file):
         "pass_hash": df["PASWORD"].map(hash_pw),
         "kode_opr": kode.map(lambda x: "" if pd.isna(x) else str(int(x))),
     })
+
+
+def baca_jadwal(file, bulan, prn_valid=None):
+    """Baca jadwal kerja (QC atau SK). Kode '-' = libur, kode lain = masuk.
+    bulan = 'YYYY-MM' (menentukan bulan jadwal, bukan isi file).
+    Return (DataFrame prn,tgl,status, catatan). Pencocokan karyawan lewat kolom 'PRN SAP'."""
+    import calendar
+    import openpyxl
+    ws = openpyxl.load_workbook(file, data_only=True).active
+    rows = list(ws.iter_rows(min_row=1, max_row=min(ws.max_row, 200), max_col=60, values_only=True))
+    hdr = None
+    for i, r in enumerate(rows[:25]):
+        for j, c in enumerate(r):
+            if isinstance(c, str) and c.strip().upper() == "PRN SAP":
+                hdr = (i, j)
+                break
+        if hdr:
+            break
+    if not hdr:
+        raise ValueError("Kolom 'PRN SAP' tidak ditemukan. Pastikan ini file jadwal kerja.")
+    hi, pj = hdr
+    # baris tanggal: baris di bawah header yang berisi angka 1, 2, 3, ...
+    day_row, day_cols = None, {}
+    for i in range(hi, min(hi + 4, len(rows))):
+        cols = {}
+        for j, c in enumerate(rows[i]):
+            try:
+                v = int(str(c).strip())
+            except (TypeError, ValueError):
+                continue
+            if 1 <= v <= 31 and v not in cols.values():
+                cols[j] = v
+        if len(cols) >= 25 and 1 in cols.values():
+            day_row, day_cols = i, cols
+            break
+    if day_row is None:
+        raise ValueError("Baris tanggal 1 sampai 30/31 tidak ditemukan di file jadwal.")
+    th, bl = int(bulan[:4]), int(bulan[5:])
+    n_hari = calendar.monthrange(th, bl)[1]
+    catatan = []
+    if len(day_cols) != n_hari:
+        catatan.append(f"File jadwal memuat {len(day_cols)} tanggal, sedangkan bulan yang dipilih punya {n_hari} hari. "
+                       "Tanggal yang tidak ada di file dianggap mengikuti jadwal normal (Sabtu dan Minggu libur).")
+    out = []
+    for r in rows[day_row + 1:]:
+        p = r[pj] if pj < len(r) else None
+        if p is None or not str(p).strip().split(".")[0].isdigit():
+            continue
+        prn = str(int(float(str(p).strip())))
+        if prn_valid is not None and prn not in prn_valid:
+            continue
+        for j, d in day_cols.items():
+            if d > n_hari:
+                continue
+            v = r[j] if j < len(r) else None
+            kode = "" if v is None else str(v).strip()
+            if kode == "":
+                continue
+            out.append((prn, f"{bulan}-{d:02d}", "X" if kode == "-" else "O"))
+    df = pd.DataFrame(out, columns=["prn", "tgl", "status"]).drop_duplicates(["prn", "tgl"], keep="last")
+    return df, catatan

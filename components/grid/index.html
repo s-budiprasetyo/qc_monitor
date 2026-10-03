@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; font-family: "Source Sans Pro", system-ui, sans-serif; font-size: 13px; color: #111; background: transparent; }
+  .wrap { max-height: 520px; overflow: auto; border: 1px solid #222; background: #fff; }
+  table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
+  th, td { border-right: 1px solid #222; border-bottom: 1px solid #222; text-align: center; padding: 0; height: 26px; min-width: 31px; box-sizing: border-box; }
+  th { position: sticky; top: 0; background: #fff; z-index: 2; font-weight: 500; }
+  th.we { background: #ffff00; color: #e00000; font-weight: 700; }
+  td.nm, th.nm { position: sticky; left: 0; text-align: left; padding: 0 6px; min-width: 200px; background: #fff; z-index: 1; white-space: nowrap; }
+  th.nm { z-index: 3; }
+  td.prn, th.prn { position: sticky; left: 200px; min-width: 52px; background: #fff; z-index: 1; }
+  th.prn { z-index: 3; }
+  td.c { cursor: pointer; user-select: none; font-size: 14px; }
+  td.c.O { background: #fff; }
+  td.c.X { background: #f4c2dd; font-weight: 700; }
+  td.c:hover { outline: 2px solid #1ba1e2; outline-offset: -2px; }
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap"></div>
+<script>
+(function () {
+  var token = null, state = {}, rowsInfo = [], days = [], weekend = [];
+
+  function post(type, data) {
+    window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data), "*");
+  }
+  function setHeight() {
+    var h = document.documentElement.scrollHeight;
+    post("streamlit:setFrameHeight", { height: Math.min(h, 540) + 4 });
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+  function build() {
+    var h = "<table><thead><tr><th class='nm'>NAMA</th><th class='prn'>PRN</th>";
+    days.forEach(function (d) { h += "<th class='" + (weekend.indexOf(d) >= 0 ? "we" : "") + "'>" + d + "</th>"; });
+    h += "</tr></thead><tbody>";
+    rowsInfo.forEach(function (r) {
+      h += "<tr><td class='nm'>" + esc(r.nama) + "</td><td class='prn'>" + esc(r.id) + "</td>";
+      var st = state[r.id] || "";
+      for (var i = 0; i < days.length; i++) {
+        var v = st.charAt(i) === "X" ? "X" : "O";
+        h += "<td class='c " + v + "' data-r='" + esc(r.id) + "' data-i='" + i + "'>" + v + "</td>";
+      }
+      h += "</tr>";
+    });
+    document.getElementById("wrap").innerHTML = h + "</tbody></table>";
+    setHeight();
+  }
+
+  document.getElementById("wrap").addEventListener("click", function (e) {
+    var td = e.target.closest ? e.target.closest("td.c") : null;
+    if (!td) return;
+    var id = td.getAttribute("data-r"), i = parseInt(td.getAttribute("data-i"), 10);
+    var s = state[id] || "";
+    while (s.length < days.length) s += "O";
+    var nv = s.charAt(i) === "X" ? "O" : "X";
+    state[id] = s.substring(0, i) + nv + s.substring(i + 1);
+    td.className = "c " + nv;
+    td.textContent = nv;
+    post("streamlit:setComponentValue", { value: state, dataType: "json" });
+  });
+
+  window.addEventListener("message", function (ev) {
+    if (!ev.data || ev.data.type !== "streamlit:render") return;
+    var a = ev.data.args || {};
+    if (a.reset_token !== token) {            // hanya bangun ulang bila bulan/daftar berubah
+      token = a.reset_token;
+      state = JSON.parse(JSON.stringify(a.state || {}));
+      rowsInfo = a.rows || [];
+      days = a.days || [];
+      weekend = a.weekend || [];
+      build();
+    }
+  });
+
+  post("streamlit:componentReady", { apiVersion: 1 });
+  setHeight();
+})();
+</script>
+</body>
+</html>

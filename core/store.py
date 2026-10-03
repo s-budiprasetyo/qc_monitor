@@ -9,12 +9,18 @@ KOLOM = {
     "alias": ["nama_sap", "prn"],
     "abaikan": ["nama_sap"],
     "update_log": ["nama_file", "waktu"],
+    "lembur": ["prn", "tgl", "jam"],
+    "absensi": ["prn", "tgl", "kode", "keterangan", "waktu"],
 }
 KOLOM_HASIL = ["tgl", "nama_sap", "type", "lokasi", "grup", "op", "periksa"]
 
 
 def kolom_tabel(nama):
-    return KOLOM_HASIL if nama.startswith("hasil_") else KOLOM[nama]
+    if nama.startswith("hasil_"):
+        return KOLOM_HASIL
+    if nama.startswith("jadwal_"):
+        return ["prn", "tgl", "status"]
+    return KOLOM[nama]
 
 
 class LocalStore:
