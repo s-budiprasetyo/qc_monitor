@@ -73,3 +73,10 @@ st.markdown(tabel_html(baris, int(bulan[:4]), int(bulan[5:])), unsafe_allow_html
 st.markdown("<div class='ket'><span style='background:#fff'></span>masuk"
             "<span style='background:#ffff00'></span>tidak masuk (S sakit, I ijin, CT cuti, D dispen, R resign)"
             "<span style='background:#f4c2dd'></span>libur</div>", unsafe_allow_html=True)
+
+catatan = logic.catatan_otomatis(bulan)
+if catatan:
+    with st.expander(f"Catatan otomatis ({len(catatan)})"):
+        st.caption("Operation tanpa target (OP107) tidak dihitung persennya dan dicatat otomatis.")
+        st.dataframe([{"TANGGAL": c["tgl"], "NAMA": c["nama"], "CATATAN": c["teks"]} for c in catatan],
+                     hide_index=True, width="stretch")

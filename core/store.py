@@ -11,6 +11,8 @@ KOLOM = {
     "update_log": ["nama_file", "waktu"],
     "lembur": ["prn", "tgl", "jam"],
     "absensi": ["prn", "tgl", "kode", "keterangan", "waktu"],
+    "roster": ["prn", "status"],  # status: ya (tampil di monitor) | tidak (disilang admin)
+    "target_abaikan": ["grup", "type", "op"],
 }
 KOLOM_HASIL = ["tgl", "nama_sap", "type", "lokasi", "grup", "op", "periksa"]
 

@@ -5,6 +5,7 @@ from core import calc, data
 
 KODE_ABSEN = {"Sakit": "S", "Ijin": "I", "Cuti": "CT", "Dispen": "D", "Resign": "R"}
 NAMA_ABSEN = {v: k for k, v in KODE_ABSEN.items()}
+OP_TANPA_TARGET = "107"  # memang tidak punya target: jadi catatan otomatis, bukan peringatan
 
 
 def n_hari(bulan):
@@ -22,8 +23,8 @@ def peta_nama_prn():
     return dict(zip(k["prn"], k["nama_web"]))
 
 
-def karyawan_dikenal(sampai_bulan=None):
-    """PRN karyawan yang pernah muncul di file SAP (sampai bulan tertentu), sesuai pemetaan nama."""
+def karyawan_sap(sampai_bulan=None):
+    """PRN yang pernah muncul di file SAP (sesuai pemetaan nama)."""
     k, a = data.baca("karyawan"), data.baca("alias")
     peta = calc.peta_nama(k, a)
     hasil = set()
@@ -32,8 +33,74 @@ def karyawan_dikenal(sampai_bulan=None):
             continue
         h = data.baca(f"hasil_{b}")
         hasil |= {peta[n] for n in h["nama_sap"].unique() if n in peta}
+    return hasil
+
+
+def karyawan_dikenal(sampai_bulan=None):
+    """Daftar pantau: karyawan yang sudah diverifikasi admin (status 'ya').
+    Bila admin belum pernah verifikasi sama sekali, dipakai karyawan yang ada di file SAP."""
+    r = data.baca("roster")
     nama = peta_nama_prn()
+    if len(r):
+        hasil = set(r.loc[r["status"] == "ya", "prn"])
+    else:
+        hasil = karyawan_sap(sampai_bulan)
     return sorted(hasil, key=lambda p: nama.get(p, p))
+
+
+def prn_admin():
+    """PRN milik admin (user di secrets cocok dengan user di data karyawan), supaya tidak tersilang otomatis."""
+    try:
+        import streamlit as st
+        u = str(st.secrets["admin"]["user"]).lower()
+    except Exception:
+        return None
+    k = data.baca("karyawan")
+    cocok = k[k["user"].str.lower() == u]
+    return cocok["prn"].iloc[0] if len(cocok) else None
+
+
+def belum_diverifikasi():
+    """PRN di data karyawan yang belum pernah diputuskan (belum ada di roster)."""
+    k, r = data.baca("karyawan"), data.baca("roster")
+    return [p for p in k["prn"] if p not in set(r["prn"])]
+
+
+def usulan_verifikasi():
+    """DataFrame usulan awal untuk dialog: prn, nama, ada_sap, ada_jadwal, silang (usulan)."""
+    k, r = data.baca("karyawan"), data.baca("roster")
+    putus = dict(zip(r["prn"], r["status"]))
+    sap = karyawan_sap()
+    ada_jadwal = set()
+    for t in data.store().tables():
+        if t.startswith("jadwal_"):
+            ada_jadwal |= set(data.baca(t)["prn"])
+    adm = prn_admin()
+    baris = []
+    for p, n in zip(k["prn"], k["nama_web"]):
+        if p in putus:
+            silang = putus[p] == "tidak"
+        else:  # usulan awal: silang bila tidak ada di SAP (admin sendiri tidak disilang)
+            silang = p not in sap and p != adm
+        baris.append({"prn": p, "nama": n, "ada_sap": p in sap, "ada_jadwal": p in ada_jadwal,
+                      "baru": p not in putus, "silang": silang})
+    return pd.DataFrame(baris).sort_values(["baru", "nama"], ascending=[False, True]).reset_index(drop=True)
+
+
+def catatan_otomatis(bulan):
+    """Catatan otomatis dari operation yang memang tanpa target (OP107): tiap orang per hari.
+    Return list dict(prn, nama, tgl, teks)."""
+    k, a = data.baca("karyawan"), data.baca("alias")
+    peta = calc.peta_nama(k, a)
+    h = data.baca(f"hasil_{bulan}")
+    h = h[h["op"].astype(str) == OP_TANPA_TARGET]
+    nama = peta_nama_prn()
+    out = []
+    for n, t in sorted(set(zip(h["nama_sap"], h["tgl"])), key=lambda x: (x[1], x[0])):
+        p = peta.get(n)
+        if p:
+            out.append(dict(prn=p, nama=nama.get(p, p), tgl=t, teks="mengerjakan OP107"))
+    return out
 
 
 def resign_dari():
