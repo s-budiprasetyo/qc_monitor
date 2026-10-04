@@ -18,6 +18,9 @@ table.t td.ab{background:#ffff00}
 .v{display:inline-block;border:2px solid #000;border-radius:6px;padding:1px 3px;font-weight:600;background:#fff}
 .v.kd{background:#ffff00;min-width:20px;font-size:14px;font-weight:800}
 .m{color:#e00000}
+.kos{display:block;width:100%;height:22px;border-radius:6px}
+.kgw{position:relative;display:inline-block}.kgw:before{content:'';position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:#bfe9fb}
+.v.kg{position:relative;background:transparent;width:14px;height:14px;padding:0;vertical-align:middle}
 .k{cursor:pointer}.k:hover{outline:2px solid #1ba1e2;outline-offset:1px;background:#e8f6fd}
 </style></head>
 <body><div id="stage"><div class="bar"><button id="unduh">⬇ UNDUH GAMBAR</button></div><div class="wrap" id="w"></div></div>
@@ -43,7 +46,7 @@ function unduh(){
     var r=e.getBoundingClientRect(),x=r.left-tr.left,y=r.top-tr.top,cs=getComputedStyle(e);
     g.fillStyle=cs.backgroundColor;g.fillRect(x,y,r.width,r.height);
     g.strokeStyle="#000";g.lineWidth=1;g.strokeRect(x+.5,y+.5,r.width-1,r.height-1);
-    var v=e.querySelector(".v"),teks=(v||e).textContent.trim();if(!teks)return;
+    var v=e.querySelector(".v");if(v&&v.classList.contains("kg")){var cx=x+r.width/2,cy=y+r.height/2;g.fillStyle="#bfe9fb";g.beginPath();g.arc(cx,cy,15,0,7);g.fill();g.lineWidth=2;g.strokeStyle="#000";rr(cx-8,cy-8,16,16,4);g.stroke();return;}var teks=(v||e).textContent.trim();if(!teks)return;
     var f=getComputedStyle(v||e);g.font=(f.fontWeight>=600?"bold ":"")+f.fontSize+" Arial, sans-serif";
     g.textBaseline="middle";var lebar=g.measureText(teks).width;
     var kiri=e.classList.contains("n"),tx=kiri?x+5:x+(r.width-lebar)/2,ty=y+r.height/2+1;

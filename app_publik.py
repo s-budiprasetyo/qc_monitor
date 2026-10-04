@@ -28,6 +28,8 @@ table.t td.lb{background:#f4c2dd}
 table.t td.ab{background:#ffff00}
 .v{display:inline-block;border:2px solid #000;border-radius:6px;padding:1px 3px;font-weight:600;background:#fff}
 .v.kd{background:#ffff00;min-width:20px;font-size:14px;font-weight:800}
+.kgw{position:relative;display:inline-block}.kgw:before{content:'';position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:#bfe9fb}
+.v.kg{position:relative;background:transparent;width:14px;height:14px;padding:0;vertical-align:middle}
 .m{color:#e00000}
 .ket{font-size:12px;margin-top:6px}
 table.d{border-collapse:collapse;width:100%;font-size:14px;text-align:center}
@@ -58,7 +60,10 @@ def sel(jenis, nilai, prn, d):
         return f"<td class='ab'><span class='v kd'>{html.escape(nilai)}</span></td>"
     if jenis == "libur":
         return "<td class='lb'></td>"
-    return "<td></td>"
+    attr = f"data-k='k' data-p='{html.escape(prn)}' data-d='{bulan}-{d:02d}'"
+    if jenis == "keg":
+        return f"<td><span class='kgw'><span class='v kg k' {attr}></span></span></td>"
+    return f"<td><span class='kos k' {attr}></span></td>"  # kosong: bisa diklik untuk mencatat kegiatan lain
 
 
 def tabel_html(baris, tahun, bln):
@@ -246,11 +251,36 @@ def dlg_notes(bln, prn, tgl):
             st.rerun()
 
 
+@st.dialog("KEGIATAN HARI INI", width="large")
+def dlg_kegiatan(bln, prn, tgl):
+    kontrol_jendela("keg")
+    kepala("hasil", "KEGIATAN HARI INI")
+    nama = logic.peta_nama_prn().get(prn, prn)
+    st.markdown(f"<div class='id'><b>TANGGAL</b>: {tgl_id(tgl)} &nbsp;&nbsp; <b>NAMA</b>: {html.escape(nama)}</div>",
+                unsafe_allow_html=True)
+    lama = data.kegiatan_hari(prn, tgl)
+    st.caption("Tidak ada hasil pcs di hari ini. Tulis kegiatan yang kamu kerjakan (mis. membersihkan area, membantu "
+               "angkat body). Kosongkan lalu SUBMIT untuk menghapus catatan." if lama else
+               "Tidak ada hasil pcs di hari ini. Tulis kegiatan yang kamu kerjakan (mis. membersihkan area, membantu "
+               "angkat body), lalu SUBMIT.")
+    teks = st.text_area("Kegiatan", value=lama, max_chars=300, height=120, label_visibility="collapsed",
+                        placeholder="Kegiatan hari ini…")
+    if perlu_google():
+        st.warning("Untuk menyimpan, akun Google kamu harus terverifikasi supaya emailnya tercatat sebagai jejak digital.")
+        st.button("Verifikasi dengan Google", on_click=st.login, width="stretch", key="g_keg")
+    if st.button("SUBMIT", type="primary", width="stretch", disabled=perlu_google() or (not teks.strip() and not lama)):
+        with st.spinner("Menyimpan…"):
+            data.simpan_kegiatan(prn, nama, tgl, teks, email_google())
+            rekap.clear()
+        st.session_state["buka"] = ("terima", "Kegiatan kamu sudah tersimpan." if teks.strip() else "Catatan kegiatan dihapus.")
+        st.rerun()
+
+
 @st.dialog("TERIMA KASIH")
-def dlg_terima():
+def dlg_terima(pesan="Alasan kamu sudah diajukan ke atasan."):
     kontrol_jendela("terima")
-    st.markdown("<h3 style='text-align:center'>TERIMA KASIH</h3><p style='text-align:center'>"
-                "Alasan kamu sudah diajukan ke atasan.</p>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='text-align:center'>TERIMA KASIH</h3><p style='text-align:center'>{html.escape(pesan)}</p>",
+                unsafe_allow_html=True)
     if st.button("OK", width="stretch", type="primary"):
         st.rerun()
 
@@ -276,12 +306,12 @@ def dlg_rata(bln, prn):
         df["Label"] = [f"{round(v)}%" if pd.notna(v) else "" for v in df["Persen"]]
         df["Merah"] = [pd.notna(v) and round(v) < 100 for v in df["Persen"]]
         atas = max(120, int(max([v for v in nilai.values()] + [100]) // 20 + 1) * 20)
-        x = alt.X("Tanggal:O", title=None, sort=hari, axis=alt.Axis(labelAngle=0, labelFontSize=11))
+        x = alt.X("Tanggal:O", title=None, sort=hari, axis=alt.Axis(labelAngle=0, labelFontSize=13, labelColor="#000", domainColor="#000", tickColor="#000"))
         y = alt.Y("Persen:Q", title=None, scale=alt.Scale(domain=[0, atas]),
-                  axis=alt.Axis(labelExpr="datum.value + '%'", tickCount=atas // 20))
+                  axis=alt.Axis(labelExpr="datum.value + '%'", tickCount=atas // 20, labelFontSize=13, labelColor="#000", domainColor="#000", tickColor="#000"))
         warna = alt.condition("datum.Merah", alt.value("#e00000"), alt.value("#222"))
         lap = alt.Chart(df).mark_line(color="#5b9bd5", strokeWidth=3, point=alt.OverlayMarkDef(color="#5b9bd5", size=70)).encode(x=x, y=y)
-        lap += alt.Chart(df).mark_text(dy=-14, fontSize=11, fontWeight="bold").encode(
+        lap += alt.Chart(df).mark_text(dy=-15, fontSize=13, fontWeight="bold").encode(
             x=x, y=y, text="Label:N", color=warna)
         if abs_tgl:
             ab = pd.DataFrame({"Tanggal": list(abs_tgl), "Kode": list(abs_tgl.values()), "a": 0, "b": atas})
@@ -339,12 +369,14 @@ klik = tabel(tabel_html(baris, int(bulan[:4]), int(bulan[5:])), key="tabel",
              nama_file=f"MONITORING_HASIL_KERJA_{bulan}.png")
 
 
-def buka_hari(prn, tgl):
+def buka_hari(prn, tgl, jenis="h"):
     if not st.session_state.get("me"):
-        st.session_state["tunda"] = ("hari", prn, tgl)
+        st.session_state["tunda"] = ("hari", prn, tgl, jenis)
         dlg_login()
     elif not boleh(prn):
         st.toast("Kamu hanya bisa membuka baris namamu sendiri.", icon="🔒")
+    elif jenis == "k":
+        dlg_kegiatan(bulan, prn, tgl)
     else:
         dlg_hari(bulan, prn, tgl)
 
@@ -359,20 +391,20 @@ if klik and klik.get("n") != st.session_state.get("klik_n"):
         prn_klik = None
     if prn_klik is None:
         pass
-    elif klik["k"] == "h":
-        buka_hari(prn_klik, klik["d"])
+    elif klik["k"] in ("h", "k"):
+        buka_hari(prn_klik, klik["d"], klik["k"])
     else:
         dlg_rata(bulan, prn_klik)
 elif st.session_state.get("tunda") and st.session_state.get("me"):
-    _, p_, t_ = st.session_state.pop("tunda")
-    buka_hari(p_, t_)
+    _, p_, t_, j_ = st.session_state.pop("tunda")
+    buka_hari(p_, t_, j_)
 else:
     pindah = st.session_state.pop("buka", None)
     if pindah:
         if pindah[0] == "notes":
             dlg_notes(*pindah[1:]) if boleh(pindah[2]) else None
         elif pindah[0] == "terima":
-            dlg_terima()
+            dlg_terima(*pindah[1:])
 st.markdown("<div class='ket'><span style='background:#fff'></span>masuk"
             "<span style='background:#ffff00'></span>tidak masuk (S sakit, I ijin, CT cuti, D dispen, R resign)"
             "<span style='background:#f4c2dd'></span>libur</div>", unsafe_allow_html=True)

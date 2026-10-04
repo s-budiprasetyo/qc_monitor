@@ -1,6 +1,7 @@
 """Penyimpanan data: CSV lokal (uji coba) atau Google Sheet (produksi).
 Semua nilai disimpan sebagai teks supaya kode karyawan seperti 0023 tidak berubah."""
 import os
+import re
 import time
 import pandas as pd
 
@@ -12,6 +13,8 @@ KOLOM = {
     "update_log": ["nama_file", "waktu"],
     "lembur": ["prn", "tgl", "jam"],
     "absensi": ["prn", "tgl", "kode", "keterangan", "waktu"],
+    "buku_bulan": ["bulan", "sheet_id", "nama"],  # Google Sheet per bulan (dibuat otomatis di folder Drive)
+    "kegiatan": ["prn", "tgl", "teks", "waktu", "email"],  # kegiatan lain hari itu (tanpa hasil pcs)
     "bagian": ["prn", "bagian"],  # QC | SK, dari file jadwal kerja tempat orang itu terdaftar
     "roster": ["prn", "status"],  # status: ya (tampil di monitor) | tidak (disilang admin)
     "target_abaikan": ["grup", "type", "op"],
@@ -53,14 +56,14 @@ class LocalStore:
     def tables(self):
         return [f[:-4] for f in os.listdir(self.folder) if f.endswith(".csv")]
 
-    def write_laporan(self, nama, df):
+    def write_laporan(self, nama, df, bulan=None):
         df.to_csv(self._path("laporan_" + nama.replace(" ", "_")), index=False)
 
-    def tambah_baris(self, nama, kolom, baris):
+    def tambah_baris(self, nama, kolom, baris, bulan=None):
         p = self._path("laporan_" + nama.replace(" ", "_"))
         ada = os.path.exists(p)
         pd.DataFrame([baris], columns=kolom).to_csv(p, mode="a", header=not ada, index=False)
-    def hapus_baris(self, nama, cocok):
+    def hapus_baris(self, nama, cocok, bulan=None):
         p = self._path("laporan_" + nama.replace(" ", "_"))
         if not os.path.exists(p):
             return 0
@@ -72,13 +75,13 @@ class LocalStore:
         return int(m.sum())
 
 
-class SheetsStore:
-    """Google Sheet. Hemat kuota API (batas baca 60 per menit): daftar tab dibaca sekali lalu disimpan,
+class _Buku:
+    """Satu file Google Sheet (buku). Hemat kuota API (batas baca 60 per menit): daftar tab dibaca sekali lalu disimpan,
     dan permintaan yang ditolak karena kuota (429/5xx) diulang otomatis dengan jeda."""
-    def __init__(self, creds, sheet_id):
+    def __init__(self, sh):
         import gspread
         self._gs = gspread
-        self.sh = self._retry(lambda: gspread.service_account_from_dict(creds).open_by_key(sheet_id))
+        self.sh = sh
         self._tabs = None
 
     def _retry(self, fn):
@@ -139,8 +142,8 @@ class SheetsStore:
             except Exception:
                 pass
 
-    def tables(self):
-        return [t for t in self._sheets(segar=True) if t not in TAB_LAPORAN]
+    def tables(self, segar=True):
+        return [t for t in self._sheets(segar=segar) if t not in TAB_LAPORAN]
 
     # --- dua tab yang terlihat untuk admin (laporan); tab data aplikasi disembunyikan
     def _tab_laporan(self, nama, kolom, baris):
@@ -165,7 +168,7 @@ class SheetsStore:
                 except Exception:
                     pass
 
-    def write_laporan(self, nama, df):
+    def write_laporan(self, nama, df, bulan=None):
         df = df.fillna("")
 
         def kerja():
@@ -218,8 +221,118 @@ class SheetsStore:
         return len(hapus)
 
 
+_POLA_BULAN = re.compile(r"^(?:hasil|jadwal)_(\d{4}-\d{2})$")
+
+
+class SheetsStore:
+    """Google Sheet utama (pengaturan, absensi, lembur, alasan, dll) + satu Google Sheet per bulan di folder Drive
+    (tabel hasil_ dan jadwal_ bulan itu serta dua tab laporan bulan itu). Bulan yang sudah ada di Sheet utama tetap
+    di sana; bulan baru otomatis dibuatkan Google Sheet sendiri bila drive_folder_id diisi."""
+    def __init__(self, creds, sheet_id, folder_id=None):
+        import gspread
+        self._gs = gspread
+        self.klien = gspread.service_account_from_dict(creds)
+        self.folder_id = folder_id or None
+        self.utama = _Buku(self._retry(lambda: self.klien.open_by_key(sheet_id)))
+        self.sh = self.utama.sh
+        self._buku = {}          # bulan -> _Buku
+        self._reg = None         # bulan -> sheet_id (tembolok daftar buku)
+        self.peringatan = []     # pesan masalah (mis. gagal membuat Google Sheet bulan baru)
+
+    _retry = _Buku._retry
+
+    # --- daftar buku bulanan (tabel 'buku_bulan' di Sheet utama)
+    def _registri(self, segar=False):
+        if self._reg is None or segar:
+            df = self.utama.read("buku_bulan")
+            self._reg = dict(zip(df["bulan"], df["sheet_id"]))
+        return self._reg
+
+    def daftar_buku(self):
+        df = self.utama.read("buku_bulan")
+        return [dict(bulan=b, sheet_id=i, nama=n) for b, i, n in zip(df["bulan"], df["sheet_id"], df["nama"])]
+
+    def _buka(self, bulan):
+        reg = self._registri()
+        if bulan not in reg:
+            return None
+        if bulan not in self._buku:
+            self._buku[bulan] = _Buku(self._retry(lambda: self.klien.open_by_key(reg[bulan])))
+        return self._buku[bulan]
+
+    def _buat(self, bulan):
+        """Buat Google Sheet bulan baru di folder Drive lalu catat di daftar. None bila tidak bisa."""
+        if not self.folder_id:
+            return None
+        judul = f"TOTOQC {bulan}"
+        try:
+            sh = self._retry(lambda: self.klien.create(judul, folder_id=self.folder_id))
+        except Exception as e:
+            self.peringatan.append(f"Gagal membuat Google Sheet {judul} di folder Drive: {type(e).__name__}: {e}")
+            return None
+        reg = self.utama.read("buku_bulan")
+        reg = pd.concat([reg, pd.DataFrame([{"bulan": bulan, "sheet_id": sh.id, "nama": judul}])], ignore_index=True)
+        self.utama.write("buku_bulan", reg)
+        self._reg = None
+        self._buku[bulan] = _Buku(sh)
+        return self._buku[bulan]
+
+    def _untuk_tulis(self, nama):
+        m = _POLA_BULAN.match(nama)
+        if not m:
+            return self.utama
+        bulan = m.group(1)
+        b = self._buka(bulan)
+        if b:
+            return b
+        ada = {f"hasil_{bulan}", f"jadwal_{bulan}"} & set(self.utama.tables(segar=False))
+        if ada:  # bulan lama yang sudah di Sheet utama tetap di sana
+            return self.utama
+        return self._buat(bulan) or self.utama
+
+    def _untuk_baca(self, nama):
+        m = _POLA_BULAN.match(nama)
+        return (self._buka(m.group(1)) if m else None) or self.utama
+
+    def read(self, nama):
+        return self._untuk_baca(nama).read(nama)
+
+    def write(self, nama, df):
+        self._untuk_tulis(nama).write(nama, df)
+
+    def tables(self):
+        hasil = list(self.utama.tables())
+        self._registri(segar=True)
+        for bulan in self._registri():
+            try:
+                b = self._buka(bulan)
+                hasil += [t for t in b.tables(segar=False) if _POLA_BULAN.match(t)]
+            except Exception:
+                pass
+        return hasil
+
+    # --- laporan (tab terlihat). bulan=None -> Sheet utama
+    def _buku_laporan(self, bulan):
+        return (self._buka(bulan) if bulan else None) or self.utama
+
+    def bulan_punya_buku(self, bulan):
+        return bulan in self._registri()
+
+    def write_laporan(self, nama, df, bulan=None):
+        self._buku_laporan(bulan).write_laporan(nama, df)
+
+    def tambah_baris(self, nama, kolom, baris, bulan=None):
+        self._buku_laporan(bulan).tambah_baris(nama, kolom, baris)
+
+    def hapus_baris(self, nama, cocok, bulan=None):
+        n = 0
+        for b in {id(x): x for x in (self._buku_laporan(bulan), self.utama)}.values():
+            n += b.hapus_baris(nama, cocok)
+        return n
+
+
 def buat_store(secrets=None):
     secrets = secrets or {}
     if "gcp_service_account" in secrets and "sheet_id" in secrets:
-        return SheetsStore(dict(secrets["gcp_service_account"]), secrets["sheet_id"])
+        return SheetsStore(dict(secrets["gcp_service_account"]), secrets["sheet_id"], secrets.get("drive_folder_id"))
     return LocalStore(os.environ.get("QC_DATA_DIR", "data"))

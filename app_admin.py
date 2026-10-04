@@ -114,6 +114,8 @@ def sukses(pesan, nama_file=None, verifikasi=True):
                 data.sinkron_riwayat()
             except Exception as e:
                 pesan += f" (riwayat Google Sheet belum terbarui: {type(e).__name__})"
+    for w in data.peringatan_store():
+        pesan += f" ⚠ {w}"
     st.session_state["sukses"] = pesan
     if verifikasi and logic.belum_diverifikasi():
         st.session_state["verif"] = True
@@ -155,8 +157,11 @@ def dlg_hasil():
                    "pada bulannya masing-masing.")
     if st.button("UPLOAD", type="primary"):
         with st.spinner("Menyimpan ke Google Sheet… tunggu sebentar, jangan klik lagi."):
+            sebelum = {x["bulan"] for x in data.info_buku()}
             data.simpan_hasil(df)
-            sukses("FILE BERHASIL DI UPDATE", "FILE HASIL KERJA")
+            baru_b = [x["nama"] for x in data.info_buku() if x["bulan"] not in sebelum]
+            sukses("FILE BERHASIL DI UPDATE" + (f". Google Sheet baru dibuat otomatis: {', '.join(baru_b)}" if baru_b else ""),
+                   "FILE HASIL KERJA")
 
 
 @st.dialog("DATA AWAL", width="large")
@@ -699,3 +704,9 @@ log = dict(zip(log["nama_file"], log["waktu"]))
 baris = "".join(f"<tr><td>{n}</td><td class='w'>{log.get(n, '-')}</td></tr>" for n in FILE_INFO)
 st.markdown("<h4 class='info'>► INFORMASI</h4><table class='info'><tr><th>NAMA FILE</th>"
             f"<th>TERAKHIR UPDATE</th></tr>{baris}</table>", unsafe_allow_html=True)
+buku = data.info_buku()
+if buku:
+    tautan = " &nbsp;·&nbsp; ".join(f"<a href='{b['url']}' target='_blank'>{b['nama']}</a>" for b in buku)
+    st.markdown(f"<p style='font-size:13px'>Google Sheet bulanan: {tautan}</p>", unsafe_allow_html=True)
+elif data.pakai_google_sheet():
+    st.caption("Google Sheet bulanan otomatis belum aktif (isi drive_folder_id di Secrets app admin).")

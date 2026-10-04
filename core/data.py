@@ -100,19 +100,57 @@ KOLOM_ALASAN = ["JAM", "TANGGAL POSTING", "EMAIL", "NAMA", "TANGGAL TIDAK TARGET
 
 
 def sinkron_riwayat():
-    """Tulis ulang tab 'HASIL KERJA KARYAWAN' di Google Sheet dari seluruh data. Aman dipanggil berulang."""
+    """Tulis ulang tab 'HASIL KERJA KARYAWAN' di Google Sheet dari seluruh data: tiap bulan yang punya Google Sheet
+    sendiri ke bukunya, sisanya ke Sheet utama. Bulan yang isinya tidak berubah dilewati. Aman dipanggil berulang."""
+    import hashlib
     from core import logic
     df = logic.laporan_riwayat()
-    store().write_laporan("HASIL KERJA KARYAWAN", df)
+    st_, c = store(), _tembolok()
+    bln = df["TANGGAL TAMPIL"].astype(str).str[:7] if len(df) else pd.Series([], dtype=str)
+    punya = {b for b in bln.unique() if getattr(st_, "bulan_punya_buku", lambda x: False)(b)}
+    bagian = [(b, df[bln == b]) for b in sorted(punya)] + [(None, df[~bln.isin(punya)])]
+    for b, d_ in bagian:
+        kunci = f"_hash_{b}"
+        h = hashlib.md5(d_.to_csv(index=False).encode()).hexdigest()
+        if c.get(kunci) == h:
+            continue
+        if b is None:
+            st_.write_laporan("HASIL KERJA KARYAWAN", d_)
+        else:
+            st_.write_laporan("HASIL KERJA KARYAWAN", d_, bulan=b)
+        c[kunci] = h
     catat_update("RIWAYAT GOOGLE SHEET")
     return len(df)
+
+
+def info_buku():
+    """Daftar Google Sheet bulanan (untuk tampilan admin): list dict(bulan, nama, url)."""
+    st_ = store()
+    if not hasattr(st_, "daftar_buku"):
+        return []
+    try:
+        return [dict(bulan=x["bulan"], nama=x["nama"], url=f"https://docs.google.com/spreadsheets/d/{x['sheet_id']}")
+                for x in st_.daftar_buku()]
+    except Exception:
+        return []
+
+
+def peringatan_store():
+    """Pesan masalah dari penyimpanan (mis. gagal membuat Google Sheet bulan baru); dibaca lalu dikosongkan."""
+    p = getattr(store(), "peringatan", None)
+    if not p:
+        return []
+    out = list(p)
+    p.clear()
+    return out
 
 
 def catat_alasan(email, nama, tgl_tidak_target, alasan, menit=""):
     """Tambah satu baris ke tab 'ALASAN TIDAK TARGET' (jejak, tidak bisa ditimpa)."""
     w = datetime.now(WIB)
     store().tambah_baris("ALASAN TIDAK TARGET", KOLOM_ALASAN,
-                         [w.strftime("%H:%M:%S"), w.strftime("%Y-%m-%d"), email, nama, tgl_tidak_target, alasan, menit])
+                         [w.strftime("%H:%M:%S"), w.strftime("%Y-%m-%d"), email, nama, tgl_tidak_target, alasan, menit],
+                         bulan=str(tgl_tidak_target)[:7])
 
 
 def versi():
@@ -203,7 +241,7 @@ def hapus_pengajuan(prn, tgl):
         k = baca("karyawan")
         nama = k.loc[k["prn"] == prn, "nama_web"]
         if len(nama):
-            store().hapus_baris("ALASAN TIDAK TARGET", {"NAMA": nama.iloc[0], "TANGGAL TIDAK TARGET": tgl})
+            store().hapus_baris("ALASAN TIDAK TARGET", {"NAMA": nama.iloc[0], "TANGGAL TIDAK TARGET": tgl}, bulan=tgl[:7])
     except Exception:
         pass
 
@@ -212,3 +250,27 @@ def foto_alasan(fid):
     f = baca("foto_alasan")
     x = f.loc[f["id"] == fid, "data"]
     return x.iloc[0] if len(x) else None
+
+
+def kegiatan_hari(prn, tgl):
+    k = baca("kegiatan")
+    x = k[(k["prn"] == prn) & (k["tgl"] == tgl)]
+    return x.iloc[0]["teks"] if len(x) else ""
+
+
+def simpan_kegiatan(prn, nama, tgl, teks, email=""):
+    """Catatan kegiatan lain hari itu (tanpa hasil pcs). Teks kosong = hapus catatan. Dijejak di tab ALASAN TIDAK TARGET."""
+    teks = teks.strip()
+    if not email:
+        k = baca("karyawan")
+        u = k.loc[k["prn"] == prn, "user"]
+        email = f"(tanpa Google) {u.iloc[0]}" if len(u) else "(tanpa Google)"
+    if not teks:
+        k = baca("kegiatan")
+        tulis("kegiatan", k[~((k["prn"] == prn) & (k["tgl"] == tgl))])
+        return
+    upsert("kegiatan", pd.DataFrame([{"prn": prn, "tgl": tgl, "teks": teks, "waktu": sekarang(), "email": email}]), ["prn", "tgl"])
+    try:
+        catat_alasan(email, nama, tgl, "[KEGIATAN LAIN] " + teks, "")
+    except Exception:
+        pass

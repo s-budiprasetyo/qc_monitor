@@ -313,6 +313,8 @@ def rekap_bulan(bulan):
     abs_ = {(p, t): c for p, t, c in zip(abs_["prn"], abs_["tgl"], abs_["kode"])}
     rs = resign_dari()
     jadwal, default = jadwal_peta(bulan), hari_libur_default(bulan)
+    keg = data.baca("kegiatan")
+    keg = set(zip(keg["prn"], keg["tgl"]))
     awal = f"{bulan}-01"
     baris = []
     produktif = pernah_menghasilkan(bulan)
@@ -333,6 +335,8 @@ def rekap_bulan(bulan):
                 hari[d] = ("abs", abs_[(prn, tgl)])
             elif libur(prn, tgl, bulan, jadwal, default):
                 hari[d] = ("libur", None)
+            elif (prn, tgl) in keg:
+                hari[d] = ("keg", None)  # masuk tapi mengerjakan kegiatan lain (tanpa pcs)
         baris.append({"prn": prn, "nama": nama.get(prn, prn), "hari": hari,
                       "rata": sum(nilai) / len(nilai) if nilai else None})
     return baris
