@@ -25,7 +25,7 @@ table.t td.ab{background:#ffff00}
 function post(t,d){window.parent.postMessage(Object.assign({isStreamlitMessage:true,type:t},d),"*");}
 var namaFile="monitoring.png";
 function tinggi(){
-  var mx=560;try{mx=Math.max(320,window.parent.innerHeight-230);}catch(e){}
+  var mx=560;try{mx=Math.max(320,window.parent.innerHeight-95);}catch(e){}
   document.getElementById("w").style.maxHeight=mx+"px";
   post("streamlit:setFrameHeight",{height:Math.ceil(document.getElementById("stage").getBoundingClientRect().height)+6});
 }
