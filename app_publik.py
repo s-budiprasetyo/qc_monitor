@@ -243,18 +243,30 @@ def dlg_rata(bln, prn):
     harian = harian[(harian["prn"] == prn) & (harian["tgl"].str.startswith(bln))].sort_values("tgl")
     absen = logic.absen_bulan(bln, prn)
     n_hari = calendar.monthrange(int(bln[:4]), int(bln[5:]))[1]
-    df = pd.DataFrame({"Tanggal": harian["tgl"].str[8:].astype(int), "Persen": harian["persen"].round(1)})
-    ab = pd.DataFrame([{"Tanggal": int(a["tgl"][8:]), "Persen": 0, "Kode": logic.NAMA_ABSEN.get(a["kode"], a["kode"]).upper()}
-                       for a in absen if a["kode"] != "R"])
-    x = alt.X("Tanggal:O", title="TANGGAL", scale=alt.Scale(domain=list(range(1, n_hari + 1))), axis=alt.Axis(labelAngle=0))
-    ch = alt.Chart(df).mark_line(color="#1f77b4", point=alt.OverlayMarkDef(color="#1f77b4")).encode(
-        x=x, y=alt.Y("Persen:Q", title="% HASIL KERJA"), tooltip=["Tanggal", "Persen"])
-    garis = alt.Chart(pd.DataFrame({"y": [100]})).mark_rule(color="#e00000", strokeDash=[5, 4]).encode(y="y:Q")
-    lap = ch + garis
-    if len(ab):
-        lap += alt.Chart(ab).mark_point(shape="square", size=900, color="#000", fill="#ffff00", filled=True, opacity=1).encode(x=x, y="Persen:Q")
-        lap += alt.Chart(ab).mark_text(fontSize=7, fontWeight="bold", color="#000").encode(x=x, y="Persen:Q", text="Kode:N")
-    st.altair_chart(lap, width="stretch")
+    abs_tgl = {int(x["tgl"][8:]): logic.NAMA_ABSEN.get(x["kode"], x["kode"]).upper() for x in absen if x["kode"] != "R"}
+    nilai = {int(t[8:]): v for t, v in zip(harian["tgl"], harian["persen"]) if int(t[8:]) not in abs_tgl}
+    hari = sorted(set(nilai) | set(abs_tgl))  # hanya tanggal yang ada isinya (libur tidak ditampilkan)
+    if not hari:
+        st.caption("Belum ada data bulan ini.")
+    else:
+        df = pd.DataFrame({"Tanggal": hari, "Persen": [nilai.get(d) for d in hari]})  # absen = kosong (garis putus)
+        df["Label"] = [f"{round(v)}%" if pd.notna(v) else "" for v in df["Persen"]]
+        df["Merah"] = [pd.notna(v) and round(v) < 100 for v in df["Persen"]]
+        atas = max(120, int(max([v for v in nilai.values()] + [100]) // 20 + 1) * 20)
+        x = alt.X("Tanggal:O", title=None, sort=hari, axis=alt.Axis(labelAngle=0, labelFontSize=11))
+        y = alt.Y("Persen:Q", title=None, scale=alt.Scale(domain=[0, atas]),
+                  axis=alt.Axis(labelExpr="datum.value + '%'", tickCount=atas // 20))
+        warna = alt.condition("datum.Merah", alt.value("#e00000"), alt.value("#222"))
+        lap = alt.Chart(df).mark_line(color="#5b9bd5", strokeWidth=3, point=alt.OverlayMarkDef(color="#5b9bd5", size=70)).encode(x=x, y=y)
+        lap += alt.Chart(df).mark_text(dy=-14, fontSize=11, fontWeight="bold").encode(
+            x=x, y=y, text="Label:N", color=warna)
+        if abs_tgl:
+            ab = pd.DataFrame({"Tanggal": list(abs_tgl), "Kode": list(abs_tgl.values()), "a": 0, "b": atas})
+            lap += alt.Chart(ab).mark_bar(size=26, cornerRadius=6, stroke="#00a2e8", strokeWidth=1.5, fill="#fff", opacity=1).encode(
+                x=x, y=alt.Y("a:Q"), y2="b:Q")
+            lap += alt.Chart(ab).mark_text(angle=270, fontSize=13, fontWeight="bold", color="#000").encode(
+                x=x, y=alt.Y("mid:Q"), text="Kode:N").transform_calculate(mid=str(atas // 2))
+        st.altair_chart(lap.properties(height=300), width="stretch")
     st.markdown("**REKAP TIDAK TARGET**")
     tt = logic.tidak_target(bln, prn)
     if not tt:

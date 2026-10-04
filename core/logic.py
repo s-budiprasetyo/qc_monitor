@@ -289,6 +289,21 @@ def simpan_keputusan(keputusan):
     data.tulis("pengajuan", p)
 
 
+def pernah_menghasilkan(sampai_bulan):
+    """PRN yang sudah pernah menghasilkan pcs (> 0) sampai bulan itu. Karyawan baru yang masih belajar
+    tetap tercatat, tetapi baru tampil di monitor setelah punya hasil."""
+    k, a = data.baca("karyawan"), data.baca("alias")
+    peta = calc.peta_nama(k, a)
+    ada = set()
+    for b in data.daftar_bulan():
+        if b > sampai_bulan:
+            continue
+        h = data.baca(f"hasil_{b}")
+        h = h[pd.to_numeric(h["periksa"], errors="coerce").fillna(0) > 0]
+        ada |= {peta[n] for n in h["nama_sap"].unique() if n in peta}
+    return ada
+
+
 def rekap_bulan(bulan):
     """Baris untuk tabel halaman utama. Tiap baris: prn, nama, hari{d: (jenis, nilai)}, rata."""
     nama = peta_nama_prn()
@@ -300,7 +315,10 @@ def rekap_bulan(bulan):
     jadwal, default = jadwal_peta(bulan), hari_libur_default(bulan)
     awal = f"{bulan}-01"
     baris = []
+    produktif = pernah_menghasilkan(bulan)
     for prn in karyawan_dikenal(bulan):
+        if prn not in produktif:
+            continue  # belum pernah menghasilkan pcs (karyawan baru): tersimpan, belum ditampilkan
         if prn in rs and rs[prn] < awal:
             continue  # sudah resign sebelum bulan ini
         hari, nilai = {}, []
