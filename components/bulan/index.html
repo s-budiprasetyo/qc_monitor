@@ -2,14 +2,14 @@
 <html lang="id"><head><meta charset="utf-8">
 <style>
 html,body{margin:0;padding:0;background:transparent;font-family:"Source Sans Pro",system-ui,sans-serif;user-select:none}
-#box{width:300px;margin:0 auto;padding:6px 0 4px 0}
+#box{width:100%;max-width:300px;box-sizing:border-box;margin:0 auto;padding:6px 8px 4px 8px}
 #roda{position:relative;display:flex;gap:10px;height:200px}
 .kol{position:relative;flex:1;height:200px;overflow-y:scroll;scroll-snap-type:y mandatory;scrollbar-width:none;
   -webkit-mask-image:linear-gradient(transparent,#000 30%,#000 70%,transparent);mask-image:linear-gradient(transparent,#000 30%,#000 70%,transparent)}
 .kol::-webkit-scrollbar{display:none}
 .kol.th{flex:.62}
-.it{height:40px;line-height:40px;text-align:center;scroll-snap-align:center;font-size:17px;color:#777;cursor:pointer}
-.it.on{color:#000;font-weight:800;font-size:19px}
+.it{height:40px;line-height:40px;text-align:center;scroll-snap-align:center;font-size:16px;white-space:nowrap;color:#777;cursor:pointer}
+.it.on{color:#000;font-weight:800;font-size:17px}
 .it.mati{color:#ccc;text-decoration:line-through}
 .sp{height:80px}
 #band{position:absolute;left:0;right:0;top:80px;height:40px;border-top:2px solid #00b0f0;border-bottom:2px solid #00b0f0;pointer-events:none;border-radius:6px;background:rgba(0,176,240,.08)}

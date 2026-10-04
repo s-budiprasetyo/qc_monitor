@@ -67,16 +67,16 @@ def tabel_html(baris, tahun, bln):
     ada = [d for b in baris for d, (j, v) in b["hari"].items() if j == "pct" or (j == "abs" and v != "R")]
     if ada:
         n_hari = max(ada)
-    h = "<table class='t'><tr><th class='n'>NAMA</th><th class='p'>PRN</th>"
+    h = "<table class='t'><tr><th class='n'>NAMA</th>"
     for d in range(1, n_hari + 1):
         h += f"<th class='{'we' if calendar.weekday(tahun, bln, d) >= 5 else ''}'>{d}</th>"
     h += "<th>RATA RATA</th></tr>"
-    for b in baris:
-        h += f"<tr><td class='n'>{html.escape(b['nama'])}</td><td class='p'>{html.escape(b['prn'])}</td>"
+    for i, b in enumerate(baris):  # PRN tidak ditaruh di halaman: sel memakai nomor baris, dipetakan lagi di server
+        h += f"<tr><td class='n'>{html.escape(b['nama'])}</td>"
         for d in range(1, n_hari + 1):
             jenis, nilai = b["hari"].get(d, (None, None))
-            h += sel(jenis, nilai, b["prn"], d)
-        rata = kotak(b["rata"], 1, klik=f"data-k='r' data-p='{html.escape(b['prn'])}'") if b["rata"] is not None else ""
+            h += sel(jenis, nilai, str(i), d)
+        rata = kotak(b["rata"], 1, klik=f"data-k='r' data-p='{i}'") if b["rata"] is not None else ""
         h += f"<td>{rata}</td></tr>"
     return h + "</table>"
 
@@ -172,8 +172,7 @@ def dlg_hari(bln, prn, tgl):
     kontrol_jendela("hari")
     kepala("hasil", "HASIL KERJA HARIAN")
     nama = logic.peta_nama_prn().get(prn, prn)
-    st.markdown(f"<div class='id'><b>TANGGAL</b>: {tgl_id(tgl)} &nbsp;&nbsp; <b>NAMA</b>: {html.escape(nama)} "
-                f"&nbsp;&nbsp; <b>PRN</b>: {html.escape(prn)}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='id'><b>TANGGAL</b>: {tgl_id(tgl)} &nbsp;&nbsp; <b>NAMA</b>: {html.escape(nama)}</div>", unsafe_allow_html=True)
     rinci, total = logic.detail_hari(bln, prn, tgl)
     h = "<table class='d'><tr><th>TYPE</th><th>OPERATION</th><th>PERIKSA</th><th>TARGET</th><th>% HASIL KERJA</th></tr>"
     for r in rinci:
@@ -261,7 +260,7 @@ def dlg_rata(bln, prn):
     kontrol_jendela("rata")
     kepala("evaluasi", "REKAP BULANAN")
     nama = logic.peta_nama_prn().get(prn, prn)
-    st.markdown(f"<div class='id'><b>NAMA</b>: {html.escape(nama)} &nbsp;&nbsp; <b>PRN</b>: {html.escape(prn)} "
+    st.markdown(f"<div class='id'><b>NAMA</b>: {html.escape(nama)} "
                 f"&nbsp;&nbsp; <b>BULAN</b>: {nama_bulan(bln)}</div>", unsafe_allow_html=True)
     harian, _ = logic.harian_bulan(bln)
     harian = harian[(harian["prn"] == prn) & (harian["tgl"].str.startswith(bln))].sort_values("tgl")
@@ -317,7 +316,7 @@ def dlg_rata(bln, prn):
 
 # ---------------------------------------------------------------- halaman
 atas, kanan = st.columns([6, 1.6], vertical_alignment="center")
-kol, _ = atas.columns([1, 3])
+kol, _ = atas.columns([1.6, 3])
 with kol:
     bulan = pilih_bulan("utama", tersedia=opsi)
 if st.session_state.get("me"):
@@ -354,10 +353,16 @@ if klik and klik.get("n") != st.session_state.get("klik_n"):
     st.session_state["klik_n"] = klik["n"]
     for k_ in ("max_hari", "max_notes", "max_rata", "max_login"):
         st.session_state[k_] = False
-    if klik["k"] == "h":
-        buka_hari(klik["p"], klik["d"])
+    try:
+        prn_klik = baris[int(klik["p"])]["prn"]
+    except (ValueError, IndexError):
+        prn_klik = None
+    if prn_klik is None:
+        pass
+    elif klik["k"] == "h":
+        buka_hari(prn_klik, klik["d"])
     else:
-        dlg_rata(bulan, klik["p"])
+        dlg_rata(bulan, prn_klik)
 elif st.session_state.get("tunda") and st.session_state.get("me"):
     _, p_, t_ = st.session_state.pop("tunda")
     buka_hari(p_, t_)
