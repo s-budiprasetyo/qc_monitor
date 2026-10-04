@@ -2,10 +2,16 @@
 <html lang="id"><head><meta charset="utf-8">
 <style>
 html,body{margin:0;padding:0;font-family:"Source Sans Pro",system-ui,sans-serif;background:transparent}
-.wrap{overflow-x:auto}
-table.t{border-collapse:collapse;width:100%;font-size:12px;text-align:center}
-table.t th,table.t td{border:1px solid #000;padding:3px 1px;white-space:nowrap;height:30px;color:#000;background:#fff}
-table.t td.n,table.t th.n{text-align:left;padding-left:4px}
+.bar{display:flex;justify-content:flex-end;margin:0 0 6px 0}
+.bar button{font:600 13px "Source Sans Pro",system-ui,sans-serif;border:2px solid #000;border-radius:8px;background:#fff;padding:5px 14px;cursor:pointer}
+.bar button:hover{background:#ffff00}
+.wrap{overflow:auto;max-height:560px;border:1px solid #000;background:#fff}
+table.t{border-collapse:separate;border-spacing:0;width:100%;font-size:12px;text-align:center}
+table.t th,table.t td{border-right:1px solid #000;border-bottom:1px solid #000;padding:3px 1px;white-space:nowrap;height:30px;color:#000;background:#fff;box-sizing:border-box}
+table.t th{position:sticky;top:0;z-index:3;background:#fff}
+table.t td.n,table.t th.n{text-align:left;padding-left:4px;position:sticky;left:0;min-width:210px;max-width:210px;overflow:hidden;z-index:2}
+table.t td.p,table.t th.p{position:sticky;left:210px;min-width:46px;z-index:2}
+table.t th.n,table.t th.p{z-index:5}
 table.t th.we{background:#ffff00;color:#e00000}
 table.t td.lb{background:#f4c2dd}
 table.t td.ab{background:#ffff00}
@@ -14,14 +20,47 @@ table.t td.ab{background:#ffff00}
 .m{color:#e00000}
 .k{cursor:pointer}.k:hover{outline:2px solid #1ba1e2;outline-offset:1px;background:#e8f6fd}
 </style></head>
-<body><div id="stage"><div class="wrap" id="w"></div></div>
+<body><div id="stage"><div class="bar"><button id="unduh">⬇ UNDUH GAMBAR</button></div><div class="wrap" id="w"></div></div>
 <script>
 function post(t,d){window.parent.postMessage(Object.assign({isStreamlitMessage:true,type:t},d),"*");}
-function tinggi(){post("streamlit:setFrameHeight",{height:Math.ceil(document.getElementById("stage").getBoundingClientRect().height)+6});}
+var namaFile="monitoring.png";
+function tinggi(){
+  var mx=560;try{mx=Math.max(320,window.parent.innerHeight-230);}catch(e){}
+  document.getElementById("w").style.maxHeight=mx+"px";
+  post("streamlit:setFrameHeight",{height:Math.ceil(document.getElementById("stage").getBoundingClientRect().height)+6});
+}
+// gambar tabel lengkap (tanpa terpotong scroll) digambar sendiri di canvas, tanpa pustaka luar
+function unduh(){
+  var w=document.getElementById("w"),t=w.querySelector("table");if(!t)return;
+  var kl=document.createElement("div");kl.style.cssText="position:absolute;left:-99999px;top:0;background:#fff";
+  var tk=t.cloneNode(true);tk.querySelectorAll("th,td").forEach(function(e){e.style.position="static";e.style.maxWidth="none";});
+  tk.style.width="auto";kl.appendChild(tk);document.body.appendChild(kl);
+  var tr=tk.getBoundingClientRect(),S=2,cv=document.createElement("canvas");
+  cv.width=Math.ceil(tr.width*S)+2;cv.height=Math.ceil(tr.height*S)+2;
+  var g=cv.getContext("2d");g.scale(S,S);g.fillStyle="#fff";g.fillRect(0,0,cv.width,cv.height);
+  function rr(x,y,w2,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w2,y,x+w2,y+h,r);g.arcTo(x+w2,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w2,y,r);g.closePath();}
+  tk.querySelectorAll("th,td").forEach(function(e){
+    var r=e.getBoundingClientRect(),x=r.left-tr.left,y=r.top-tr.top,cs=getComputedStyle(e);
+    g.fillStyle=cs.backgroundColor;g.fillRect(x,y,r.width,r.height);
+    g.strokeStyle="#000";g.lineWidth=1;g.strokeRect(x+.5,y+.5,r.width-1,r.height-1);
+    var v=e.querySelector(".v"),teks=(v||e).textContent.trim();if(!teks)return;
+    var f=getComputedStyle(v||e);g.font=(f.fontWeight>=600?"bold ":"")+f.fontSize+" Arial, sans-serif";
+    g.textBaseline="middle";var lebar=g.measureText(teks).width;
+    var kiri=e.classList.contains("n"),tx=kiri?x+5:x+(r.width-lebar)/2,ty=y+r.height/2+1;
+    if(v){var bw=lebar+10,bh=22,bx=x+(r.width-bw)/2,by=y+(r.height-bh)/2;
+      g.fillStyle=getComputedStyle(v).backgroundColor;rr(bx,by,bw,bh,5);g.fill();g.lineWidth=2;g.strokeStyle="#000";g.stroke();}
+    g.fillStyle=f.color;g.fillText(teks,tx,ty);
+  });
+  document.body.removeChild(kl);
+  cv.toBlob(function(b){var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=namaFile;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);},"image/png");
+}
+document.getElementById("unduh").onclick=unduh;
 var terakhir=null;
 window.addEventListener("message",function(e){
   if(!e.data||e.data.type!=="streamlit:render")return;
   var a=e.data.args||{};
+  if(a.nama_file)namaFile=a.nama_file;
   if(a.html===terakhir)return;
   terakhir=a.html;
   var w=document.getElementById("w");w.innerHTML=a.html;

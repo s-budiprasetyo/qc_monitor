@@ -143,31 +143,58 @@ def pengajuan_ada(prn, tgl):
     return bool(((p["prn"] == prn) & (p["tgl"] == tgl)).any())
 
 
+def alasan_hari(prn, tgl):
+    """Alasan yang pernah diajukan untuk satu orang satu hari: list dict(masalah, menit, foto)."""
+    al = baca("alasan")
+    al = al[(al["prn"] == prn) & (al["tgl"] == tgl)].copy()
+    al["no"] = pd.to_numeric(al["no"], errors="coerce")
+    return [dict(masalah=r.masalah, menit=int(float(r.menit or 0)), foto=r.foto) for r in al.sort_values("no").itertuples()]
+
+
 def simpan_alasan(prn, nama, tgl, items, email=""):
-    """items: list dict(masalah, menit, foto=bytes|None). Satu pengajuan per orang per hari (tidak bisa ditimpa).
-    Menulis: tabel alasan + foto, pengajuan (menunggu), dan satu baris jejak di tab 'ALASAN TIDAK TARGET'."""
-    if pengajuan_ada(prn, tgl):
-        return False
+    """items: list dict(masalah, menit, foto=bytes|None, foto_lama=id|''). Pengajuan ulang untuk hari yang sama menggantikan
+    isi lama dan status kembali 'menunggu' (jadi notifikasi baru untuk atasan). Tiap pengajuan tetap dijejak di tab
+    'ALASAN TIDAK TARGET'."""
+    revisi = pengajuan_ada(prn, tgl)
+    lama = {f"{prn}|{tgl}|{n}": r["foto"] for n, r in enumerate(alasan_hari(prn, tgl), 1)}
+    foto_lama = baca("foto_alasan")
+    foto_lama = dict(zip(foto_lama["id"], foto_lama["data"]))
     baris, fotos = [], []
     for n, it in enumerate(items, 1):
         fid = ""
         if it.get("foto"):
             fid = f"{prn}|{tgl}|{n}"
             fotos.append({"id": fid, "data": kecilkan_foto(it["foto"])})
+        elif it.get("foto_lama") and it["foto_lama"] in foto_lama:
+            fid = f"{prn}|{tgl}|{n}"
+            fotos.append({"id": fid, "data": foto_lama[it["foto_lama"]]})
         baris.append({"prn": prn, "tgl": tgl, "no": str(n), "masalah": it["masalah"],
                       "menit": str(int(it["menit"])), "foto": fid})
     total = sum(int(it["menit"]) for it in items)
-    upsert("alasan", pd.DataFrame(baris), ["prn", "tgl", "no"])
-    if fotos:
-        upsert("foto_alasan", pd.DataFrame(fotos), ["id"])
+    # hapus isi lama hari ini (termasuk baris nomor tinggi yang tidak dipakai lagi), lalu tulis yang baru
+    al = baca("alasan")
+    tulis("alasan", pd.concat([al[~((al["prn"] == prn) & (al["tgl"] == tgl))], pd.DataFrame(baris)], ignore_index=True))
+    ft = baca("foto_alasan")
+    ft = ft[~ft["id"].str.startswith(f"{prn}|{tgl}|")]
+    tulis("foto_alasan", pd.concat([ft, pd.DataFrame(fotos, columns=["id", "data"])], ignore_index=True))
     upsert("pengajuan", pd.DataFrame([{"prn": prn, "tgl": tgl, "menit": str(total), "status": "menunggu",
                                        "waktu": sekarang(), "email": email}]), ["prn", "tgl"])
     try:
         catat_alasan(email or "(tanpa login Google)", nama, tgl,
+                     ("[REVISI] " if revisi else "") +
                      "; ".join(f"{it['masalah']} ({int(it['menit'])} mnt)" for it in items), str(total))
     except Exception:
         pass
     return True
+
+
+def hapus_pengajuan(prn, tgl):
+    """Hapus total satu pengajuan alasan (pengajuan, alasan, foto). Jejak di tab ALASAN TIDAK TARGET tidak diubah."""
+    for nama, kunci in (("pengajuan", None), ("alasan", None)):
+        t = baca(nama)
+        tulis(nama, t[~((t["prn"] == prn) & (t["tgl"] == tgl))])
+    ft = baca("foto_alasan")
+    tulis("foto_alasan", ft[~ft["id"].str.startswith(f"{prn}|{tgl}|")])
 
 
 def foto_alasan(fid):

@@ -62,18 +62,22 @@ def sel(jenis, nilai, prn, d):
 
 def tabel_html(baris, tahun, bln):
     n_hari = calendar.monthrange(tahun, bln)[1]
-    h = "<div class='wrap'><table class='t'><tr><th class='n'>NAMA</th><th>PRN</th>"
+    # tanggal sesudah data SAP terakhir yang diposting disembunyikan (belum ada nilainya)
+    ada = [d for b in baris for d, (j, v) in b["hari"].items() if j == "pct" or (j == "abs" and v != "R")]
+    if ada:
+        n_hari = max(ada)
+    h = "<table class='t'><tr><th class='n'>NAMA</th><th class='p'>PRN</th>"
     for d in range(1, n_hari + 1):
         h += f"<th class='{'we' if calendar.weekday(tahun, bln, d) >= 5 else ''}'>{d}</th>"
     h += "<th>RATA RATA</th></tr>"
     for b in baris:
-        h += f"<tr><td class='n'>{html.escape(b['nama'])}</td><td>{html.escape(b['prn'])}</td>"
+        h += f"<tr><td class='n'>{html.escape(b['nama'])}</td><td class='p'>{html.escape(b['prn'])}</td>"
         for d in range(1, n_hari + 1):
             jenis, nilai = b["hari"].get(d, (None, None))
             h += sel(jenis, nilai, b["prn"], d)
         rata = kotak(b["rata"], 1, klik=f"data-k='r' data-p='{html.escape(b['prn'])}'") if b["rata"] is not None else ""
         h += f"<td>{rata}</td></tr>"
-    return h + "</table></div>"
+    return h + "</table>"
 
 
 st.markdown("<h1 class='judul'>MONITORING HASIL KERJA KARYAWAN</h1>", unsafe_allow_html=True)
@@ -168,9 +172,19 @@ def dlg_hari(bln, prn, tgl):
               f"<td>{kotak(r['pct'], 1) if r['pct'] is not None else '-'}</td></tr>")
     h += f"<tr class='tot'><td colspan='4' class='l'>% TOTAL</td><td>{kotak(total, 1) if total is not None else '-'}</td></tr></table>"
     st.markdown(h, unsafe_allow_html=True)
-    if total is not None and round(total) < 100:
+    ada = data.pengajuan_ada(prn, tgl)
+    if ada:
+        st.markdown("**ALASAN TIDAK TARGET YANG SUDAH DIAJUKAN**")
+        for r in data.alasan_hari(prn, tgl):
+            c = st.columns([5, 1.5, 1.2], vertical_alignment="center")
+            c[0].write(r["masalah"])
+            c[1].write(f"{r['menit']} menit")
+            if r["foto"]:
+                with c[2].popover("📷"):
+                    st.image(img_foto(r["foto"]))
+    if ada or (total is not None and round(total) < 100):
         st.write("")
-        if st.button("Alasan tidak target", type="primary", width="stretch"):
+        if st.button("EDIT ALASAN" if ada else "Alasan tidak target", type="primary", width="stretch"):
             st.session_state["buka"] = ("notes", bln, prn, tgl)
             st.rerun()
 
@@ -182,33 +196,28 @@ def dlg_notes(bln, prn, tgl):
     nama = logic.peta_nama_prn().get(prn, prn)
     st.markdown(f"<div class='id'><b>TANGGAL</b>: {tgl_id(tgl)} &nbsp;&nbsp; <b>NAMA</b>: {html.escape(nama)}</div>",
                 unsafe_allow_html=True)
-    if data.pengajuan_ada(prn, tgl):
-        st.info("Pengajuan untuk hari ini sudah tercatat dan tidak dapat diubah.")
-        al = data.baca("alasan")
-        al = al[(al["prn"] == prn) & (al["tgl"] == tgl)].sort_values("no")
-        for r in al.itertuples():
-            c = st.columns([5, 1.5, 1.5], vertical_alignment="center")
-            c[0].write(r.masalah)
-            c[1].write(f"{r.menit} menit")
-            if r.foto:
-                with c[2].popover("📷"):
-                    st.image(img_foto(r.foto))
-        return
+    lama = data.alasan_hari(prn, tgl)
     st.caption("Isi masalah yang membuat hasil kerja tidak mencapai target (maksimal 5), lengkap dengan waktu yang "
-               "terpakai dan foto bila ada. Setelah diajukan, isian tidak dapat diubah.")
+               "terpakai dan foto bila ada." + (" Kamu sedang mengedit pengajuan sebelumnya; setelah diajukan ulang, "
+                                                "atasan akan menerima notifikasi baru." if lama else ""))
     for c, t in zip(st.columns([5, 1.6, 2.4]), ["MASALAH", "WAKTU (MENIT)", "FOTO"]):
         c.markdown(f"**{t}**")
     items = []
     for i in range(5):
+        l = lama[i] if i < len(lama) else {"masalah": "", "menit": 0, "foto": ""}
         c = st.columns([5, 1.6, 2.4], vertical_alignment="center")
-        m = c[0].text_input("masalah", key=f"nm_{i}", label_visibility="collapsed", placeholder=f"Masalah {i + 1}", max_chars=200)
-        w = c[1].number_input("menit", key=f"nw_{i}", min_value=0, max_value=480, step=5, label_visibility="collapsed")
-        f = c[2].file_uploader("foto", key=f"nf_{i}", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
-        items.append((m.strip(), int(w), f))
+        m = c[0].text_input("masalah", key=f"nm_{tgl}_{i}", value=l["masalah"], label_visibility="collapsed",
+                            placeholder=f"Masalah {i + 1}", max_chars=200)
+        w = c[1].number_input("menit", key=f"nw_{tgl}_{i}", value=int(l["menit"]), min_value=0, max_value=480, step=5,
+                              label_visibility="collapsed")
+        f = c[2].file_uploader("foto", key=f"nf_{tgl}_{i}", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
+        if l["foto"] and not f:
+            c[2].caption("📷 foto tersimpan (unggah lagi untuk mengganti)")
+        items.append((m.strip(), int(w), f, l["foto"]))
     isi = [x for x in items if x[0]]
     total = sum(x[1] for x in isi)
     st.markdown(f"**Total waktu bermasalah: {total} menit**")
-    if st.button("AJUKAN KE ATASAN", type="primary", width="stretch"):
+    if st.button("AJUKAN ULANG KE ATASAN" if lama else "AJUKAN KE ATASAN", type="primary", width="stretch"):
         if not isi:
             st.error("Isi minimal satu masalah.")
         elif any(x[1] <= 0 for x in isi):
@@ -217,8 +226,9 @@ def dlg_notes(bln, prn, tgl):
             st.error("Total waktu tidak boleh lebih dari 480 menit (8 jam).")
         else:
             with st.spinner("Menyimpan…"):
-                data.simpan_alasan(prn, nama, tgl, [dict(masalah=m, menit=w, foto=f.getvalue() if f else None)
-                                                    for m, w, f in isi], email_google())
+                data.simpan_alasan(prn, nama, tgl, [dict(masalah=m, menit=w, foto=f.getvalue() if f else None,
+                                                         foto_lama="" if f else fl) for m, w, f, fl in isi],
+                                   email_google())
             st.session_state["buka"] = ("terima",)
             st.rerun()
 
@@ -311,7 +321,8 @@ def rekap(bln):
 
 
 baris = rekap(bulan)
-klik = tabel(tabel_html(baris, int(bulan[:4]), int(bulan[5:])), key="tabel")
+klik = tabel(tabel_html(baris, int(bulan[:4]), int(bulan[5:])), key="tabel",
+             nama_file=f"MONITORING_HASIL_KERJA_{bulan}.png")
 
 
 def buka_hari(prn, tgl):

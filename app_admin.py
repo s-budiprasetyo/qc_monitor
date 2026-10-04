@@ -586,6 +586,15 @@ def dlg_eval():
                     st.session_state[f"ev_{kid}"] = None
                     st.rerun(scope="fragment")
                 pilih[(r["prn"], r["tgl"])] = sekarang_
+            with st.popover("hapus"):
+                st.write("Hapus pengajuan ini beserta foto? (Tidak bisa dibatalkan.)")
+                if st.button("YA, HAPUS", key=f"evH_{kid}", type="primary"):
+                    data.hapus_pengajuan(r["prn"], r["tgl"])
+                    try:
+                        data.sinkron_riwayat()
+                    except Exception:
+                        pass
+                    st.rerun(scope="fragment")
     st.write("")
     ubah = {k: v for k, v in pilih.items() if v in ("V", "X")}
     if st.button(f"SUBMIT ({len(ubah)})", type="primary", width="stretch", disabled=not ubah):
