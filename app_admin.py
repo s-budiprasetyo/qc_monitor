@@ -1,8 +1,7 @@
 """Halaman admin (Welcome Admin QC TOTO). Jalankan: streamlit run app_admin.py"""
-import base64
 import difflib
+import io
 import hmac
-import os
 from datetime import date
 
 import pandas as pd
@@ -11,6 +10,7 @@ import streamlit as st
 from core import calc, data, logic, parsers
 from core.grid import jadwal_grid
 from core.hub import hub
+from core.ui import ikon, kepala, kontrol_jendela
 
 BULAN = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS",
          "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"]
@@ -21,21 +21,6 @@ st.set_page_config(page_title="Welcome Admin QC TOTO", page_icon="⚙️", layou
 
 
 # ---------------------------------------------------------------- tampilan
-_ASET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
-
-
-@st.cache_data(show_spinner=False)
-def ikon(nama):
-    """Ikon dari file Excel pengguna (folder assets) sebagai data-uri."""
-    with open(os.path.join(_ASET, f"{nama}.png"), "rb") as f:
-        return "data:image/png;base64," + base64.b64encode(f.read()).decode()
-
-
-def kepala(nama_ikon, judul):
-    """Spanduk kuning ala Excel dengan ikon, di bagian atas tiap jendela."""
-    st.markdown(f"<div class='kp'><img src='{ikon(nama_ikon)}'><span>{judul}</span></div>", unsafe_allow_html=True)
-
-
 CSS = """
 <style>
 .block-container{max-width:1180px;padding-top:2.4rem}
@@ -44,10 +29,6 @@ h1.judul{text-align:center;font-weight:800;letter-spacing:.5px;margin:0 0 .6rem 
 .ilus{background:#fff;border-radius:14px;padding:4px 0}
 .ilus svg{height:430px;width:auto;display:block;margin-left:auto;margin-right:0}
 
-/* spanduk kuning jendela (gaya file Excel) */
-.kp{display:flex;align-items:center;gap:12px;background:#ffff00;border:2px solid #000;border-radius:6px;padding:6px 12px;margin:0 0 12px 0}
-.kp img{height:42px;width:42px;object-fit:contain;background:#fff;border-radius:50%;border:2px solid #000}
-.kp span{font-weight:800;font-size:1.15rem;letter-spacing:.4px;color:#000}
 .st-key-hub{margin-top:0}
 .st-key-lonceng button{border:none;background:transparent;padding:.2rem .5rem;box-shadow:none;height:auto;min-height:0}
 .st-key-lonceng button p{font-size:2.2rem !important;line-height:1.1}
@@ -67,20 +48,6 @@ table.info td.w{text-align:center}
 
 </style>
 """
-
-
-def kontrol_jendela(nama):
-    """Tombol perbesar/kecilkan jendela. Tombol tutup (X) bawaan dialog; tidak ada minimize."""
-    kunci = f"max_{nama}"
-    besar = st.session_state.get(kunci, False)
-    if besar:
-        st.markdown("<style>[data-testid='stDialog'] [role='dialog']"
-                    "{position:fixed !important;inset:0 !important;width:100vw !important;max-width:100vw !important;"
-                    "height:100vh !important;max-height:100vh !important;margin:0 !important;border-radius:0 !important;"
-                    "overflow:auto !important;background:#fff !important;z-index:1000002 !important}</style>", unsafe_allow_html=True)
-    _, kanan = st.columns([5, 1])
-    kanan.button("❐ Kecilkan" if besar else "⛶ Perbesar", key=f"tb_{kunci}", width="stretch",
-                 on_click=lambda: st.session_state.update({kunci: not besar}))
 
 
 def pilihan_bulan():
@@ -163,7 +130,7 @@ def dlg_hasil():
     if f is None:
         return
     try:
-        df, catatan = parsers.baca_sap(f)
+        df, catatan = _baca_sap(f.getvalue())
     except Exception as e:
         st.error(f"File tidak bisa dibaca: {e}")
         return
@@ -178,7 +145,10 @@ def dlg_hasil():
             + f". Tanggal **baru**: {len(baru_t)}"
             + (f" ({baru_t[0][8:]}–{baru_t[-1][8:]})" if baru_t else "") + ".")
     luar = (df["tgl"].str[:7] != pilih).sum()
-    if luar:
+    if luar == len(df):
+        bln = ", ".join(sorted(df["tgl"].str[:7].unique()))
+        st.info(f"Tanggal di file ada di bulan {bln}, berbeda dari bulan yang dipilih. Data tetap disimpan sesuai tanggalnya.")
+    elif luar:
         st.warning(f"{luar} baris memiliki tanggal di luar bulan yang dipilih. Baris itu tetap disimpan "
                    "pada bulannya masing-masing.")
     if st.button("UPLOAD", type="primary"):
@@ -211,6 +181,16 @@ def dlg_awal():
             st.error(f"File tidak bisa dibaca: {e}")
             return
         sukses("DATA BERHASIL DI UPDATE: " + ", ".join(hasil))
+
+
+@st.cache_data(show_spinner="Membaca file…", max_entries=4)
+def _baca_sap(isi):
+    return parsers.baca_sap(io.BytesIO(isi))
+
+
+@st.cache_data(show_spinner="Membaca file…", max_entries=6)
+def _baca_jadwal(isi, bulan):
+    return parsers.baca_jadwal(io.BytesIO(isi), bulan)
 
 
 def _tabel_kosong(kolom, n):
@@ -333,7 +313,7 @@ def dlg_jadwal():
         if f is None:
             continue
         try:
-            df, catatan = parsers.baca_jadwal(f, bulan)
+            df, catatan = _baca_jadwal(f.getvalue(), bulan)
         except Exception as e:
             st.error(f"Jadwal {label}: {e}")
             return
@@ -489,44 +469,65 @@ def dlg_lonceng(baru, tanpa, bentrok):
         st.divider()
     if bentrok:
         st.markdown(f"**Hasil kerja tidak sesuai jadwal atau absensi ({len(bentrok)} kasus).** Dicocokkan dengan "
-                    "*hari kerja sebenarnya* (Transaction Date). Hasil tetap dihitung di tanggal posting. "
-                    "Pilih keputusan tiap baris, lalu klik TERAPKAN.")
-        pil = {"libur": ["— belum diputuskan —", "Ubah jadwal jadi MASUK", "Abaikan"],
-               "absen": ["— belum diputuskan —", "Hapus catatan absen", "Abaikan"],
-               "resign": ["— belum diputuskan —", "Abaikan"]}
-        tbl = pd.DataFrame({"NAMA": [m["nama"] for m in bentrok], "TANGGAL KERJA": [m["tgl"] for m in bentrok],
-                            "MASALAH": [m["ket"] for m in bentrok], "KEPUTUSAN": ["— belum diputuskan —"] * len(bentrok)})
-        ed = st.data_editor(tbl, hide_index=True, width="stretch", key="bentrok_ed", height=min(420, 60 + 36 * len(tbl)),
-                            disabled=["NAMA", "TANGGAL KERJA", "MASALAH"],
-                            column_config={"KEPUTUSAN": st.column_config.SelectboxColumn(
-                                "KEPUTUSAN", options=sorted({o for v in pil.values() for o in v}, key=lambda x: (x[0] != "—", x)),
-                                width="medium")})
-        if st.button("TERAPKAN", type="primary", key="bentrok_ok"):
-            ubah, hapus_abs, abaikan = {}, [], []
-            for m, kep in zip(bentrok, ed["KEPUTUSAN"]):
-                if kep not in pil[m["jenis"]]:
-                    continue
-                if kep == "Ubah jadwal jadi MASUK":
-                    ubah.setdefault(m["bulan"], []).append({"prn": m["prn"], "tgl": m["tgl"], "status": "O"})
-                elif kep == "Hapus catatan absen":
-                    hapus_abs.append({"prn": m["prn"], "tgl": m["tgl"]})
-                elif kep == "Abaikan":
-                    abaikan.append({"prn": m["prn"], "tgl": m["tgl"]})
-            for bln, baris in ubah.items():
-                data.upsert("jadwal_" + bln, pd.DataFrame(baris), ["prn", "tgl"])
-            if hapus_abs:
-                data.upsert("absensi", pd.DataFrame(columns=["prn", "tgl", "kode", "keterangan", "waktu"]),
-                            ["prn", "tgl"], hapus=pd.DataFrame(hapus_abs))
-            if abaikan:
-                data.upsert("masalah_abaikan", pd.DataFrame(abaikan), ["prn", "tgl"])
-            if ubah:
-                data.catat_update("JADWAL KERJA")
-            if ubah or hapus_abs or abaikan:
-                try:
-                    data.sinkron_riwayat()
-                except Exception:
-                    pass
-            st.rerun()
+                    "*hari kerja sebenarnya* (Transaction Date). Bila tanggal posting berbeda, pilih apakah hasilnya "
+                    "masuk di tanggal kerja atau tetap di tanggal posting. "
+                    "Pilih keputusan, lalu **TERAPKAN** (satu baris) atau **TERAPKAN SEMUA**.")
+        PINDAH = "Hasil masuk tanggal kerja (jadwal jadi MASUK)"
+        pil = {"libur": ["Ubah jadwal jadi MASUK", "Abaikan"],
+               "libur_pindah": [PINDAH, "Tetap di tanggal posting"],
+               "absen": ["Abaikan", "Hapus catatan absen"],
+               "resign": ["Abaikan"]}
+        lebar = [2.3, 1.3, 3.6, 2.3, 1.3]
+        for c, t in zip(st.columns(lebar), ["NAMA", "TGL KERJA", "MASALAH", "KEPUTUSAN", ""]):
+            c.markdown(f"**{t}**")
+        pilihan = []
+        for n, m in enumerate(bentrok):
+            k = st.columns(lebar, vertical_alignment="center")
+            k[0].write(m["nama"])
+            k[1].write(m["tgl"])
+            k[2].write(m["ket"])
+            kep = k[3].selectbox("keputusan", pil[m["jenis"] + ("_pindah" if m["jenis"] == "libur" and m.get("beda") else "")], key=f"kep_{m['prn']}_{m['tgl']}", label_visibility="collapsed")
+            pilihan.append((m, kep))
+            if k[4].button("TERAPKAN", key=f"ok_{m['prn']}_{m['tgl']}"):
+                _terapkan([(m, kep)])
+        if st.button("TERAPKAN SEMUA", type="primary", key="ok_semua"):
+            _terapkan(pilihan)
+
+
+def _terapkan(daftar):
+    """Jalankan keputusan admin untuk ketidaksesuaian jadwal/absensi, hitung ulang, lalu buka lagi lonceng."""
+    ubah, hapus_abs, abaikan, pindah = {}, [], [], []
+    for m, kep in daftar:
+        if kep.startswith("Hasil masuk tanggal kerja"):
+            pindah.append({"prn": m["prn"], "tgl": m["tgl"]})
+            ubah.setdefault(m["bulan"], []).append({"prn": m["prn"], "tgl": m["tgl"], "status": "O"})
+        elif kep == "Tetap di tanggal posting":
+            abaikan.append({"prn": m["prn"], "tgl": m["tgl"]})
+        elif kep == "Ubah jadwal jadi MASUK":
+            ubah.setdefault(m["bulan"], []).append({"prn": m["prn"], "tgl": m["tgl"], "status": "O"})
+        elif kep == "Hapus catatan absen":
+            hapus_abs.append({"prn": m["prn"], "tgl": m["tgl"]})
+        elif kep == "Abaikan":
+            abaikan.append({"prn": m["prn"], "tgl": m["tgl"]})
+    with st.spinner("Menerapkan keputusan…"):
+        for bln, baris in ubah.items():
+            data.upsert("jadwal_" + bln, pd.DataFrame(baris), ["prn", "tgl"])
+        if pindah:
+            data.upsert("pindah_hasil", pd.DataFrame(pindah), ["prn", "tgl"])
+        if hapus_abs:
+            data.upsert("absensi", pd.DataFrame(columns=["prn", "tgl", "kode", "keterangan", "waktu"]),
+                        ["prn", "tgl"], hapus=pd.DataFrame(hapus_abs))
+        if abaikan:
+            data.upsert("masalah_abaikan", pd.DataFrame(abaikan), ["prn", "tgl"])
+        if ubah:
+            data.catat_update("JADWAL KERJA")
+        try:
+            data.sinkron_riwayat()
+        except Exception:
+            pass
+    st.session_state["toast"] = f"{len(daftar)} keputusan diterapkan."
+    st.session_state["bel_buka"] = True
+    st.rerun()
 
 
 # ---------------------------------------------------------------- halaman
@@ -536,6 +537,8 @@ belum_ada = data.baca("karyawan").empty or data.baca("target").empty
 baru, tanpa, bentrok = ([], pd.DataFrame(), []) if belum_ada else masalah_cache(data.versi())
 jumlah = hitung_jumlah(baru, tanpa, bentrok) if not belum_ada else 0
 
+if st.session_state.get("toast"):
+    st.toast(st.session_state.pop("toast"), icon="✅")
 pesan = st.session_state.pop("sukses", None)
 if pesan:
     dlg_sukses(pesan)

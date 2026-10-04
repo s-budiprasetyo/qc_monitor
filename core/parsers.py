@@ -46,6 +46,17 @@ def baca_sap(file):
         catatan.append(f"{awal - len(out)} baris dibuang karena tanggal, operation atau jumlah periksa tidak terbaca.")
     out["op"] = out["op"].astype(int).astype(str)
     out["periksa"] = out["periksa"].astype(int).astype(str)
+    # seluruh kolom asli SAP ikut disimpan (data lengkap untuk riwayat di Google Sheet); semua dalam bentuk teks
+    mentah = df.loc[out.index].copy()
+    for c in mentah.columns:
+        if pd.api.types.is_datetime64_any_dtype(mentah[c]):
+            mentah[c] = mentah[c].dt.strftime("%Y-%m-%d")
+        elif pd.api.types.is_float_dtype(mentah[c]):
+            mentah[c] = mentah[c].map(lambda v: "" if pd.isna(v) else (str(int(v)) if float(v).is_integer() else str(v)))
+        else:
+            mentah[c] = mentah[c].map(lambda v: "" if pd.isna(v) else str(v))
+    mentah.columns = [f"SAP | {c}" for c in mentah.columns]
+    out = pd.concat([out, mentah], axis=1)
     return out.reset_index(drop=True), catatan
 
 

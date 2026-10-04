@@ -91,7 +91,7 @@ def catatan_otomatis(bulan):
     Return list dict(prn, nama, tgl, teks)."""
     k, a = data.baca("karyawan"), data.baca("alias")
     peta = calc.peta_nama(k, a)
-    h = data.baca(f"hasil_{bulan}")
+    h = hasil_bulan(bulan)
     h = h[h["op"].astype(str) == OP_TANPA_TARGET]
     nama = peta_nama_prn()
     out = []
@@ -123,13 +123,42 @@ def libur(prn, tgl, bulan, jadwal, default):
     return default[int(tgl[8:])]
 
 
+INTI = ["tgl", "nama_sap", "type", "lokasi", "grup", "op", "periksa", "trx"]
+
+
+def hasil_pindah():
+    """(prn, tanggal kerja) yang oleh admin dipindahkan ke tanggal kerja sebenarnya (bukan tanggal posting)."""
+    t = data.baca("pindah_hasil")
+    return set(zip(t["prn"], t["tgl"]))
+
+
+def hasil_bulan(bulan):
+    """Hasil kerja efektif untuk satu bulan: tanggal = Posting Date, kecuali baris yang dipindahkan admin ke
+    tanggal kerja (Transaction Date). Baris dari bulan tetangga ikut bila dipindahkan ke bulan ini."""
+    k, a = data.baca("karyawan"), data.baca("alias")
+    peta = calc.peta_nama(k, a)
+    th, bl = int(bulan[:4]), int(bulan[5:])
+    tetangga = [f"{th + (bl - 1 + d) // 12}-{(bl - 1 + d) % 12 + 1:02d}" for d in (-1, 0, 1)]
+    ada = set(data.daftar_bulan())
+    bagian = [data.baca(f"hasil_{b}") for b in tetangga if b in ada]
+    if not bagian:
+        return data.baca(f"hasil_{bulan}")
+    h = pd.concat(bagian, ignore_index=True).fillna("")
+    h["prn"] = h["nama_sap"].map(peta)
+    pindah = hasil_pindah()
+    if pindah:
+        m = [(p, t) in pindah for p, t in zip(h["prn"], h["trx"])]
+        h.loc[m, "tgl"] = h.loc[m, "trx"]
+    return h[h["tgl"].str[:7] == bulan].reset_index(drop=True)
+
+
 def harian_bulan(bulan, hasil=None):
     """Return (harian[prn,tgl,persen], tanpa_target)."""
     k, a, t = data.baca("karyawan"), data.baca("alias"), data.baca("target")
     if hasil is None:
-        hasil = data.baca(f"hasil_{bulan}")
+        hasil = hasil_bulan(bulan)
     peta = calc.peta_nama(k, a)
-    hasil = hasil.assign(prn=hasil["nama_sap"].map(peta)).dropna(subset=["prn"])
+    hasil = hasil[INTI].assign(prn=hasil["nama_sap"].map(peta)).dropna(subset=["prn"])
     lembur = data.baca("lembur")
     lembur = lembur[lembur["tgl"].str.startswith(bulan)]
     adj = pd.DataFrame({"prn": lembur["prn"], "tgl": lembur["tgl"], "menit_masalah": "0",
@@ -179,6 +208,7 @@ def masalah_bulan(bulan):
     h = data.baca(f"hasil_{bulan}")
     h = h.assign(prn=h["nama_sap"].map(peta)).dropna(subset=["prn"])
     h = h[h["prn"].isin(tampil)]
+    h = h[h["trx"] != ""]
     posting = {}
     for p, t, d in zip(h["prn"], h["trx"], h["tgl"]):
         posting[(p, t)] = min(d, posting.get((p, t), d))
@@ -186,7 +216,7 @@ def masalah_bulan(bulan):
     abs_ = {(p, t): c for p, t, c in zip(abs_["prn"], abs_["tgl"], abs_["kode"])}
     rs = resign_dari()
     ab = data.baca("masalah_abaikan")
-    abaikan = set(zip(ab["prn"], ab["tgl"]))
+    abaikan = set(zip(ab["prn"], ab["tgl"])) | hasil_pindah()
     cache, out = {}, []
     for (p, t), d in sorted(posting.items(), key=lambda x: (x[0][1], nama.get(x[0][0], ""))):
         if (p, t) in abaikan:
@@ -201,47 +231,68 @@ def masalah_bulan(bulan):
             ket, jenis = "ada hasil kerja padahal tercatat resign", "resign"
         elif (p, t) in abs_ and abs_[(p, t)] != "R":
             ket, jenis = f"ada hasil kerja padahal tercatat {NAMA_ABSEN.get(abs_[(p, t)], abs_[(p, t)])}", "absen"
-        elif jadwal and libur(p, t, bln, jadwal, default):
+        elif (jadwal and libur(p, t, bln, jadwal, default)) or (d != t and calendar.weekday(int(t[:4]), int(t[5:7]), int(t[8:])) >= 5):
             ket, jenis = "bekerja di hari libur menurut jadwal", "libur"
         else:
             continue
-        out.append(dict(prn=p, nama=n, tgl=t, tgl_posting=d, bulan=bln, jenis=jenis, ket=ket + tambah))
+        out.append(dict(prn=p, nama=n, tgl=t, tgl_posting=d, bulan=bln, jenis=jenis, ket=ket + tambah,
+                        beda=d != t))
     return out
 
 
-KOLOM_RIWAYAT = ["TANGGAL", "NAMA", "PRN", "TYPE", "OPERATION", "PERIKSA", "TARGET", "% TYPE", "% HARIAN", "STATUS"]
+HITUNG = ["TANGGAL TAMPIL", "TANGGAL KERJA (TRX)", "NAMA TAMPIL", "PRN", "TARGET", "% TYPE", "% HARIAN", "STATUS", "KETERANGAN"]
 
 
 def laporan_riwayat():
-    """Riwayat hasil kerja semua bulan, satu baris per orang per hari per type, lengkap dengan status target.
-    Hanya karyawan yang ada di daftar pantau."""
+    """Riwayat hasil kerja semua bulan: SEMUA kolom SAP asli + kolom hitungan, satu baris per baris SAP.
+    Hanya karyawan di daftar pantau; nama yang belum cocok tetap ditulis (status NAMA BELUM COCOK)."""
     k, a, t = data.baca("karyawan"), data.baca("alias"), data.baca("target")
     peta, nama, tampil = calc.peta_nama(k, a), peta_nama_prn(), set(karyawan_dikenal())
+    pindah = hasil_pindah()
     t = t.assign(target=pd.to_numeric(t["target"], errors="coerce"))
-    baris = []
+    bagian, mentah = [], []
     for b in data.daftar_bulan():
-        h = data.baca(f"hasil_{b}")
-        h = h.assign(prn=h["nama_sap"].map(peta)).dropna(subset=["prn"])
-        h = h[h["prn"].isin(tampil)]
+        h = data.baca(f"hasil_{b}").fillna("")
         if h.empty:
             continue
+        h["prn"] = h["nama_sap"].map(peta)
+        h = h[h["prn"].isna() | h["prn"].isin(tampil)].copy()
+        if h.empty:
+            continue
+        h["tgl_posting"] = h["tgl"]
+        m = [(p, x) in pindah for p, x in zip(h["prn"], h["trx"])]
+        h.loc[m, "tgl"] = h.loc[m, "trx"]
         harian, _ = harian_bulan(b)
         pers = {(p, d): v for p, d, v in zip(harian["prn"], harian["tgl"], harian["persen"])}
-        m = h.merge(t, on=["grup", "type", "op"], how="left")
-        m["periksa"] = pd.to_numeric(m["periksa"], errors="coerce")
-        for r in m.itertuples():
+        mm = h.merge(t, on=["grup", "type", "op"], how="left")
+        mm["periksa"] = pd.to_numeric(mm["periksa"], errors="coerce")
+        hitung = []
+        for r in mm.itertuples():
             ada = pd.notna(r.target)
             hari = pers.get((r.prn, r.tgl))
-            if not ada:
+            if pd.isna(r.prn):
+                status = "NAMA BELUM COCOK"
+            elif not ada:
                 status = "TANPA TARGET (OP107)" if str(r.op) == OP_TANPA_TARGET else "TANPA TARGET"
             elif hari is None:
                 status = "TANPA TARGET"
             else:
                 status = "TARGET" if round(hari) >= 100 else "TIDAK TARGET"
-            baris.append([r.tgl, nama.get(r.prn, r.prn), r.prn, r.type, str(r.op),
-                          float(r.periksa) if pd.notna(r.periksa) else "",
-                          float(r.target) if ada else "",
-                          round(r.periksa / r.target * 100, 1) if ada and pd.notna(r.periksa) else "",
-                          round(hari, 1) if hari is not None else "", status])
-    df = pd.DataFrame(baris, columns=KOLOM_RIWAYAT)
-    return df.sort_values(["TANGGAL", "NAMA", "TYPE"]).reset_index(drop=True)
+            ket = ""
+            if r.trx and r.trx != r.tgl_posting:
+                ket = "dipindah ke tanggal kerja" if r.tgl == r.trx else "tanggal posting beda dengan tanggal kerja"
+            hitung.append([r.tgl, r.trx, nama.get(r.prn, "") if pd.notna(r.prn) else "",
+                           r.prn if pd.notna(r.prn) else "", float(r.target) if ada else "",
+                           round(r.periksa / r.target * 100, 1) if ada and pd.notna(r.periksa) else "",
+                           round(hari, 1) if hari is not None and pd.notna(r.prn) else "", status, ket])
+        hitung = pd.DataFrame(hitung, columns=HITUNG)
+        bagian.append(hitung)
+        mentah.append(mm[[c for c in mm.columns if c.startswith("SAP | ")]].fillna("").reset_index(drop=True))
+    if not bagian:
+        return pd.DataFrame(columns=HITUNG)
+    sap = pd.concat(mentah, ignore_index=True).fillna("")
+    hit = pd.concat(bagian, ignore_index=True)
+    df = pd.concat([hit, sap], axis=1)
+    df = df.sort_values(["TANGGAL TAMPIL", "NAMA TAMPIL"], kind="stable").reset_index(drop=True)
+    df.columns = [c[6:] if c.startswith("SAP | ") else c for c in df.columns]
+    return df

@@ -14,6 +14,7 @@ KOLOM = {
     "absensi": ["prn", "tgl", "kode", "keterangan", "waktu"],
     "roster": ["prn", "status"],  # status: ya (tampil di monitor) | tidak (disilang admin)
     "target_abaikan": ["grup", "type", "op"],
+    "pindah_hasil": ["prn", "tgl"],  # hasil kerja yang oleh admin dihitung di tanggal kerja (Transaction Date)
     "masalah_abaikan": ["prn", "tgl"],  # ketidaksesuaian jadwal yang diputuskan admin: abaikan
 }
 TAB_LAPORAN = ("HASIL KERJA KARYAWAN", "ALASAN TIDAK TARGET")
