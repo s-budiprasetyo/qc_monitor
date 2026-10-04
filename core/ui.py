@@ -56,3 +56,12 @@ def kontrol_jendela(nama):
 def kepala(nama_ikon, judul):
     """Spanduk kuning ala Excel dengan ikon; berfungsi sebagai kepala jendela."""
     st.markdown(f"<div class='kp'><img src='{ikon(nama_ikon)}'><span>{judul}</span></div>", unsafe_allow_html=True)
+
+
+def gaya_global():
+    """Hilangkan efek pudar/blur saat Streamlit memuat ulang (elemen 'stale' jadi transparan) dan latar buram dialog."""
+    st.markdown("""<style>
+[data-stale="true"],[data-stale="true"] *{opacity:1 !important;transition:none !important;filter:none !important}
+[data-testid="stDialog"],[data-testid="stDialog"] > div{backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
+[data-testid="stAppViewContainer"] *{transition-duration:0s !important}
+</style>""", unsafe_allow_html=True)

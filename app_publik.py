@@ -10,7 +10,7 @@ import streamlit as st
 
 from core import data, logic, parsers
 from core.tabel import tabel
-from core.ui import ikon, kepala, kontrol_jendela
+from core.ui import gaya_global, ikon, kepala, kontrol_jendela
 
 BULAN = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS",
          "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"]
@@ -80,6 +80,7 @@ def tabel_html(baris, tahun, bln):
     return h + "</table>"
 
 
+gaya_global()
 st.markdown("<h1 class='judul'>MONITORING HASIL KERJA KARYAWAN</h1>", unsafe_allow_html=True)
 opsi = data.daftar_bulan()
 if not opsi:
@@ -116,6 +117,14 @@ def email_google():
     except Exception:
         pass
     return ""
+
+
+def perlu_google():
+    """True bila login Google sudah dipasang di app ini tetapi pengguna belum verifikasi (wajib untuk memposting alasan)."""
+    try:
+        return "auth" in st.secrets and not st.user.is_logged_in
+    except Exception:
+        return False
 
 
 def boleh(prn):
@@ -217,7 +226,11 @@ def dlg_notes(bln, prn, tgl):
     isi = [x for x in items if x[0]]
     total = sum(x[1] for x in isi)
     st.markdown(f"**Total waktu bermasalah: {total} menit**")
-    if st.button("AJUKAN ULANG KE ATASAN" if lama else "AJUKAN KE ATASAN", type="primary", width="stretch"):
+    if perlu_google():
+        st.warning("Untuk memposting, akun Google kamu harus terverifikasi supaya emailnya tercatat sebagai jejak digital.")
+        st.button("Verifikasi dengan Google", on_click=st.login, width="stretch", key="g_notes")
+    if st.button("AJUKAN ULANG KE ATASAN" if lama else "AJUKAN KE ATASAN", type="primary", width="stretch",
+                 disabled=perlu_google()):
         if not isi:
             st.error("Isi minimal satu masalah.")
         elif any(x[1] <= 0 for x in isi):

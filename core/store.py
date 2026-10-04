@@ -60,6 +60,16 @@ class LocalStore:
         p = self._path("laporan_" + nama.replace(" ", "_"))
         ada = os.path.exists(p)
         pd.DataFrame([baris], columns=kolom).to_csv(p, mode="a", header=not ada, index=False)
+    def hapus_baris(self, nama, cocok):
+        p = self._path("laporan_" + nama.replace(" ", "_"))
+        if not os.path.exists(p):
+            return 0
+        df = pd.read_csv(p, dtype=str).fillna("")
+        m = pd.Series(True, index=df.index)
+        for k, v in cocok.items():
+            m &= df[k].str.strip() == str(v).strip()
+        df[~m].to_csv(p, index=False)
+        return int(m.sum())
 
 
 class SheetsStore:
@@ -178,13 +188,34 @@ class SheetsStore:
 
     def _tambah_baris(self, nama, kolom, baris):
         ws = self._tab_laporan(nama, kolom, 1000)
-        if not self._retry(lambda: ws.get("A1:A1")):
-            self._retry(lambda: ws.update(range_name="A1", values=[kolom], value_input_option="USER_ENTERED"))
+        a1 = self._retry(lambda: ws.get("A1:A1"))
+        if not a1 or str(a1[0][0]).strip() != kolom[0]:  # judul kolom hilang: pasang di baris 1 (data yang ada turun ke bawah)
+            self._retry(lambda: ws.insert_row(kolom, 1, value_input_option="USER_ENTERED"))
             try:
                 self._retry(lambda: ws.format("1:1", {"textFormat": {"bold": True}}))
             except Exception:
                 pass
         self._retry(lambda: ws.append_row(baris, value_input_option="USER_ENTERED"))
+
+    def hapus_baris(self, nama, cocok):
+        """Hapus baris tab laporan yang semua kolom di dict `cocok` (judul kolom -> nilai) sama. Return jumlah terhapus."""
+        return self._segarkan_bila_tab_hilang(lambda: self._hapus_baris(nama, cocok))
+
+    def _hapus_baris(self, nama, cocok):
+        if nama not in [w.title for w in self._retry(lambda: self.sh.worksheets())]:
+            return 0
+        ws = self.sh.worksheet(nama)
+        nilai = self._retry(lambda: ws.get_all_values())
+        if not nilai:
+            return 0
+        kol = {k: nilai[0].index(k) for k in cocok if k in nilai[0]}
+        if len(kol) != len(cocok):
+            return 0
+        hapus = [i + 1 for i, r in enumerate(nilai) if i > 0 and all(
+            (r[j] if j < len(r) else "").strip() == str(cocok[k]).strip() for k, j in kol.items())]
+        for i in sorted(hapus, reverse=True):
+            self._retry(lambda i=i: ws.delete_rows(i))
+        return len(hapus)
 
 
 def buat_store(secrets=None):

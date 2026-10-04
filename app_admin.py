@@ -1,6 +1,7 @@
 """Halaman admin (Welcome Admin QC TOTO). Jalankan: streamlit run app_admin.py"""
 import difflib
 import io
+import time
 import hmac
 from datetime import date
 
@@ -10,7 +11,7 @@ import streamlit as st
 from core import calc, data, logic, parsers
 from core.grid import jadwal_grid
 from core.hub import hub
-from core.ui import ikon, kepala, kontrol_jendela
+from core.ui import gaya_global, ikon, kepala, kontrol_jendela
 
 BULAN = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS",
          "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"]
@@ -256,13 +257,11 @@ def dlg_absensi():
             c[1].write(logic.NAMA_ABSEN.get(r.kode, r.kode))
             c[2].write(r.keterangan or "")
             if c[3].button("HAPUS", key=f"abh_{r.prn}_{r.tgl}"):
-                data.upsert("absensi", pd.DataFrame(columns=["prn", "tgl", "kode", "keterangan", "waktu"]),
-                            ["prn", "tgl"], hapus=pd.DataFrame([{"prn": r.prn, "tgl": r.tgl}]))
-                try:
-                    data.sinkron_riwayat()
-                except Exception:
-                    pass
-                st.rerun(scope="fragment")
+                with st.spinner("Menghapus…"):
+                    data.upsert("absensi", pd.DataFrame(columns=["prn", "tgl", "kode", "keterangan", "waktu"]),
+                                ["prn", "tgl"], hapus=pd.DataFrame([{"prn": r.prn, "tgl": r.tgl}]))
+                st.session_state["hapus_ok"] = "absensi"
+                st.rerun()
         st.divider()
     st.caption("Tambah catatan baru untuk tanggal ini. Resign berlaku mulai tanggal ini dan seterusnya.")
     ed = st.data_editor(_tabel_kosong(["NAMA", "ABSENSI", "KETERANGAN"], 5), key="abs_tabel", num_rows="dynamic",
@@ -604,12 +603,10 @@ def dlg_eval():
             with k3.popover("hapus"):
                 st.write("Hapus pengajuan ini beserta foto? (Tidak bisa dibatalkan.)")
                 if st.button("YA, HAPUS", key=f"evH_{kid}", type="primary"):
-                    data.hapus_pengajuan(r["prn"], r["tgl"])
-                    try:
-                        data.sinkron_riwayat()
-                    except Exception:
-                        pass
-                    st.rerun(scope="fragment")
+                    with st.spinner("Menghapus…"):
+                        data.hapus_pengajuan(r["prn"], r["tgl"])
+                    st.session_state["hapus_ok"] = "eval"
+                    st.rerun()
     st.write("")
     ubah = {k: v for k, v in pilih.items() if v in ("V", "X")}
     if st.button(f"SUBMIT ({len(ubah)})", type="primary", width="stretch", disabled=not ubah):
@@ -631,6 +628,7 @@ def dlg_eval():
 # ---------------------------------------------------------------- halaman
 gerbang()
 st.markdown(CSS, unsafe_allow_html=True)
+gaya_global()
 belum_ada = data.baca("karyawan").empty or data.baca("target").empty
 baru, tanpa, bentrok = ([], pd.DataFrame(), []) if belum_ada else masalah_cache(data.versi())
 jumlah = hitung_jumlah(baru, tanpa, bentrok) if not belum_ada else 0
@@ -667,13 +665,24 @@ with atas3, st.container(key="awal"):
         st.session_state["admin_ok"] = False
         st.rerun()
 
+@st.dialog("BERHASIL")
+def dlg_hapus_ok(kembali):
+    st.markdown("<h3 style='text-align:center;margin:1.2rem 0'>DATA BERHASIL DI HAPUS</h3>", unsafe_allow_html=True)
+    if st.button("OK", type="primary", width="stretch"):
+        st.session_state["buka_tes"] = {"id": kembali, "n": time.time()}  # kembali ke jendela asal
+        st.rerun()
+
+
+if st.session_state.get("hapus_ok"):
+    dlg_hapus_ok(st.session_state.pop("hapus_ok"))
+
 MENU = {"hasil": ("HASIL KERJA", dlg_hasil, "hasil", False),
         "lembur": ("LEMBUR", dlg_lembur, "lembur", False),
         "eval": ("EVALUASI KARYAWAN", dlg_eval, "evaluasi", False),
         "absensi": ("ABSENSI", dlg_absensi, "absensi", False),
         "jadwal": ("JADWAL KERJA", dlg_jadwal, "jadwal", False)}
 klik = hub([{"id": k, "label": v[0], "icon": ikon(v[2]), "disabled": v[3]} for k, v in MENU.items()], key="hub")
-klik = klik or st.session_state.pop("buka_tes", None)
+klik = st.session_state.pop("buka_tes", None) or klik
 if klik and klik.get("n") != st.session_state.get("hub_n"):
     st.session_state["hub_n"] = klik.get("n")
     _, fungsi, _, mati = MENU[klik["id"]]

@@ -155,6 +155,10 @@ def simpan_alasan(prn, nama, tgl, items, email=""):
     """items: list dict(masalah, menit, foto=bytes|None, foto_lama=id|''). Pengajuan ulang untuk hari yang sama menggantikan
     isi lama dan status kembali 'menunggu' (jadi notifikasi baru untuk atasan). Tiap pengajuan tetap dijejak di tab
     'ALASAN TIDAK TARGET'."""
+    if not email:  # belum verifikasi Google: jejak memakai user login karyawan
+        k = baca("karyawan")
+        u = k.loc[k["prn"] == prn, "user"]
+        email = f"(tanpa Google) {u.iloc[0]}" if len(u) else "(tanpa Google)"
     revisi = pengajuan_ada(prn, tgl)
     lama = {f"{prn}|{tgl}|{n}": r["foto"] for n, r in enumerate(alasan_hari(prn, tgl), 1)}
     foto_lama = baca("foto_alasan")
@@ -180,7 +184,7 @@ def simpan_alasan(prn, nama, tgl, items, email=""):
     upsert("pengajuan", pd.DataFrame([{"prn": prn, "tgl": tgl, "menit": str(total), "status": "menunggu",
                                        "waktu": sekarang(), "email": email}]), ["prn", "tgl"])
     try:
-        catat_alasan(email or "(tanpa login Google)", nama, tgl,
+        catat_alasan(email, nama, tgl,
                      ("[REVISI] " if revisi else "") +
                      "; ".join(f"{it['masalah']} ({int(it['menit'])} mnt)" for it in items), str(total))
     except Exception:
@@ -195,6 +199,13 @@ def hapus_pengajuan(prn, tgl):
         tulis(nama, t[~((t["prn"] == prn) & (t["tgl"] == tgl))])
     ft = baca("foto_alasan")
     tulis("foto_alasan", ft[~ft["id"].str.startswith(f"{prn}|{tgl}|")])
+    try:  # jejak di tab Google Sheet ikut dihapus
+        k = baca("karyawan")
+        nama = k.loc[k["prn"] == prn, "nama_web"]
+        if len(nama):
+            store().hapus_baris("ALASAN TIDAK TARGET", {"NAMA": nama.iloc[0], "TANGGAL TIDAK TARGET": tgl})
+    except Exception:
+        pass
 
 
 def foto_alasan(fid):
