@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from core import data, logic, parsers
+from core.bulan import pilih_bulan
 from core.tabel import tabel
 from core.ui import gaya_global, ikon, kepala, kontrol_jendela
 
@@ -317,7 +318,8 @@ def dlg_rata(bln, prn):
 # ---------------------------------------------------------------- halaman
 atas, kanan = st.columns([6, 1.6], vertical_alignment="center")
 kol, _ = atas.columns([1, 3])
-bulan = kol.selectbox("BULAN", opsi[::-1], format_func=nama_bulan)
+with kol:
+    bulan = pilih_bulan("utama", tersedia=opsi)
 if st.session_state.get("me"):
     kanan.caption(f"Halo, **{st.session_state['me_nama']}**" + (" (admin)" if st.session_state.get("adm") else ""))
     if kanan.button("KELUAR", width="stretch"):

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8">
+<style>
+html,body{margin:0;padding:0;background:transparent;font-family:"Source Sans Pro",system-ui,sans-serif;user-select:none}
+#box{width:300px;margin:0 auto;padding:6px 0 4px 0}
+#roda{position:relative;display:flex;gap:10px;height:200px}
+.kol{position:relative;flex:1;height:200px;overflow-y:scroll;scroll-snap-type:y mandatory;scrollbar-width:none;
+  -webkit-mask-image:linear-gradient(transparent,#000 30%,#000 70%,transparent);mask-image:linear-gradient(transparent,#000 30%,#000 70%,transparent)}
+.kol::-webkit-scrollbar{display:none}
+.kol.th{flex:.62}
+.it{height:40px;line-height:40px;text-align:center;scroll-snap-align:center;font-size:17px;color:#777;cursor:pointer}
+.it.on{color:#000;font-weight:800;font-size:19px}
+.it.mati{color:#ccc;text-decoration:line-through}
+.sp{height:80px}
+#band{position:absolute;left:0;right:0;top:80px;height:40px;border-top:2px solid #00b0f0;border-bottom:2px solid #00b0f0;pointer-events:none;border-radius:6px;background:rgba(0,176,240,.08)}
+#ok{display:block;width:100%;margin-top:8px;padding:9px;border:2px solid #000;border-radius:10px;background:#00b0f0;color:#fff;font:800 15px inherit;font-family:inherit;cursor:pointer}
+#ok:disabled{background:#cfd8dc;border-color:#9aa;cursor:not-allowed}
+#info{font-size:12px;color:#c00;text-align:center;height:16px;margin-top:4px}
+</style></head>
+<body><div id="box"><div id="roda"><div class="kol" id="kb"></div><div class="kol th" id="kt"></div><div id="band"></div></div>
+<div id="info"></div><button id="ok">OK</button></div>
+<script>
+function post(t,d){window.parent.postMessage(Object.assign({isStreamlitMessage:true,type:t},d),"*");}
+var NM=["JANUARI","FEBRUARI","MARET","APRIL","MEI","JUNI","JULI","AGUSTUS","SEPTEMBER","OKTOBER","NOVEMBER","DESEMBER"];
+var kb=document.getElementById("kb"),kt=document.getElementById("kt"),ok=document.getElementById("ok"),info=document.getElementById("info");
+var tersedia=null,tahun=[],bi=0,ti=0,siap=false,kunci="";
+function idx(el){return Math.max(0,Math.round(el.scrollTop/40));}
+function ada(y,m){return !tersedia||tersedia.indexOf(y+"-"+("0"+(m+1)).slice(-2))>=0;}
+function gambar(){
+  var th=tahun[Math.min(ti,tahun.length-1)];
+  kb.innerHTML="<div class='sp'></div>"+NM.map(function(n,i){return "<div class='it"+(i===bi?" on":"")+(ada(th,i)?"":" mati")+"' data-i='"+i+"'>"+n+"</div>";}).join("")+"<div class='sp'></div>";
+  kt.innerHTML="<div class='sp'></div>"+tahun.map(function(y,i){return "<div class='it"+(i===ti?" on":"")+"' data-i='"+i+"'>"+y+"</div>";}).join("")+"<div class='sp'></div>";
+  kb.querySelectorAll(".it").forEach(function(e){e.onclick=function(){kb.scrollTo({top:e.dataset.i*40,behavior:"smooth"});};});
+  kt.querySelectorAll(".it").forEach(function(e){e.onclick=function(){kt.scrollTo({top:e.dataset.i*40,behavior:"smooth"});};});
+  pasang();perbarui();
+}
+// popover menyembunyikan isi sebelum dibuka: posisi gulir baru bisa diatur saat sudah terlihat
+var tp=null;
+function pasang(){
+  clearInterval(tp);var n=0;
+  tp=setInterval(function(){
+    n++;if(kb.clientHeight>0){kb.scrollTop=bi*40;kt.scrollTop=ti*40;if(Math.abs(kb.scrollTop-bi*40)<2&&Math.abs(kt.scrollTop-ti*40)<2)clearInterval(tp);}
+    if(n>200)clearInterval(tp);
+  },50);
+}
+window.addEventListener('resize',function(){if(kb.clientHeight>0&&Math.abs(kb.scrollTop-bi*40)>2)pasang();});
+function perbarui(){
+  var th=tahun[Math.min(ti,tahun.length-1)],a=ada(th,bi);
+  ok.disabled=!a;info.textContent=a?"":"Belum ada data di bulan ini";
+  kb.querySelectorAll(".it").forEach(function(e){e.classList.toggle("on",+e.dataset.i===bi);e.classList.toggle("mati",!ada(th,+e.dataset.i));});
+  kt.querySelectorAll(".it").forEach(function(e){e.classList.toggle("on",+e.dataset.i===ti);});
+}
+var tmB,tmT;
+kb.addEventListener("scroll",function(){clearTimeout(tmB);tmB=setTimeout(function(){bi=Math.min(11,idx(kb));perbarui();},60);});
+kt.addEventListener("scroll",function(){clearTimeout(tmT);tmT=setTimeout(function(){ti=Math.min(tahun.length-1,idx(kt));perbarui();},60);});
+ok.onclick=function(){var th=tahun[ti];post("streamlit:setComponentValue",{value:{v:th+"-"+("0"+(bi+1)).slice(-2),n:Date.now()},dataType:"json"});};
+window.addEventListener("message",function(e){
+  if(!e.data||e.data.type!=="streamlit:render")return;
+  var a=e.data.args||{};var k=JSON.stringify([a.nilai,a.tersedia,a.tahun]);if(k===kunci)return;kunci=k;
+  tersedia=a.tersedia||null;tahun=a.tahun||[];
+  var n=a.nilai||"";var y=parseInt(n.slice(0,4)),m=parseInt(n.slice(5))-1;
+  ti=Math.max(0,tahun.map(String).indexOf(String(y)));bi=m>=0?m:0;gambar();
+  post("streamlit:setFrameHeight",{height:Math.ceil(document.getElementById("box").getBoundingClientRect().height)+12});
+});
+post("streamlit:componentReady",{apiVersion:1});
+</script></body></html>

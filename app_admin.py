@@ -10,6 +10,7 @@ import streamlit as st
 
 from core import calc, data, logic, parsers
 from core.grid import jadwal_grid
+from core.bulan import pilih_bulan
 from core.hub import hub
 from core.ui import gaya_global, ikon, kepala, kontrol_jendela
 
@@ -125,8 +126,8 @@ def sukses(pesan, nama_file=None, verifikasi=True):
 def dlg_hasil():
     kontrol_jendela("hasil")
     kepala("hasil", "UPLOAD FILE HASIL KERJA")
-    daftar, idx = pilihan_bulan()
-    pilih = st.selectbox("PILIH BULAN", daftar, index=idx, format_func=nama_bulan)
+    st.session_state["_frag_hasil"] = True
+    pilih = pilih_bulan("hasil", judul="PILIH BULAN")
     f = st.file_uploader("Drag file SAP (Catatan Periksa) ke sini, atau klik Browse files", type=["xlsx"])
     if f is None:
         return
@@ -316,8 +317,8 @@ def dlg_jadwal():
     kontrol_jendela("jadwal")
     if not st.session_state.get("jd_manual"):
         kepala("jadwal", "JADWAL KERJA KARYAWAN")
-    daftar, idx = pilihan_bulan()
-    bulan = st.selectbox("PILIH BULAN", daftar, index=idx, format_func=nama_bulan, key="jd_bulan")
+    st.session_state["_frag_jadwal"] = True
+    bulan = pilih_bulan("jadwal", judul="PILIH BULAN")
     if st.session_state.get("jd_manual"):
         _jadwal_manual(bulan)
         return
