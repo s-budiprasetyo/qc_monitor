@@ -305,7 +305,7 @@ elif kanan.button("LOGIN", type="primary", width="stretch"):
     dlg_login()
 
 
-@st.cache_data(ttl=180, show_spinner="Memuat data…")
+@st.cache_data(ttl=60, show_spinner="Memuat data…")
 def rekap(bln):
     return logic.rekap_bulan(bln)
 

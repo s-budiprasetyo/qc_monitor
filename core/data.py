@@ -22,7 +22,7 @@ def _tembolok():
     return {}
 
 
-TTL = 180  # detik; tulis() menghapus tembolok tabel yang diubah
+TTL = 60  # detik; tulis() menghapus tembolok tabel yang diubah
 
 
 def baca(nama):
