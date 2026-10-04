@@ -244,13 +244,27 @@ def dlg_absensi():
         st.warning("Belum ada karyawan. Upload data awal dan file hasil kerja SAP dulu.")
         return
     by_nama = {nama.get(p, p): p for p in prns}
-    rentang = st.date_input("PILIH TANGGAL (satu hari, atau pilih tanggal awal dan akhir)",
-                            value=(date.today(),), format="DD/MM/YYYY", key="abs_tgl")
-    mulai = rentang[0]
-    akhir = rentang[1] if len(rentang) > 1 else rentang[0]
-    tanggal = [d.strftime("%Y-%m-%d") for d in pd.date_range(mulai, akhir)][:62]
-    st.caption(f"{len(tanggal)} hari: {tanggal[0]} sampai {tanggal[-1]}. Resign berlaku mulai tanggal awal dan seterusnya. "
-               "Pilih 'Hapus catatan' untuk membatalkan catatan yang sudah ada.")
+    hari_ini = st.date_input("PILIH TANGGAL (satu hari)", value=date.today(), format="DD/MM/YYYY", key="abs_tgl")
+    tanggal = [hari_ini.strftime("%Y-%m-%d")]
+    ada = data.baca("absensi")
+    ada = ada[ada["tgl"] == tanggal[0]]
+    if len(ada):
+        st.markdown(f"**Sudah tercatat di tanggal ini ({len(ada)}):**")
+        for r in ada.itertuples():
+            c = st.columns([3, 1.4, 3, 1.2], vertical_alignment="center")
+            c[0].write(nama.get(r.prn, r.prn))
+            c[1].write(logic.NAMA_ABSEN.get(r.kode, r.kode))
+            c[2].write(r.keterangan or "")
+            if c[3].button("HAPUS", key=f"abh_{r.prn}_{r.tgl}"):
+                data.upsert("absensi", pd.DataFrame(columns=["prn", "tgl", "kode", "keterangan", "waktu"]),
+                            ["prn", "tgl"], hapus=pd.DataFrame([{"prn": r.prn, "tgl": r.tgl}]))
+                try:
+                    data.sinkron_riwayat()
+                except Exception:
+                    pass
+                st.rerun(scope="fragment")
+        st.divider()
+    st.caption("Tambah catatan baru untuk tanggal ini. Resign berlaku mulai tanggal ini dan seterusnya.")
     ed = st.data_editor(_tabel_kosong(["NAMA", "ABSENSI", "KETERANGAN"], 5), key="abs_tabel", num_rows="dynamic",
                         hide_index=True, width="stretch",
                         column_config={
@@ -546,6 +560,7 @@ def dlg_eval():
 [class*='st-key-evV_'] button{background:#1a9c3c !important;color:#fff !important;border:2px solid #000 !important;font-weight:800}
 [class*='st-key-evX_'] button{background:#d50000 !important;color:#fff !important;border:2px solid #000 !important;font-weight:800}
 [class*='st-key-evU_'] button{min-height:0;padding:0 .4rem}
+[class*='st-key-evV_'] button,[class*='st-key-evX_'] button{min-width:2.2rem;padding:0 .5rem}
 </style>""", unsafe_allow_html=True)
     semua = st.toggle("Tampilkan juga yang sudah diputuskan", key="ev_semua")
     antre = logic.antrean_evaluasi(semua)
@@ -554,7 +569,7 @@ def dlg_eval():
         return
     st.caption("V = atasan menerima: target hari itu dikurangi sebesar waktu masalah. X = menolak: target 8 jam tetap, hasil tetap merah. "
                "Setelah dipilih, tombol lain hilang (klik 'ubah' untuk memilih ulang). Lalu tekan SUBMIT.")
-    lebar = [2.4, 1.4, 1.1, 4, 0.9, 1.6]
+    lebar = [2.2, 1.3, 1.0, 3.2, 0.8, 3.0]
     for c, t in zip(st.columns(lebar), ["NAMA", "TANGGAL", "% HASIL", "ALASAN", "MENIT", "KEPUTUSAN"]):
         c.markdown(f"**{t}**")
     pilih = {}
@@ -570,23 +585,23 @@ def dlg_eval():
         c[3].write(r["alasan"] or "–")
         c[4].write(r["menit"])
         with c[5]:
+            k1, k2, k3 = st.columns([1, 1, 1], vertical_alignment="center", gap="small")
             if sekarang_ is None:
-                a, b = st.columns(2)
-                if a.button("V", key=f"evV_{kid}"):
+                if k1.button("V", key=f"evV_{kid}"):
                     st.session_state[f"ev_{kid}"] = "V"
                     st.rerun(scope="fragment")
-                if b.button("X", key=f"evX_{kid}"):
+                if k2.button("X", key=f"evX_{kid}"):
                     st.session_state[f"ev_{kid}"] = "X"
                     st.rerun(scope="fragment")
             else:
                 warna = "#1a9c3c" if sekarang_ == "V" else "#d50000"
-                st.markdown(f"<span style='background:{warna};color:#fff;border:2px solid #000;border-radius:6px;padding:2px 14px;"
+                k1.markdown(f"<span style='background:{warna};color:#fff;border:2px solid #000;border-radius:6px;padding:2px 12px;"
                             f"font-weight:800'>{sekarang_}</span>", unsafe_allow_html=True)
-                if st.button("ubah", key=f"evU_{kid}"):
+                if k2.button("ubah", key=f"evU_{kid}"):
                     st.session_state[f"ev_{kid}"] = None
                     st.rerun(scope="fragment")
                 pilih[(r["prn"], r["tgl"])] = sekarang_
-            with st.popover("hapus"):
+            with k3.popover("hapus"):
                 st.write("Hapus pengajuan ini beserta foto? (Tidak bisa dibatalkan.)")
                 if st.button("YA, HAPUS", key=f"evH_{kid}", type="primary"):
                     data.hapus_pengajuan(r["prn"], r["tgl"])

@@ -18,15 +18,16 @@ def _css_jendela(besar):
     maks, res = ikon("maks"), ikon("restore")
     css = f"""<style>
 /* judul bawaan dialog disembunyikan: spanduk kuning sudah menjadi kepala jendela (hemat tempat) */
-[data-testid='stDialog'] [role='dialog']{{position:relative}}
+[data-testid='stDialog'] [role='dialog']{{position:relative;scrollbar-width:none}}
+[data-testid='stDialog'] [role='dialog']::-webkit-scrollbar{{display:none}}
 [data-testid='stDialog'] [role='dialog'] h2{{display:none !important}}
-[data-testid='stDialog'] [role='dialog'] > button[aria-label='Close']{{position:absolute !important;top:19px;right:20px;z-index:30;
+[data-testid='stDialog'] [role='dialog'] > button[aria-label='Close']{{position:absolute !important;top:19px;right:32px;z-index:30;
   width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:#fff !important;border:2px solid #000 !important;border-radius:6px;color:#000 !important}}
 .kp{{display:flex;align-items:center;gap:12px;background:#ffff00;border:2px solid #000;border-radius:6px;
-  padding:5px 100px 5px 10px;margin:-20px 0 10px 0}}
+  padding:5px 112px 5px 10px;margin:-20px 0 10px 0}}
 .kp img{{height:38px;width:38px;object-fit:contain;background:#fff;border-radius:50%;border:2px solid #000}}
 .kp span{{font-weight:800;font-size:1.1rem;letter-spacing:.4px;color:#000}}
-[class*='st-key-tbmax_'],[class*='st-key-tbres_']{{position:absolute !important;top:17px;right:58px;z-index:20;width:34px !important}}
+[class*='st-key-tbmax_'],[class*='st-key-tbres_']{{position:absolute !important;top:17px;right:70px;z-index:20;width:34px !important}}
 [class*='st-key-tbmax_'] button,[class*='st-key-tbres_'] button{{width:34px;min-height:0;height:34px;padding:0;border:2px solid #000 !important;
   border-radius:6px;background-color:#fff;background-repeat:no-repeat;background-position:center;background-size:20px}}
 [class*='st-key-tbmax_'] button{{background-image:url({maks})}}
