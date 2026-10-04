@@ -5,15 +5,19 @@ import time
 import pandas as pd
 
 KOLOM = {
-    "karyawan": ["prn", "nama_web", "nama_sap", "user", "pass_hash", "kode_opr"],
+    "karyawan": ["prn", "nama_web", "nama_sap", "user", "pass_hash", "kode_opr", "jenis", "tipe"],
     "target": ["grup", "type", "op", "target"],
     "alias": ["nama_sap", "prn"],
     "abaikan": ["nama_sap"],
     "update_log": ["nama_file", "waktu"],
     "lembur": ["prn", "tgl", "jam"],
     "absensi": ["prn", "tgl", "kode", "keterangan", "waktu"],
+    "bagian": ["prn", "bagian"],  # QC | SK, dari file jadwal kerja tempat orang itu terdaftar
     "roster": ["prn", "status"],  # status: ya (tampil di monitor) | tidak (disilang admin)
     "target_abaikan": ["grup", "type", "op"],
+    "alasan": ["prn", "tgl", "no", "masalah", "menit", "foto"],  # alasan tidak target (maks 5 baris per orang per hari)
+    "foto_alasan": ["id", "data"],  # foto kecil (base64) milik alasan
+    "pengajuan": ["prn", "tgl", "menit", "status", "waktu", "email"],  # status: menunggu | V | X
     "pindah_hasil": ["prn", "tgl"],  # hasil kerja yang oleh admin dihitung di tanggal kerja (Transaction Date)
     "masalah_abaikan": ["prn", "tgl"],  # ketidaksesuaian jadwal yang diputuskan admin: abaikan
 }

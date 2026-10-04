@@ -172,6 +172,9 @@ def dlg_awal():
             if fk:
                 k = parsers.baca_karyawan(fk)
                 data.tulis("karyawan", k)
+                if k["jenis"].ne("").any():  # daftar tampil mengikuti jenis pekerjaan di file
+                    data.tulis("roster", pd.DataFrame({"prn": k["prn"], "status": [
+                        "ya" if logic.tampil_default(j) else "tidak" for j in k["jenis"]]}))
                 hasil.append(f"{len(k)} karyawan")
             if ft:
                 t = parsers.baca_target(ft)
@@ -309,6 +312,7 @@ def dlg_jadwal():
     fq = st.file_uploader("► Upload Jadwal Kerja QC disini", type=["xlsx"], key="jd_qc")
     fs = st.file_uploader("► Upload Jadwal Kerja SK disini", type=["xlsx"], key="jd_sk")
     hasil = []
+    labels = []
     for label, f in (("QC", fq), ("SK", fs)):
         if f is None:
             continue
@@ -325,10 +329,14 @@ def dlg_jadwal():
         if lewat:
             st.info(f"{lewat} orang di jadwal {label} tidak ada di data karyawan dan diabaikan.")
         hasil.append(ok)
+        labels.append(label)
     a, b = st.columns(2)
     if a.button("UPLOAD", type="primary", disabled=not hasil, width="stretch"):
         baru = pd.concat(hasil, ignore_index=True)
         data.upsert("jadwal_" + bulan, baru, ["prn", "tgl"])
+        bag = pd.concat([pd.DataFrame({"prn": sorted(set(o["prn"])), "bagian": lb})
+                         for o, lb in zip(hasil, labels)], ignore_index=True)
+        data.upsert("bagian", bag, ["prn"])
         sukses("JADWAL KERJA BERHASIL DI UPDATE", "JADWAL KERJA")
     if b.button("⚙ SETTING MANUAL", width="stretch"):
         st.session_state["jd_manual"] = True
@@ -350,10 +358,10 @@ def dlg_verif():
     tabel = pd.DataFrame({"NAMA": u["nama"], "PRN": u["prn"],
                           "DI SAP": u["ada_sap"].map({True: "✔", False: "—"}),
                           "DI JADWAL": u["ada_jadwal"].map({True: "✔", False: "—"}),
-                          "BARU": u["baru"].map({True: "baru", False: ""}),
+                          "JENIS": u["jenis"], "BARU": u["baru"].map({True: "baru", False: ""}),
                           "TAMPIL ✔ / ✕": ~u["silang"]})
     ed = st.data_editor(tabel, hide_index=True, width="stretch", height=460, key="verif_ed",
-                        disabled=["NAMA", "PRN", "DI SAP", "DI JADWAL", "BARU"],
+                        disabled=["NAMA", "PRN", "JENIS", "DI SAP", "DI JADWAL", "BARU"],
                         column_config={"TAMPIL ✔ / ✕": st.column_config.CheckboxColumn("TAMPIL ✔ / ✕", width="small")})
     n_x = int((~ed["TAMPIL ✔ / ✕"]).sum())
     st.write(f"**{len(ed) - n_x} orang tampil**, {n_x} dikeluarkan.")
@@ -530,6 +538,72 @@ def _terapkan(daftar):
     st.rerun()
 
 
+@st.dialog("EVALUASI KARYAWAN", width="large")
+def dlg_eval():
+    kontrol_jendela("eval")
+    kepala("evaluasi", "HALAMAN VERIFIKASI KARYAWAN")
+    st.markdown("""<style>
+[class*='st-key-evV_'] button{background:#1a9c3c !important;color:#fff !important;border:2px solid #000 !important;font-weight:800}
+[class*='st-key-evX_'] button{background:#d50000 !important;color:#fff !important;border:2px solid #000 !important;font-weight:800}
+[class*='st-key-evU_'] button{min-height:0;padding:0 .4rem}
+</style>""", unsafe_allow_html=True)
+    semua = st.toggle("Tampilkan juga yang sudah diputuskan", key="ev_semua")
+    antre = logic.antrean_evaluasi(semua)
+    if not antre:
+        st.info("Belum ada pengajuan alasan tidak target yang menunggu keputusan.")
+        return
+    st.caption("V = atasan menerima: target hari itu dikurangi sebesar waktu masalah. X = menolak: target 8 jam tetap, hasil tetap merah. "
+               "Setelah dipilih, tombol lain hilang (klik 'ubah' untuk memilih ulang). Lalu tekan SUBMIT.")
+    lebar = [2.4, 1.4, 1.1, 4, 0.9, 1.6]
+    for c, t in zip(st.columns(lebar), ["NAMA", "TANGGAL", "% HASIL", "ALASAN", "MENIT", "KEPUTUSAN"]):
+        c.markdown(f"**{t}**")
+    pilih = {}
+    for r in antre:
+        kid = f"{r['prn']}_{r['tgl']}"
+        sekarang_ = st.session_state.get(f"ev_{kid}", "?")
+        if sekarang_ == "?":
+            sekarang_ = r["status"] if r["status"] in ("V", "X") else None
+        c = st.columns(lebar, vertical_alignment="center")
+        c[0].write(r["nama"])
+        c[1].write(f"{r['tgl'][8:]}-{r['tgl'][5:7]}-{r['tgl'][:4]}")
+        c[2].write(f"{r['persen']:.1f}%".replace(".", ",") if r["persen"] is not None else "-")
+        c[3].write(r["alasan"] or "–")
+        c[4].write(r["menit"])
+        with c[5]:
+            if sekarang_ is None:
+                a, b = st.columns(2)
+                if a.button("V", key=f"evV_{kid}"):
+                    st.session_state[f"ev_{kid}"] = "V"
+                    st.rerun(scope="fragment")
+                if b.button("X", key=f"evX_{kid}"):
+                    st.session_state[f"ev_{kid}"] = "X"
+                    st.rerun(scope="fragment")
+            else:
+                warna = "#1a9c3c" if sekarang_ == "V" else "#d50000"
+                st.markdown(f"<span style='background:{warna};color:#fff;border:2px solid #000;border-radius:6px;padding:2px 14px;"
+                            f"font-weight:800'>{sekarang_}</span>", unsafe_allow_html=True)
+                if st.button("ubah", key=f"evU_{kid}"):
+                    st.session_state[f"ev_{kid}"] = None
+                    st.rerun(scope="fragment")
+                pilih[(r["prn"], r["tgl"])] = sekarang_
+    st.write("")
+    ubah = {k: v for k, v in pilih.items() if v in ("V", "X")}
+    if st.button(f"SUBMIT ({len(ubah)})", type="primary", width="stretch", disabled=not ubah):
+        with st.spinner("Menyimpan keputusan…"):
+            logic.simpan_keputusan(ubah)
+            data.catat_update("EVALUASI KARYAWAN")
+            try:
+                data.sinkron_riwayat()
+            except Exception:
+                pass
+        for k in list(st.session_state):
+            if k.startswith("ev_") and k != "ev_semua":
+                del st.session_state[k]
+        st.session_state["sukses"] = "KEPUTUSAN BERHASIL DISIMPAN"
+        st.rerun()
+
+
+
 # ---------------------------------------------------------------- halaman
 gerbang()
 st.markdown(CSS, unsafe_allow_html=True)
@@ -571,7 +645,7 @@ with atas3, st.container(key="awal"):
 
 MENU = {"hasil": ("HASIL KERJA", dlg_hasil, "hasil", False),
         "lembur": ("LEMBUR", dlg_lembur, "lembur", False),
-        "eval": ("EVALUASI KARYAWAN", None, "evaluasi", True),
+        "eval": ("EVALUASI KARYAWAN", dlg_eval, "evaluasi", False),
         "absensi": ("ABSENSI", dlg_absensi, "absensi", False),
         "jadwal": ("JADWAL KERJA", dlg_jadwal, "jadwal", False)}
 klik = hub([{"id": k, "label": v[0], "icon": ikon(v[2]), "disabled": v[3]} for k, v in MENU.items()], key="hub")

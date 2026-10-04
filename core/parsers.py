@@ -89,6 +89,9 @@ def baca_karyawan(file):
     if hilang:
         raise ValueError("Kolom tidak ditemukan di file karyawan: " + ", ".join(hilang))
     kode = df["Kode Opr"] if "Kode Opr" in df.columns else pd.Series([None] * len(df))
+    def opsi(c):
+        return df[c].map(lambda x: "" if pd.isna(x) else str(x).strip().upper()) if c in df.columns \
+            else pd.Series([""] * len(df))
     return pd.DataFrame({
         "prn": df["KODE KARYAWAN"].astype(int).astype(str),
         "nama_web": df["NAMA PADA TAMPILAN WEB"].map(norm),
@@ -96,6 +99,8 @@ def baca_karyawan(file):
         "user": df["USER"].astype(str).str.strip(),
         "pass_hash": df["PASWORD"].map(hash_pw),
         "kode_opr": kode.map(lambda x: "" if pd.isna(x) else str(int(x))),
+        "jenis": opsi("JENIS PEKERJAAN"),
+        "tipe": opsi("TYPE"),
     })
 
 

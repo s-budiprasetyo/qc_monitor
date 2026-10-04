@@ -118,3 +118,59 @@ def catat_alasan(email, nama, tgl_tidak_target, alasan, menit=""):
 def versi():
     """Naik tiap ada data yang ditulis; dipakai sebagai kunci cache hitungan berat."""
     return _tembolok().get("_v", 0)
+
+
+# ---------------------------------------------------------------- alasan tidak target (Tahap 3)
+def kecilkan_foto(isi, batas=42000):
+    """Foto jadi JPEG kecil (teks base64 <= batas karakter) supaya muat di satu sel Google Sheet."""
+    import base64
+    import io
+    from PIL import Image, ImageOps
+    im = ImageOps.exif_transpose(Image.open(io.BytesIO(isi))).convert("RGB")
+    for sisi, mutu in ((480, 60), (400, 55), (320, 50), (240, 45), (160, 40)):
+        k = im.copy()
+        k.thumbnail((sisi, sisi))
+        b = io.BytesIO()
+        k.save(b, "JPEG", quality=mutu, optimize=True)
+        teks = base64.b64encode(b.getvalue()).decode()
+        if len(teks) <= batas:
+            return teks
+    return teks
+
+
+def pengajuan_ada(prn, tgl):
+    p = baca("pengajuan")
+    return bool(((p["prn"] == prn) & (p["tgl"] == tgl)).any())
+
+
+def simpan_alasan(prn, nama, tgl, items, email=""):
+    """items: list dict(masalah, menit, foto=bytes|None). Satu pengajuan per orang per hari (tidak bisa ditimpa).
+    Menulis: tabel alasan + foto, pengajuan (menunggu), dan satu baris jejak di tab 'ALASAN TIDAK TARGET'."""
+    if pengajuan_ada(prn, tgl):
+        return False
+    baris, fotos = [], []
+    for n, it in enumerate(items, 1):
+        fid = ""
+        if it.get("foto"):
+            fid = f"{prn}|{tgl}|{n}"
+            fotos.append({"id": fid, "data": kecilkan_foto(it["foto"])})
+        baris.append({"prn": prn, "tgl": tgl, "no": str(n), "masalah": it["masalah"],
+                      "menit": str(int(it["menit"])), "foto": fid})
+    total = sum(int(it["menit"]) for it in items)
+    upsert("alasan", pd.DataFrame(baris), ["prn", "tgl", "no"])
+    if fotos:
+        upsert("foto_alasan", pd.DataFrame(fotos), ["id"])
+    upsert("pengajuan", pd.DataFrame([{"prn": prn, "tgl": tgl, "menit": str(total), "status": "menunggu",
+                                       "waktu": sekarang(), "email": email}]), ["prn", "tgl"])
+    try:
+        catat_alasan(email or "(tanpa login Google)", nama, tgl,
+                     "; ".join(f"{it['masalah']} ({int(it['menit'])} mnt)" for it in items), str(total))
+    except Exception:
+        pass
+    return True
+
+
+def foto_alasan(fid):
+    f = baca("foto_alasan")
+    x = f.loc[f["id"] == fid, "data"]
+    return x.iloc[0] if len(x) else None

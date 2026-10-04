@@ -18,6 +18,34 @@ def hari_libur_default(bulan):
     return {d: calendar.weekday(th, bl, d) >= 5 for d in range(1, n_hari(bulan) + 1)}
 
 
+JENIS_TAMPIL = ["PERIKSA", "PERBAIKAN", "GERINDA", "TAP/TAD", "FOREMAN"]  # urutan = urutan tampil
+TIPE_URUT = ["CE7", "CLOSET", "LAVATORY", "TANGKI", "URINAL"]
+BAGIAN_URUT = ["QC", "SK"]
+
+
+def info_karyawan():
+    """Data karyawan + kolom jenis, tipe, bagian (selalu ada, walau data lama belum punya)."""
+    k = data.baca("karyawan")
+    for c in ("jenis", "tipe"):
+        if c not in k.columns:
+            k[c] = ""
+    b = data.baca("bagian")
+    peta = dict(zip(b["prn"], b["bagian"]))
+    k["bagian"] = k["prn"].map(peta).fillna("") .replace("", "QC")
+    return k.fillna("")
+
+
+def tampil_default(jenis):
+    """Yang tampil di monitor: hanya yang bekerja menghasilkan. Jenis kosong (data lama) = tampil."""
+    return jenis == "" or jenis in JENIS_TAMPIL
+
+
+def kunci_urut(bagian, jenis, tipe, nama):
+    def pos(daftar, v):
+        return daftar.index(v) if v in daftar else len(daftar)
+    return (pos(BAGIAN_URUT, bagian), pos(JENIS_TAMPIL, jenis), pos(TIPE_URUT, tipe), nama)
+
+
 def peta_nama_prn():
     k = data.baca("karyawan")
     return dict(zip(k["prn"], k["nama_web"]))
@@ -44,7 +72,13 @@ def karyawan_dikenal(sampai_bulan=None):
     hasil = set(r.loc[r["status"] == "ya", "prn"])
     if not hasil:  # belum diverifikasi (atau semua tersilang): jangan kosongkan daftar
         hasil = karyawan_sap(sampai_bulan) or set(data.baca("karyawan")["prn"])
-    return sorted(hasil, key=lambda p: nama.get(p, p))
+    k = info_karyawan().set_index("prn")
+    def kunci(p):
+        if p in k.index:
+            r = k.loc[p]
+            return kunci_urut(r["bagian"], r["jenis"], r["tipe"], nama.get(p, p))
+        return kunci_urut("", "", "", nama.get(p, p))
+    return sorted(hasil, key=kunci)
 
 
 def prn_admin():
@@ -67,8 +101,9 @@ def belum_diverifikasi():
 
 def usulan_verifikasi():
     """DataFrame usulan awal untuk dialog: prn, nama, ada_sap, ada_jadwal, silang (usulan)."""
-    k, r = data.baca("karyawan"), data.baca("roster")
+    k, r = info_karyawan(), data.baca("roster")
     putus = dict(zip(r["prn"], r["status"]))
+    jenis = dict(zip(k["prn"], k["jenis"]))
     sap = karyawan_sap()
     ada_jadwal = set()
     for t in data.store().tables():
@@ -80,8 +115,8 @@ def usulan_verifikasi():
         if p in putus:
             silang = putus[p] == "tidak"
         else:  # usulan awal: silang bila tidak ada di SAP (admin sendiri tidak disilang)
-            silang = False  # semua ikut tampil; admin hanya mencentang ✕ pada yang tidak boleh
-        baris.append({"prn": p, "nama": n, "ada_sap": p in sap, "ada_jadwal": p in ada_jadwal,
+            silang = not tampil_default(jenis.get(p, ""))  # yang tidak menghasilkan (supervisor, admin, dll) ✕
+        baris.append({"prn": p, "nama": n, "jenis": jenis.get(p, ""), "ada_sap": p in sap, "ada_jadwal": p in ada_jadwal,
                       "baru": p not in putus, "silang": silang})
     return pd.DataFrame(baris).sort_values(["baru", "ada_sap", "nama"], ascending=[False, True, True]).reset_index(drop=True)
 
@@ -152,8 +187,15 @@ def hasil_bulan(bulan):
     return h[h["tgl"].str[:7] == bulan].reset_index(drop=True)
 
 
-def harian_bulan(bulan, hasil=None):
-    """Return (harian[prn,tgl,persen], tanpa_target)."""
+def menit_diterima():
+    """{(prn,tgl): menit} untuk pengajuan yang diterima atasan (V): target hari itu dikurangi sebesar menit ini."""
+    p = data.baca("pengajuan")
+    p = p[p["status"] == "V"]
+    return {(a, b): float(pd.to_numeric(m, errors="coerce") or 0) for a, b, m in zip(p["prn"], p["tgl"], p["menit"])}
+
+
+def harian_bulan(bulan, hasil=None, dengan_masalah=True):
+    """Return (harian[prn,tgl,persen], tanpa_target). dengan_masalah=False: abaikan pengurangan menit dari pengajuan V."""
     k, a, t = data.baca("karyawan"), data.baca("alias"), data.baca("target")
     if hasil is None:
         hasil = hasil_bulan(bulan)
@@ -163,7 +205,88 @@ def harian_bulan(bulan, hasil=None):
     lembur = lembur[lembur["tgl"].str.startswith(bulan)]
     adj = pd.DataFrame({"prn": lembur["prn"], "tgl": lembur["tgl"], "menit_masalah": "0",
                         "jam_lembur": lembur["jam"]})
+    if dengan_masalah:
+        mn = [(p, d, m) for (p, d), m in menit_diterima().items() if d.startswith(bulan)]
+        if mn:
+            adj = pd.concat([adj, pd.DataFrame({"prn": [x[0] for x in mn], "tgl": [x[1] for x in mn],
+                                                "menit_masalah": [str(x[2]) for x in mn], "jam_lembur": "0"})],
+                            ignore_index=True)
+    if len(adj):
+        adj["menit_masalah"] = pd.to_numeric(adj["menit_masalah"], errors="coerce").fillna(0)
+        adj["jam_lembur"] = pd.to_numeric(adj["jam_lembur"], errors="coerce").fillna(0)
+        adj = adj.groupby(["prn", "tgl"], as_index=False)[["menit_masalah", "jam_lembur"]].sum()
     return calc.hitung_harian(hasil, t, adj)
+
+
+def detail_hari(bulan, prn, tgl):
+    """Rincian satu orang satu hari: list dict(type, op, periksa, target, pct) dan persen total (None bila tak ada target)."""
+    k, a, t = data.baca("karyawan"), data.baca("alias"), data.baca("target")
+    peta = calc.peta_nama(k, a)
+    h = hasil_bulan(bulan)
+    h = h[(h["tgl"] == tgl) & (h["nama_sap"].map(peta) == prn)]
+    t = t.assign(target=pd.to_numeric(t["target"], errors="coerce"))
+    m = h.merge(t, on=["grup", "type", "op"], how="left")
+    baris = []
+    for r in m.itertuples():
+        per = pd.to_numeric(r.periksa, errors="coerce")
+        ada = pd.notna(r.target) and r.target > 0
+        baris.append(dict(type=r.type, op=str(r.op), periksa=float(per) if pd.notna(per) else 0.0,
+                          target=float(r.target) if ada else None,
+                          pct=float(per) / r.target * 100 if ada and pd.notna(per) else None))
+    baris.sort(key=lambda x: (x["type"], x["op"]))
+    harian, _ = harian_bulan(bulan)
+    v = harian[(harian["prn"] == prn) & (harian["tgl"] == tgl)]["persen"]
+    return baris, (float(v.iloc[0]) if len(v) else None)
+
+
+def tidak_target(bulan, prn=None):
+    """Hari dengan persen < 100 (dibulatkan) + alasan yang diposting. Status V/X TIDAK disertakan (privasi)."""
+    harian, _ = harian_bulan(bulan)
+    harian = harian[harian["tgl"].str.startswith(bulan)]
+    if prn:
+        harian = harian[harian["prn"] == prn]
+    al = data.baca("alasan")
+    out = []
+    for p, d, v in sorted(zip(harian["prn"], harian["tgl"], harian["persen"]), key=lambda x: (x[0], x[1])):
+        if round(v) >= 100:
+            continue
+        a = al[(al["prn"] == p) & (al["tgl"] == d)].sort_values("no")
+        out.append(dict(prn=p, tgl=d, persen=v,
+                        alasan=[dict(masalah=r.masalah, menit=r.menit, foto=r.foto) for r in a.itertuples()]))
+    return out
+
+
+def absen_bulan(bulan, prn):
+    a = data.baca("absensi")
+    a = a[(a["prn"] == prn) & (a["tgl"].str.startswith(bulan))].sort_values("tgl")
+    return [dict(tgl=t, kode=c, ket=k) for t, c, k in zip(a["tgl"], a["kode"], a["keterangan"])]
+
+
+def antrean_evaluasi(semua=False):
+    """Pengajuan untuk atasan (semua=False: hanya yang menunggu). Persen = nilai asli tanpa pengurangan menit."""
+    p = data.baca("pengajuan")
+    if not semua:
+        p = p[p["status"] == "menunggu"]
+    nama, al = peta_nama_prn(), data.baca("alasan")
+    asli, out = {}, []
+    for r in p.sort_values(["tgl", "prn"]).itertuples():
+        b = r.tgl[:7]
+        if b not in asli:
+            h, _ = harian_bulan(b, dengan_masalah=False)
+            asli[b] = {(x, y): z for x, y, z in zip(h["prn"], h["tgl"], h["persen"])}
+        a = al[(al["prn"] == r.prn) & (al["tgl"] == r.tgl)].sort_values("no")
+        out.append(dict(prn=r.prn, nama=nama.get(r.prn, r.prn), tgl=r.tgl, persen=asli[b].get((r.prn, r.tgl)),
+                        menit=r.menit, status=r.status,
+                        alasan="; ".join(f"{x.masalah} ({x.menit} mnt)" for x in a.itertuples())))
+    return out
+
+
+def simpan_keputusan(keputusan):
+    """keputusan: {(prn,tgl): 'V'|'X'}. Mengubah status pengajuan."""
+    p = data.baca("pengajuan")
+    for (a, b), v in keputusan.items():
+        p.loc[(p["prn"] == a) & (p["tgl"] == b), "status"] = v
+    data.tulis("pengajuan", p)
 
 
 def rekap_bulan(bulan):
@@ -240,7 +363,7 @@ def masalah_bulan(bulan):
     return out
 
 
-HITUNG = ["TANGGAL TAMPIL", "TANGGAL KERJA (TRX)", "NAMA TAMPIL", "PRN", "TARGET", "% TYPE", "% HARIAN", "STATUS", "KETERANGAN"]
+HITUNG = ["TANGGAL TAMPIL", "TANGGAL KERJA (TRX)", "NAMA TAMPIL", "PRN", "TARGET", "% TYPE", "% HARIAN", "STATUS", "KETERANGAN", "TAMPIL DI MONITOR"]
 
 
 def laporan_riwayat():
@@ -256,7 +379,7 @@ def laporan_riwayat():
         if h.empty:
             continue
         h["prn"] = h["nama_sap"].map(peta)
-        h = h[h["prn"].isna() | h["prn"].isin(tampil)].copy()
+        h = h.copy()
         if h.empty:
             continue
         h["tgl_posting"] = h["tgl"]
@@ -284,7 +407,8 @@ def laporan_riwayat():
             hitung.append([r.tgl, r.trx, nama.get(r.prn, "") if pd.notna(r.prn) else "",
                            r.prn if pd.notna(r.prn) else "", float(r.target) if ada else "",
                            round(r.periksa / r.target * 100, 1) if ada and pd.notna(r.periksa) else "",
-                           round(hari, 1) if hari is not None and pd.notna(r.prn) else "", status, ket])
+                           round(hari, 1) if hari is not None and pd.notna(r.prn) else "", status, ket,
+                           "ya" if r.prn in tampil else "tidak"])
         hitung = pd.DataFrame(hitung, columns=HITUNG)
         bagian.append(hitung)
         mentah.append(mm[[c for c in mm.columns if c.startswith("SAP | ")]].fillna("").reset_index(drop=True))
