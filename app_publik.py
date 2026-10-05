@@ -29,7 +29,8 @@ table.t td.ab{background:#ffff00}
 .v{display:inline-block;border:2px solid #000;border-radius:6px;padding:1px 3px;font-weight:600;background:#fff}
 .v.kd{background:#ffff00;min-width:20px;font-size:14px;font-weight:800}
 .v.kg{position:relative;background:#fff;width:16px;height:16px;padding:0;vertical-align:middle}
-.v.kg.ada:after{content:'';position:absolute;left:50%;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:#0b3d91}
+.v.kg:after{content:'';position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#0b3d91}
+.v.kg.ada:after{width:10px;height:10px;margin:-5px 0 0 -5px}
 .m{color:#e00000}
 .ket{font-size:12px;margin-top:6px}
 table.d{border-collapse:collapse;width:100%;font-size:14px;text-align:center}

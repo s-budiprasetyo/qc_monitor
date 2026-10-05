@@ -211,11 +211,11 @@ def _tabel_kosong(kolom, n):
 def dlg_lembur():
     kontrol_jendela("lembur")
     kepala("lembur", "UPDATE DATA KARYAWAN OVERTIME")
-    nama, prns = logic.peta_nama_prn(), logic.karyawan_dikenal()
+    nama, prns = logic.peta_nama_prn(), logic.karyawan_semua()
     if not prns:
         st.warning("Belum ada karyawan. Upload data awal dan file hasil kerja SAP dulu.")
         return
-    by_nama = {nama.get(p, p): p for p in prns}
+    by_nama = {nama.get(p) or f'PRN {p} (belum ada di data karyawan)': p for p in prns}
     tgl = st.date_input("PILIH TANGGAL", value=date.today(), format="DD/MM/YYYY", key="lembur_tgl")
     iso = tgl.strftime("%Y-%m-%d")
     lm = data.baca("lembur")
@@ -246,11 +246,11 @@ def dlg_lembur():
 def dlg_absensi():
     kontrol_jendela("absensi")
     kepala("absensi", "UPDATE ABSENSI KARYAWAN")
-    nama, prns = logic.peta_nama_prn(), logic.karyawan_dikenal()
+    nama, prns = logic.peta_nama_prn(), logic.karyawan_semua()
     if not prns:
         st.warning("Belum ada karyawan. Upload data awal dan file hasil kerja SAP dulu.")
         return
-    by_nama = {nama.get(p, p): p for p in prns}
+    by_nama = {nama.get(p) or f'PRN {p} (belum ada di data karyawan)': p for p in prns}
     hari_ini = st.date_input("PILIH TANGGAL (satu hari)", value=date.today(), format="DD/MM/YYYY", key="abs_tgl")
     tanggal = [hari_ini.strftime("%Y-%m-%d")]
     ada = data.baca("absensi")
@@ -297,7 +297,7 @@ def dlg_absensi():
 
 def _jadwal_manual(bulan):
     kepala("jadwal2", "SETTING MANUAL JADWAL KERJA")
-    prns, nama = logic.karyawan_dikenal(), logic.peta_nama_prn()
+    prns, nama = logic.karyawan_semua(), logic.peta_nama_prn()
     if not prns:
         st.warning("Belum ada karyawan dari file SAP.")
     else:
@@ -340,13 +340,13 @@ def dlg_jadwal():
         except Exception as e:
             st.error(f"Jadwal {label}: {e}")
             return
-        ok = df[df["prn"].isin(valid)]
+        ok = df  # semua orang di jadwal dicatat sebagai riwayat, walau belum/tidak ada di SAP
         st.write(f"Jadwal {label}: **{ok['prn'].nunique()} karyawan** terbaca untuk {nama_bulan(bulan)}.")
         for c in catatan:
             st.warning(f"Jadwal {label}: {c}")
-        lewat = df["prn"].nunique() - ok["prn"].nunique()
-        if lewat:
-            st.info(f"{lewat} orang di jadwal {label} tidak ada di data karyawan dan diabaikan.")
+        asing = df["prn"].nunique() - df["prn"].isin(valid).groupby(df["prn"]).any().sum()
+        if asing:
+            st.info(f"{asing} orang di jadwal {label} belum ada di data karyawan. Tetap dicatat (tampil dengan nomor PRN) sampai data karyawan diperbarui.")
         hasil.append(ok)
         labels.append(label)
     a, b = st.columns(2)

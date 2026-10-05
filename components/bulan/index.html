@@ -53,7 +53,8 @@ function perbarui(){
 var tmB,tmT;
 kb.addEventListener("scroll",function(){clearTimeout(tmB);tmB=setTimeout(function(){bi=Math.min(11,idx(kb));perbarui();},60);});
 kt.addEventListener("scroll",function(){clearTimeout(tmT);tmT=setTimeout(function(){ti=Math.min(tahun.length-1,idx(kt));perbarui();},60);});
-ok.onclick=function(){var th=tahun[ti];post("streamlit:setComponentValue",{value:{v:th+"-"+("0"+(bi+1)).slice(-2),n:Date.now()},dataType:"json"});};
+function tutup(){try{var b=window.parent.document.querySelector('[data-testid="stPopover"] button[aria-expanded="true"]');if(b)b.click();}catch(e){}}
+ok.onclick=function(){var th=tahun[ti];post("streamlit:setComponentValue",{value:{v:th+"-"+("0"+(bi+1)).slice(-2),n:Date.now()},dataType:"json"});setTimeout(tutup,60);};
 window.addEventListener("message",function(e){
   if(!e.data||e.data.type!=="streamlit:render")return;
   var a=e.data.args||{};var k=JSON.stringify([a.nilai,a.tersedia,a.tahun]);if(k===kunci)return;kunci=k;

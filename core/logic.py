@@ -81,6 +81,17 @@ def karyawan_dikenal(sampai_bulan=None):
     return sorted(hasil, key=kunci)
 
 
+def karyawan_semua():
+    """Semua karyawan yang tercatat (data karyawan + siapa pun yang ada di jadwal), terurut nama. Dipakai untuk pilihan
+    absensi, lembur, dan jadwal: orang yang belum/tidak menghasilkan pcs tetap tercatat sebagai riwayat."""
+    semua = set(data.baca("karyawan")["prn"])
+    for t in data.store().tables():
+        if t.startswith("jadwal_"):
+            semua |= set(data.baca(t)["prn"])
+    nama = peta_nama_prn()
+    return sorted(semua, key=lambda p: (nama.get(p, "~" + p), p))
+
+
 def prn_admin():
     """PRN milik admin (user di secrets cocok dengan user di data karyawan), supaya tidak tersilang otomatis."""
     try:
