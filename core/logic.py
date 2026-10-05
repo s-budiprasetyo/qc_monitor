@@ -238,13 +238,18 @@ def detail_hari(bulan, prn, tgl):
     t = t.assign(target=pd.to_numeric(t["target"], errors="coerce"))
     m = h.merge(t, on=["grup", "type", "op"], how="left")
     baris = []
-    for r in m.itertuples():
-        per = pd.to_numeric(r.periksa, errors="coerce")
-        ada = pd.notna(r.target) and r.target > 0
-        baris.append(dict(type=r.type, op=str(r.op), periksa=float(per) if pd.notna(per) else 0.0,
-                          target=float(r.target) if ada else None,
-                          pct=float(per) / r.target * 100 if ada and pd.notna(per) else None))
-    baris.sort(key=lambda x: (x["type"], x["op"]))
+    def kol(r, nama):  # kolom asli SAP disimpan sebagai 'SAP | <nama>'
+        v = r.get("SAP | " + nama, "")
+        return "" if pd.isna(v) else str(v).strip()
+    for r in m.to_dict("records"):
+        per = pd.to_numeric(r["periksa"], errors="coerce")
+        tg = r["target"]
+        ada = pd.notna(tg) and tg > 0
+        baris.append(dict(type=r["type"], op=str(r["op"]), warna=kol(r, "Warna"), pabrik=kol(r, "Kode Pabrik"),
+                          forming=kol(r, "Jenis Forming"), periksa=float(per) if pd.notna(per) else 0.0,
+                          target=float(tg) if ada else None,
+                          pct=float(per) / tg * 100 if ada and pd.notna(per) else None))
+    baris.sort(key=lambda x: (x["type"], x["op"], x["warna"], x["pabrik"], x["forming"]))
     harian, _ = harian_bulan(bulan)
     v = harian[(harian["prn"] == prn) & (harian["tgl"] == tgl)]["persen"]
     return baris, (float(v.iloc[0]) if len(v) else None)

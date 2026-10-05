@@ -28,9 +28,9 @@ table.t td.lb{background:#f4c2dd}
 table.t td.ab{background:#ffff00}
 .v{display:inline-block;border:2px solid #000;border-radius:6px;padding:1px 3px;font-weight:600;background:#fff}
 .v.kd{background:#ffff00;min-width:20px;font-size:14px;font-weight:800}
-.v.kg{position:relative;background:#fff;width:16px;height:16px;padding:0;vertical-align:middle}
-.v.kg:after{content:'';position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#0b3d91}
-.v.kg.ada:after{width:10px;height:10px;margin:-5px 0 0 -5px}
+.v.kg{box-sizing:border-box;position:relative;background:#fff;width:22px;height:22px;padding:0;vertical-align:middle}
+.v.kg:after{content:'';position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#1a73e8}
+.v.kg.ada:after{width:14px;height:14px;margin:-7px 0 0 -7px}
 .m{color:#e00000}
 .ket{font-size:12px;margin-top:6px}
 table.d{border-collapse:collapse;width:100%;font-size:14px;text-align:center}
@@ -179,12 +179,13 @@ def dlg_hari(bln, prn, tgl):
     nama = logic.peta_nama_prn().get(prn, prn)
     st.markdown(f"<div class='id'><b>TANGGAL</b>: {tgl_id(tgl)} &nbsp;&nbsp; <b>NAMA</b>: {html.escape(nama)}</div>", unsafe_allow_html=True)
     rinci, total = logic.detail_hari(bln, prn, tgl)
-    h = "<table class='d'><tr><th>TYPE</th><th>OPERATION</th><th>PERIKSA</th><th>TARGET</th><th>% HASIL KERJA</th></tr>"
+    h = "<table class='d'><tr><th>TYPE</th><th>WARNA</th><th>PABRIK</th><th>FORMING</th><th>OPERATION</th><th>PERIKSA</th><th>TARGET</th><th>% HASIL KERJA</th></tr>"
     for r in rinci:
-        h += (f"<tr><td class='l'>{html.escape(r['type'])}</td><td>OP{html.escape(r['op'])}</td><td>{angka(r['periksa'])}</td>"
+        h += (f"<tr><td class='l'>{html.escape(r['type'])}</td><td>{html.escape(r['warna']) or '-'}</td>"
+              f"<td>{html.escape(r['pabrik']) or '-'}</td><td>{html.escape(r['forming']) or '-'}</td><td>OP{html.escape(r['op'])}</td><td>{angka(r['periksa'])}</td>"
               f"<td>{angka(r['target']) if r['target'] else '-'}</td>"
               f"<td>{kotak(r['pct'], 1) if r['pct'] is not None else '-'}</td></tr>")
-    h += f"<tr class='tot'><td colspan='4' class='l'>% TOTAL</td><td>{kotak(total, 1) if total is not None else '-'}</td></tr></table>"
+    h += f"<tr class='tot'><td colspan='7' class='l'>% TOTAL</td><td>{kotak(total, 1) if total is not None else '-'}</td></tr></table>"
     st.markdown(h, unsafe_allow_html=True)
     ada = data.pengajuan_ada(prn, tgl)
     if ada:
