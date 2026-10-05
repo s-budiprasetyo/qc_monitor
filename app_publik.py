@@ -28,9 +28,8 @@ table.t td.lb{background:#f4c2dd}
 table.t td.ab{background:#ffff00}
 .v{display:inline-block;border:2px solid #000;border-radius:6px;padding:1px 3px;font-weight:600;background:#fff}
 .v.kd{background:#ffff00;min-width:20px;font-size:14px;font-weight:800}
-.kgw{position:relative;display:inline-block}.kgw:before{content:'';position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:#bfe9fb}
-.kgw.ada:before{background:#7fd0f5}
-.v.kg{position:relative;background:transparent;width:14px;height:14px;padding:0;vertical-align:middle}
+.v.kg{position:relative;background:#fff;width:16px;height:16px;padding:0;vertical-align:middle}
+.v.kg.ada:after{content:'';position:absolute;left:50%;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:#0b3d91}
 .m{color:#e00000}
 .ket{font-size:12px;margin-top:6px}
 table.d{border-collapse:collapse;width:100%;font-size:14px;text-align:center}
@@ -62,8 +61,8 @@ def sel(jenis, nilai, prn, d):
     if jenis == "libur":
         return "<td class='lb'></td>"
     attr = f"data-k='k' data-p='{html.escape(prn)}' data-d='{bulan}-{d:02d}'"
-    ada = " ada" if jenis == "keg" else ""  # ada catatan = lingkaran lebih tegas; kosong = lingkaran muda (bisa diklik)
-    return f"<td><span class='kgw{ada}'><span class='v kg k' {attr}></span></span></td>"  # kosong: bisa diklik untuk mencatat kegiatan lain
+    ada = " ada" if jenis == "keg" else ""  # ada catatan = lingkaran biru gelap di dalam tombol; kosong = tombol kosong
+    return f"<td><span class='v kg k{ada}' {attr}></span></td>"  # kosong: bisa diklik untuk mencatat kegiatan lain
 
 
 def tabel_html(baris, tahun, bln):

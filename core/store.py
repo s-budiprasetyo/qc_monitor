@@ -237,6 +237,7 @@ class SheetsStore:
         self.sh = self.utama.sh
         self._buku = {}          # bulan -> _Buku
         self._reg = None         # bulan -> sheet_id (tembolok daftar buku)
+        self._dicari = set()
         self.peringatan = []     # pesan masalah (mis. gagal membuat Google Sheet bulan baru)
 
     _retry = _Buku._retry
@@ -260,6 +261,30 @@ class SheetsStore:
             self._buku[bulan] = _Buku(self._retry(lambda: self.klien.open_by_key(reg[bulan])))
         return self._buku[bulan]
 
+    def _daftarkan(self, bulan, sh, judul):
+        reg = self.utama.read("buku_bulan")
+        reg = pd.concat([reg, pd.DataFrame([{"bulan": bulan, "sheet_id": sh.id, "nama": judul}])], ignore_index=True)
+        self.utama.write("buku_bulan", reg)
+        self._reg = None
+        self._buku[bulan] = _Buku(sh)
+        return self._buku[bulan]
+
+    def _cari(self, bulan):
+        """Cari Google Sheet 'TOTOQC <bulan>' yang sudah ada di folder Drive (dibuat manual oleh admin) lalu daftarkan."""
+        if not self.folder_id:
+            return None
+        judul = f"TOTOQC {bulan}"
+        try:
+            ada = self._retry(lambda: self.klien.list_spreadsheet_files(title=judul, folder_id=self.folder_id))
+            ada = [a for a in ada if a.get("name") == judul]
+            if not ada:
+                return None
+            sh = self._retry(lambda: self.klien.open_by_key(ada[0]["id"]))
+        except Exception as e:
+            self.peringatan.append(f"Gagal mencari Google Sheet {judul} di folder Drive: {type(e).__name__}: {e}")
+            return None
+        return self._daftarkan(bulan, sh, judul)
+
     def _buat(self, bulan):
         """Buat Google Sheet bulan baru di folder Drive lalu catat di daftar. None bila tidak bisa."""
         if not self.folder_id:
@@ -268,14 +293,15 @@ class SheetsStore:
         try:
             sh = self._retry(lambda: self.klien.create(judul, folder_id=self.folder_id))
         except Exception as e:
-            self.peringatan.append(f"Gagal membuat Google Sheet {judul} di folder Drive: {type(e).__name__}: {e}")
+            if "quota" in str(e).lower():
+                self.peringatan.append(
+                    f"Google tidak mengizinkan akun layanan membuat file baru (kuota Drive akun layanan nol). Buat sendiri Google Sheet kosong "
+                    f"bernama {judul} di folder Drive, bagikan ke {getattr(getattr(self.klien, 'auth', None), 'service_account_email', 'akun layanan')} sebagai Editor, "
+                    f"lalu unggah ulang file bulan ini. Sementara data disimpan di Sheet utama.")
+            else:
+                self.peringatan.append(f"Gagal membuat Google Sheet {judul} di folder Drive: {type(e).__name__}: {e}")
             return None
-        reg = self.utama.read("buku_bulan")
-        reg = pd.concat([reg, pd.DataFrame([{"bulan": bulan, "sheet_id": sh.id, "nama": judul}])], ignore_index=True)
-        self.utama.write("buku_bulan", reg)
-        self._reg = None
-        self._buku[bulan] = _Buku(sh)
-        return self._buku[bulan]
+        return self._daftarkan(bulan, sh, judul)
 
     def _untuk_tulis(self, nama):
         m = _POLA_BULAN.match(nama)
@@ -285,6 +311,11 @@ class SheetsStore:
         b = self._buka(bulan)
         if b:
             return b
+        if bulan not in self._dicari:  # sekali per bulan: adakah Google Sheet buatan manual di folder?
+            self._dicari.add(bulan)
+            b = self._cari(bulan)
+            if b:
+                return b
         ada = {f"hasil_{bulan}", f"jadwal_{bulan}"} & set(self.utama.tables(segar=False))
         if ada:  # bulan lama yang sudah di Sheet utama tetap di sana
             return self.utama
