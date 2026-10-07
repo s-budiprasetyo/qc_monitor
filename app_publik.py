@@ -17,6 +17,28 @@ BULAN = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTU
          "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"]
 
 st.set_page_config(page_title="Monitoring Hasil Kerja Karyawan", layout="wide")
+
+if st.query_params.get("privasi") is not None:  # halaman kebijakan privasi (dipakai di konfigurasi login Google)
+    st.title("Kebijakan Privasi — Monitoring QC TOTO")
+    st.markdown("""
+Aplikasi **Monitoring QC TOTO** dipakai internal oleh karyawan bagian QC untuk melihat hasil kerja harian dan
+menyampaikan alasan bila hasil kerja belum mencapai target.
+
+**Data yang kami baca.** Saat karyawan memilih *Verifikasi dengan Google*, aplikasi hanya membaca **alamat email**
+(dan nama profil dasar) dari akun Google tersebut. Tidak ada akses ke Gmail, Drive, kontak, atau data Google lain.
+
+**Untuk apa.** Alamat email dicatat bersama alasan tidak target atau catatan kegiatan yang diposting, sebagai jejak
+siapa yang menulis dan kapan.
+
+**Penyimpanan.** Data disimpan di Google Sheet milik pengelola aplikasi dan hanya dapat dibuka oleh pengelola.
+Data tidak dijual, tidak dibagikan, dan tidak dipakai untuk iklan.
+
+**Penghapusan.** Karyawan dapat meminta data postingnya dihapus dengan menghubungi pengelola aplikasi
+(salis_budi_prasetyo@student.umaha.ac.id).
+
+Terakhir diperbarui: Oktober 2026.
+""")
+    st.stop()
 st.markdown("""<style>
 h1.judul{text-align:center;font-weight:800;margin:0 0 .8rem 0}
 .wrap{overflow-x:auto}
