@@ -235,6 +235,8 @@ def simpan_alasan(prn, nama, tgl, items, email=""):
                      ("[REVISI] " if revisi else "") +
                      "; ".join(f"{it['masalah']} ({int(it['menit'])} mnt)" for it in items), str(total))
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         _galat["jejak"] = f"{type(e).__name__}: {e}"
     return True
 
@@ -283,3 +285,14 @@ def simpan_kegiatan(prn, nama, tgl, teks, email=""):
         catat_alasan(email, nama, tgl, "[KEGIATAN LAIN] " + teks, "")
     except Exception as e:
         _galat["jejak"] = f"{type(e).__name__}: {e}"
+
+
+def tes_jejak():
+    """Uji tulis satu baris ke tab ALASAN TIDAK TARGET (bulan berjalan). Return (berhasil, pesan)."""
+    import traceback
+    try:
+        w = datetime.now(WIB)
+        catat_alasan("tes@aplikasi", "TES JEJAK", w.strftime("%Y-%m-%d"), "[TES] baris uji, boleh dihapus", "0")
+        return True, "Baris uji berhasil ditulis. Buka tab ALASAN TIDAK TARGET di Google Sheet bulan ini."
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}\n{traceback.format_exc()[-600:]}"

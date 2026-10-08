@@ -710,3 +710,9 @@ if buku:
     st.markdown(f"<p style='font-size:13px'>Google Sheet bulanan: {tautan}</p>", unsafe_allow_html=True)
 elif data.pakai_google_sheet():
     st.caption("Google Sheet bulanan otomatis belum aktif (isi drive_folder_id di Secrets app admin).")
+if data.pakai_google_sheet():
+    with st.expander("Uji jejak Google Sheet"):
+        st.caption("Menulis satu baris uji ke tab ALASAN TIDAK TARGET bulan ini untuk memastikan jejak email bisa tersimpan.")
+        if st.button("Tulis baris uji", key="tes_jejak"):
+            ok_, pesan_ = data.tes_jejak()
+            (st.success if ok_ else st.error)(pesan_)

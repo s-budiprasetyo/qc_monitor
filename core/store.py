@@ -191,14 +191,20 @@ class _Buku:
 
     def _tambah_baris(self, nama, kolom, baris):
         ws = self._tab_laporan(nama, kolom, 1000)
-        a1 = self._retry(lambda: ws.get("A1:A1"))
-        if not a1 or str(a1[0][0]).strip() != kolom[0]:  # judul kolom hilang: pasang di baris 1 (data yang ada turun ke bawah)
+        if ws.col_count < len(kolom):  # kisi terlalu sempit untuk semua kolom
+            self._retry(lambda: ws.resize(cols=len(kolom)))
+        isi = self._retry(lambda: ws.col_values(1))
+        if not isi or str(isi[0]).strip() != kolom[0]:  # judul kolom hilang: pasang di baris 1 (data yang ada turun ke bawah)
             self._retry(lambda: ws.insert_row(kolom, 1, value_input_option="USER_ENTERED"))
             try:
                 self._retry(lambda: ws.format("1:1", {"textFormat": {"bold": True}}))
             except Exception:
                 pass
-        self._retry(lambda: ws.append_row(baris, value_input_option="USER_ENTERED"))
+            isi = self._retry(lambda: ws.col_values(1))
+        tujuan = len(isi) + 1  # baris kosong pertama setelah data
+        if ws.row_count < tujuan:
+            self._retry(lambda: ws.add_rows(tujuan - ws.row_count + 100))
+        self._retry(lambda: ws.update(range_name=f"A{tujuan}", values=[list(baris)], value_input_option="USER_ENTERED"))
 
     def hapus_baris(self, nama, cocok):
         """Hapus baris tab laporan yang semua kolom di dict `cocok` (judul kolom -> nilai) sama. Return jumlah terhapus."""
