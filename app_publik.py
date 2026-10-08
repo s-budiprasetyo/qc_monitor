@@ -168,18 +168,23 @@ def img_foto(fid):
 def dlg_login():
     kontrol_jendela("login")
     kepala("evaluasi", "LOGIN KARYAWAN")
-    with st.form("form_login"):
-        u = st.text_input("User", placeholder="mis. QC-NAMA")
-        p = st.text_input("Password", type="password")
-        ok = st.form_submit_button("MASUK", type="primary", width="stretch")
-    if "auth" in st.secrets:  # lapis pertama (opsional): akun Google sebagai jejak email
+    google_ok, perlu = "", False
+    if "auth" in st.secrets:  # langkah 1: akun Google terverifikasi (email dicatat otomatis di setiap posting)
         try:
             if st.user.is_logged_in:
-                st.caption(f"Akun Google terverifikasi: {st.user.email}")
+                google_ok = str(st.user.email)
+                st.success(f"Langkah 1 selesai. Akun Google terverifikasi: {google_ok}")
             else:
-                st.button("Verifikasi dengan Google (disarankan)", on_click=st.login, width="stretch")
+                perlu = True
+                st.info("Langkah 1: verifikasi akun Google di perangkat ini (cukup sekali; emailnya otomatis tercatat "
+                        "saat kamu memposting). Setelah kembali ke halaman ini, tekan LOGIN lagi untuk langkah 2.")
+                st.button("Verifikasi dengan Google", on_click=st.login, width="stretch", type="primary")
         except Exception:
             pass
+    with st.form("form_login"):
+        u = st.text_input("User", placeholder="mis. QC-NAMA", disabled=perlu)
+        p = st.text_input("Password", type="password", disabled=perlu)
+        ok = st.form_submit_button("MASUK", type="primary", width="stretch", disabled=perlu)
     if ok:
         if st.session_state.get("gagal", 0) >= 5:
             st.error("Terlalu banyak percobaan salah. Muat ulang halaman untuk mencoba lagi.")
@@ -270,6 +275,7 @@ def dlg_notes(bln, prn, tgl):
                 data.simpan_alasan(prn, nama, tgl, [dict(masalah=m, menit=w, foto=f.getvalue() if f else None,
                                                          foto_lama="" if f else fl) for m, w, f, fl in isi],
                                    email_google())
+            st.session_state["galat_jejak"] = data.galat_jejak()
             st.session_state["buka"] = ("terima",)
             st.rerun()
 
@@ -294,6 +300,7 @@ def dlg_kegiatan(bln, prn, tgl):
     if st.button("SUBMIT", type="primary", width="stretch", disabled=perlu_google() or (not teks.strip() and not lama)):
         with st.spinner("Menyimpan…"):
             data.simpan_kegiatan(prn, nama, tgl, teks, email_google())
+            st.session_state["galat_jejak"] = data.galat_jejak()
             rekap.clear()
         st.session_state["buka"] = ("terima", "Kegiatan kamu sudah tersimpan." if teks.strip() else "Catatan kegiatan dihapus.")
         st.rerun()
@@ -304,6 +311,9 @@ def dlg_terima(pesan="Alasan kamu sudah diajukan ke atasan."):
     kontrol_jendela("terima")
     st.markdown(f"<h3 style='text-align:center'>TERIMA KASIH</h3><p style='text-align:center'>{html.escape(pesan)}</p>",
                 unsafe_allow_html=True)
+    g = st.session_state.pop("galat_jejak", "")
+    if g:
+        st.warning("Data tersimpan, tetapi jejak email gagal ditulis ke Google Sheet. Beri tahu admin. Rincian: " + g)
     if st.button("OK", width="stretch", type="primary"):
         st.rerun()
 

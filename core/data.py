@@ -145,6 +145,15 @@ def peringatan_store():
     return out
 
 
+_galat = {"jejak": ""}
+
+
+def galat_jejak():
+    """Pesan gagal menulis jejak ke tab ALASAN TIDAK TARGET (dibaca lalu dikosongkan)."""
+    m, _galat["jejak"] = _galat["jejak"], ""
+    return m
+
+
 def catat_alasan(email, nama, tgl_tidak_target, alasan, menit=""):
     """Tambah satu baris ke tab 'ALASAN TIDAK TARGET' (jejak, tidak bisa ditimpa)."""
     w = datetime.now(WIB)
@@ -225,8 +234,8 @@ def simpan_alasan(prn, nama, tgl, items, email=""):
         catat_alasan(email, nama, tgl,
                      ("[REVISI] " if revisi else "") +
                      "; ".join(f"{it['masalah']} ({int(it['menit'])} mnt)" for it in items), str(total))
-    except Exception:
-        pass
+    except Exception as e:
+        _galat["jejak"] = f"{type(e).__name__}: {e}"
     return True
 
 
@@ -272,5 +281,5 @@ def simpan_kegiatan(prn, nama, tgl, teks, email=""):
     upsert("kegiatan", pd.DataFrame([{"prn": prn, "tgl": tgl, "teks": teks, "waktu": sekarang(), "email": email}]), ["prn", "tgl"])
     try:
         catat_alasan(email, nama, tgl, "[KEGIATAN LAIN] " + teks, "")
-    except Exception:
-        pass
+    except Exception as e:
+        _galat["jejak"] = f"{type(e).__name__}: {e}"
