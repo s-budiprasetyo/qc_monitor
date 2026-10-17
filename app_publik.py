@@ -11,6 +11,7 @@ import streamlit as st
 from core import data, logic, parsers
 from core.bulan import pilih_bulan
 from core.tabel import tabel
+from core.grafik import KELAS, data_grafik, grafik, kelas_anggota
 from core.ui import gaya_global, gaya_responsif, kepala_pub, kontrol_jendela_pub
 
 BULAN = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS",
@@ -197,6 +198,13 @@ def img_foto(fid):
     return base64.b64decode(b64) if b64 else None
 
 
+def tombol_kembali():
+    d = st.session_state.get("dari_kelas")
+    if d and st.button("← Kembali ke daftar kelas", key="kembali_kelas"):
+        st.session_state["buka"] = ("kelas",) + tuple(d)
+        st.rerun()
+
+
 @st.dialog("LOGIN")
 def dlg_login():
     kontrol_jendela_pub("login")
@@ -236,6 +244,7 @@ def dlg_login():
 def dlg_hari(bln, prn, tgl):
     kontrol_jendela_pub("hari")
     kepala_pub("hasil", "HASIL KERJA HARIAN")
+    tombol_kembali()
     nama = logic.peta_nama_prn().get(prn, prn)
     st.markdown(f"<div class='id'><b>TANGGAL</b>: {tgl_id(tgl)} &nbsp;&nbsp; <b>NAMA</b>: {html.escape(nama)}</div>", unsafe_allow_html=True)
     rinci, total = logic.detail_hari(bln, prn, tgl)
@@ -356,6 +365,7 @@ def dlg_terima(pesan="Alasan kamu sudah diajukan ke atasan."):
 def dlg_rata(bln, prn):
     kontrol_jendela_pub("rata")
     kepala_pub("rekap", "REKAP BULANAN")
+    tombol_kembali()
     nama = logic.peta_nama_prn().get(prn, prn)
     st.markdown(f"<div class='id'><b>NAMA</b>: {html.escape(nama)} "
                 f"&nbsp;&nbsp; <b>BULAN</b>: {nama_bulan(bln)}</div>", unsafe_allow_html=True)
@@ -379,9 +389,7 @@ def dlg_rata(bln, prn):
                 pos.append("a")
                 prev_v = None
                 continue
-            ps = ("b" if prev_pos == "a" else "a") if prev_v is not None and abs(v - prev_v) < 14 else "a"
-            pos.append(ps)
-            prev_v, prev_pos = v, ps
+            pos.append("a")  # semua angka persen berada di atas titiknya
         df["Pos"] = pos
         atas = max(120, int(max([v for v in nilai.values()] + [100]) // 20 + 1) * 20)
         ab = pd.DataFrame({"Tanggal": list(abs_tgl), "Kode": list(abs_tgl.values()), "a": 0, "b": atas}) if abs_tgl else None
@@ -466,6 +474,33 @@ def dlg_rata(bln, prn):
         c[2].write(a["ket"] or "")
 
 
+@st.dialog("KELAS PENCAPAIAN", width="large")
+def dlg_kelas(g, k, bln, tgl):
+    kontrol_jendela_pub("kelas")
+    nm, _, lo, hi, _w = KELAS[k]
+    rentang = nm.replace("<60%", "di bawah 60%").replace("≥100%", "100% ke atas")
+    kepala_pub("rekap", f"KELAS {rentang}")
+    if g == "h":
+        pas = [(i, b["nama"], b["hari"][int(tgl[8:])][1]) for i, b in enumerate(baris)
+               if b["hari"].get(int(tgl[8:]), (None, None))[0] == "pct"]
+        ket = f"Hasil kerja harian {tgl_id(tgl)}"
+    else:
+        pas = [(i, b["nama"], b["rata"]) for i, b in enumerate(baris) if b["rata"] is not None]
+        ket = f"Rata-rata {nama_bulan(bln)}"
+    anggota = sorted(kelas_anggota(pas)[k], key=lambda x: x[2])  # persentase terkecil di atas
+    st.markdown(f"<div class='id'><b>{ket}</b> &nbsp;·&nbsp; {len(anggota)} karyawan. Tekan nama untuk melihat rinciannya.</div>",
+                unsafe_allow_html=True)
+    if not anggota:
+        st.caption("Tidak ada karyawan di kelas ini.")
+    for n_, (i, nama, v) in enumerate(anggota):
+        c = st.columns([5, 1.6], vertical_alignment="center")
+        if c[0].button(f"{n_ + 1}. {nama}", key=f"kl_{n_}", width="stretch"):
+            st.session_state["dari_kelas"] = (g, k, bln, tgl)
+            st.session_state["buka"] = ("hari", bln, baris[i]["prn"], tgl) if g == "h" else ("rata", bln, baris[i]["prn"])
+            st.rerun()
+        c[1].markdown(kotak(v, 1), unsafe_allow_html=True)
+
+
 # ---------------------------------------------------------------- halaman
 atas, kanan = st.columns([6, 1.6], vertical_alignment="center")
 kol, _ = atas.columns([1.6, 3])
@@ -512,7 +547,10 @@ def buka_hari(prn, tgl, jenis="h"):
         dlg_hari(bulan, prn, tgl)
 
 
+ada_dlg = False
 if klik and klik.get("n") != st.session_state.get("klik_n"):
+    ada_dlg = True
+    st.session_state.pop("dari_kelas", None)
     st.session_state["klik_n"] = klik["n"]
     for k_ in ("max_hari", "max_notes", "max_rata", "max_login"):
         st.session_state[k_] = False
@@ -527,12 +565,20 @@ if klik and klik.get("n") != st.session_state.get("klik_n"):
     else:
         dlg_rata(bulan, prn_klik)
 elif st.session_state.get("tunda") and st.session_state.get("me"):
+    ada_dlg = True
     _, p_, t_, j_ = st.session_state.pop("tunda")
     buka_hari(p_, t_, j_)
 else:
     pindah = st.session_state.pop("buka", None)
     if pindah:
-        if pindah[0] == "notes":
+        ada_dlg = True
+        if pindah[0] == "hari" and st.session_state.get("adm"):
+            dlg_hari(*pindah[1:])
+        elif pindah[0] == "rata" and st.session_state.get("adm"):
+            dlg_rata(*pindah[1:])
+        elif pindah[0] == "kelas" and st.session_state.get("adm"):
+            dlg_kelas(*pindah[1:])
+        elif pindah[0] == "notes":
             dlg_notes(*pindah[1:]) if boleh(pindah[2]) else None
         elif pindah[0] == "terima":
             dlg_terima(*pindah[1:])
@@ -540,9 +586,21 @@ st.markdown("<div class='ket'><span style='background:#fff'></span>masuk"
             "<span style='background:#ffff00'></span>tidak masuk (S sakit, I ijin, CT cuti, D dispen, R resign)"
             "<span style='background:#f4c2dd'></span>libur</div>", unsafe_allow_html=True)
 
-catatan = logic.catatan_otomatis(bulan)
-if catatan:
-    with st.expander(f"Catatan otomatis ({len(catatan)})"):
-        st.caption("Operation tanpa target (OP107) tidak dihitung persennya dan dicatat otomatis.")
-        st.dataframe([{"TANGGAL": c["tgl"], "NAMA": c["nama"], "CATATAN": c["teks"]} for c in catatan],
-                     hide_index=True, width="stretch")
+if st.session_state.get("adm"):  # grafik pencapaian: khusus admin
+    tgl_ada = sorted({d for b in baris for d, (j, v) in b["hari"].items() if j == "pct"})
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    kt, _ = st.columns([2, 3])
+    d_pil = kt.selectbox("Tanggal untuk grafik harian", tgl_ada, index=len(tgl_ada) - 1 if tgl_ada else None,
+                         format_func=lambda d: f"{d:02d}-{bulan[5:]}-{bulan[:4]}", key="g_tgl") if tgl_ada else None
+    tgl_g = f"{bulan}-{d_pil:02d}" if d_pil else ""
+    ph = [(i, b["nama"], b["hari"][d_pil][1]) for i, b in enumerate(baris) if d_pil and b["hari"].get(d_pil, (None, None))[0] == "pct"]
+    pb = [(i, b["nama"], b["rata"]) for i, b in enumerate(baris) if b["rata"] is not None]
+    kg = grafik(data_grafik(ph, f"PENCAPAIAN HARIAN — {tgl_id(tgl_g)}" if tgl_g else "PENCAPAIAN HARIAN", f"{len(ph)} karyawan"),
+                data_grafik(pb, f"PENCAPAIAN BULANAN — {nama_bulan(bulan)}", f"{len(pb)} karyawan (rata-rata bulan)"))
+    if kg and kg.get("n") != st.session_state.get("klik_gn"):
+        st.session_state["klik_gn"] = kg["n"]
+        if not ada_dlg:
+            for k_ in ("max_kelas", "max_hari", "max_rata"):
+                st.session_state[k_] = False
+            st.session_state.pop("dari_kelas", None)
+            dlg_kelas(kg["g"], int(kg["k"]), bulan, tgl_g)

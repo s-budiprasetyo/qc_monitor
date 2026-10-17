@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8">
+<style>
+html,body{margin:0;padding:0;font-family:"Source Sans Pro",system-ui,sans-serif;background:transparent;color:#000}
+#root{display:flex;gap:16px;flex-wrap:nowrap}
+.kartu{flex:1 1 0;min-width:0;background:#fff;border:1px solid #cfd8e6;border-radius:12px;padding:8px 6px 10px}
+.jd{text-align:center;font-weight:800;font-size:15px;margin:4px 0 0}
+.sj{text-align:center;font-size:12px;color:#556;margin:0 0 2px}
+svg{width:100%;max-width:460px;height:auto;display:block;margin:0 auto}
+.seg{cursor:pointer}.seg:hover{filter:brightness(.93)}
+.tg{cursor:pointer}.tg circle{fill:#fff;stroke:#1a73e8;stroke-width:2.2}.tg:hover circle{fill:#e8f0fe}
+.tg path,.tg rect,.tg line{stroke:#1a73e8;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.bt{text-align:center;margin:2px 0 4px}
+.bt button{border:2px solid #1a73e8;background:#fff;color:#1a73e8;font:700 12px system-ui,sans-serif;border-radius:16px;padding:4px 12px;cursor:pointer}
+@media (max-width:640px){#root{flex-direction:column}}
+</style></head><body><div id="root"></div>
+<script>
+function post(t,d){window.parent.postMessage(Object.assign({isStreamlitMessage:true,type:t},d),"*");}
+var NS="http://www.w3.org/2000/svg",mode={h:"spiral",b:"spiral"},D=null;
+function el(n,a,p){var e=document.createElementNS(NS,n);for(var k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;}
+function klik(g,k){post("streamlit:setComponentValue",{value:{g:g,k:k,n:Date.now()},dataType:"json"});}
+function pol(r,deg){var a=(deg-90)*Math.PI/180;return [r*Math.cos(a),r*Math.sin(a)];}
+function baji(r0,r1,d0,d1){var a=pol(r1,d0),b=pol(r1,d1),c=pol(r0,d1),d=pol(r0,d0);
+  return "M"+a+" A"+r1+" "+r1+" 0 0 1 "+b+" L"+c+" A"+r0+" "+r0+" 0 0 0 "+d+" Z";}
+function spiral(g,data){
+  var s=el("svg",{viewBox:"-178 -168 356 336"}),r0=22,rm=118,mx=Math.max.apply(null,data.kelas.map(function(k){return k.jumlah;}))||1;
+  [0.25,0.5,0.75,1].forEach(function(f){el("circle",{r:r0+(rm-r0)*f,fill:"none",stroke:"#aaa","stroke-width":.6,"stroke-dasharray":"1.5 2.5"},s);});
+  data.kelas.forEach(function(k,i){
+    var R=r0+(rm-r0)*(0.1+0.9*k.jumlah/mx),d0=60*i,d1=60*i+60;
+    var p=el("path",{d:baji(r0,R,d0,d1),fill:k.warna,stroke:"#fff","stroke-width":2.5,"class":"seg"},s);
+    p.onclick=function(){klik(g,i);};
+    var m=pol(rm+26,(d0+d1)/2);
+    var t=el("text",{x:m[0],y:m[1]-2,"text-anchor":"middle","font-size":10,"font-weight":800,"pointer-events":"none"},s);t.textContent=k.label;
+    var t2=el("text",{x:m[0],y:m[1]+10,"text-anchor":"middle","font-size":11,"font-weight":800,"pointer-events":"none"},s);t2.textContent="("+k.jumlah+")";
+  });
+  var tg=el("g",{"class":"tg"},s);el("circle",{r:r0-3},tg);
+  el("path",{d:"M-7 6 V-1 M0 6 V-8 M7 6 V1"},tg);
+  tg.onclick=function(){mode[g]="bar";gambar();};
+  return s;
+}
+function batang(g,data){
+  var W=300,H=260,L=34,B=40,T=24,s=el("svg",{viewBox:"0 0 "+W+" "+H}),mx=Math.max.apply(null,data.kelas.map(function(k){return k.jumlah;}))||1;
+  var step=mx<=5?1:(mx<=10?2:(mx<=25?5:10)),top=Math.ceil(mx/step)*step,ph=H-B-T,pw=W-L-6,bw=pw/6;
+  for(var v=0;v<=top;v+=step){var y=H-B-ph*v/top;el("line",{x1:L,x2:W-6,y1:y,y2:y,stroke:"#ddd","stroke-width":.7},s);
+    var t=el("text",{x:L-5,y:y+3.5,"text-anchor":"end","font-size":10},s);t.textContent=v;}
+  el("line",{x1:L,x2:L,y1:T,y2:H-B,stroke:"#000"},s);el("line",{x1:L,x2:W-6,y1:H-B,y2:H-B,stroke:"#000"},s);
+  data.kelas.forEach(function(k,i){
+    var h=ph*k.jumlah/top,x=L+bw*i+2;
+    var r=el("rect",{x:x,y:H-B-h,width:bw-4,height:Math.max(h,k.jumlah?1:0),fill:k.warna,"class":"seg"},s);r.onclick=function(){klik(g,i);};
+    var c=el("text",{x:x+(bw-4)/2,y:H-B-h-4,"text-anchor":"middle","font-size":12,"font-weight":800,"pointer-events":"none"},s);c.textContent=k.jumlah;
+    var l=el("text",{x:x+(bw-4)/2,y:H-B+13,"text-anchor":"middle","font-size":9.5},s);l.textContent=k.sing;
+  });
+  return s;
+}
+function gambar(){
+  var root=document.getElementById("root");root.innerHTML="";
+  [["h",D.harian],["b",D.bulanan]].forEach(function(p){
+    var g=p[0],data=p[1];if(!data)return;
+    var c=document.createElement("div");c.className="kartu";
+    c.innerHTML='<div class="jd"></div><div class="sj"></div>';
+    c.querySelector(".jd").textContent=data.judul;c.querySelector(".sj").textContent=data.sub;
+    if(mode[g]==="bar"){var b=document.createElement("div");b.className="bt";b.innerHTML="<button>&#9719; Lihat spiral</button>";
+      b.firstChild.onclick=function(){mode[g]="spiral";gambar();};c.appendChild(b);c.appendChild(batang(g,data));}
+    else c.appendChild(spiral(g,data));
+    root.appendChild(c);
+  });
+  post("streamlit:setFrameHeight",{height:Math.ceil(root.getBoundingClientRect().height)+6});
+}
+var last=null;
+window.addEventListener("message",function(e){
+  if(!e.data||e.data.type!=="streamlit:render")return;
+  var a=e.data.args||{},t=JSON.stringify(a);if(t===last)return;last=t;D=a;gambar();
+});
+window.addEventListener("resize",function(){if(D)gambar();});
+post("streamlit:componentReady",{apiVersion:1});
+</script></body></html>
