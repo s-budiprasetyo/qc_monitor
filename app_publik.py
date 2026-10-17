@@ -11,7 +11,7 @@ import streamlit as st
 from core import data, logic, parsers
 from core.bulan import pilih_bulan
 from core.tabel import tabel
-from core.ui import gaya_global, ikon, kepala, kontrol_jendela
+from core.ui import gaya_global, gaya_responsif, ikon, kepala, kontrol_jendela
 
 BULAN = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS",
          "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"]
@@ -89,11 +89,8 @@ def sel(jenis, nilai, prn, d):
 
 
 def tabel_html(baris, tahun, bln):
-    n_hari = calendar.monthrange(tahun, bln)[1]
     # tanggal sesudah data SAP terakhir yang diposting disembunyikan (belum ada nilainya)
-    ada = [d for b in baris for d, (j, v) in b["hari"].items() if j == "pct" or (j == "abs" and v != "R")]
-    if ada:
-        n_hari = max(ada)
+    n_hari = hari_akhir(baris, tahun, bln)
     h = "<table class='t'><tr><th class='n'>NAMA</th>"
     for d in range(1, n_hari + 1):
         h += f"<th class='{'we' if calendar.weekday(tahun, bln, d) >= 5 else ''}'>{d}</th>"
@@ -108,7 +105,43 @@ def tabel_html(baris, tahun, bln):
     return h + "</table>"
 
 
+def hari_akhir(baris, tahun, bln):
+    ada = [d for b in baris for d, (j, v) in b["hari"].items() if j == "pct" or (j == "abs" and v != "R")]
+    return max(ada) if ada else calendar.monthrange(tahun, bln)[1]
+
+
+def kalender_data(baris, tahun, bln, boleh_idx):
+    """Kalender bulanan per orang (tampilan smartphone). Hanya untuk baris yang boleh dilihat si pengguna."""
+    n_hari, hasil = hari_akhir(baris, tahun, bln), []
+    for i in boleh_idx:
+        b = baris[i]
+        c = "<div class='c off'></div>" * calendar.weekday(tahun, bln, 1)
+        for d in range(1, calendar.monthrange(tahun, bln)[1] + 1):
+            tg = f"{tahun}-{bln:02d}-{d:02d}"
+            dt = f"<i class='dt'>{d}</i>"
+            if d > n_hari:
+                c += f"<div class='c off'>{dt}</div>"
+                continue
+            jenis, nilai = b["hari"].get(d, (None, None))
+            if jenis == "pct":
+                m = " m" if round(nilai) < 100 else ""
+                c += (f"<div class='c'>{dt}<span class='b k{m}' data-k='h' data-p='{i}' data-d='{tg}'>"
+                      f"{angka(nilai)}%</span></div>")
+            elif jenis == "abs":
+                c += f"<div class='c ab'>{dt}<span class='b y'>{html.escape(nilai)}</span></div>"
+            elif jenis == "libur":
+                c += f"<div class='c lb'>{dt}</div>"
+            else:
+                ada = " ada" if jenis == "keg" else ""
+                c += f"<div class='c'>{dt}<span class='b kg k{ada}' data-k='k' data-p='{i}' data-d='{tg}'></span></div>"
+        rata = b["rata"]
+        hasil.append({"i": i, "nama": b["nama"], "rata": f"{angka(rata, 1)}%" if rata is not None else "",
+                      "rm": rata is not None and round(rata, 1) < 100, "cells": c})
+    return hasil
+
+
 gaya_global()
+gaya_responsif()
 st.markdown("<h1 class='judul'>MONITORING HASIL KERJA KARYAWAN</h1>", unsafe_allow_html=True)
 opsi = data.daftar_bulan()
 if not opsi:
@@ -338,26 +371,48 @@ def dlg_rata(bln, prn):
         df = pd.DataFrame({"Tanggal": hari, "Persen": [nilai.get(d) for d in hari]})  # absen = kosong (garis putus)
         df["Label"] = [f"{round(v)}%" if pd.notna(v) else "" for v in df["Persen"]]
         df["Merah"] = [pd.notna(v) and round(v) < 100 for v in df["Persen"]]
+        # angka yang nilainya berdekatan dengan tetangganya bergantian di atas/bawah titik (tetap sejajar dengan tanggal)
+        pos, prev_v, prev_pos = [], None, "a"
+        for v in df["Persen"]:
+            if pd.isna(v):
+                pos.append("a")
+                prev_v = None
+                continue
+            ps = ("b" if prev_pos == "a" else "a") if prev_v is not None and abs(v - prev_v) < 14 else "a"
+            pos.append(ps)
+            prev_v, prev_pos = v, ps
+        df["Pos"] = pos
+        fs = 13 if len(hari) <= 14 else 10
         atas = max(120, int(max([v for v in nilai.values()] + [100]) // 20 + 1) * 20)
-        x = alt.X("Tanggal:O", title=None, sort=hari, axis=alt.Axis(labelAngle=0, labelFontSize=13, labelColor="#000", domainColor="#000", tickColor="#000"))
+        x = alt.X("Tanggal:O", title=None, sort=hari, axis=alt.Axis(labelAngle=0, labelFontSize=fs, labelColor="#000", domainColor="#000", tickColor="#000"))
         y = alt.Y("Persen:Q", title=None, scale=alt.Scale(domain=[0, atas]),
                   axis=alt.Axis(labelExpr="datum.value + '%'", tickCount=atas // 20, labelFontSize=13, labelColor="#000", domainColor="#000", tickColor="#000"))
         warna = alt.condition("datum.Merah", alt.value("#e00000"), alt.value("#222"))
         lap = alt.Chart(df).mark_line(color="#5b9bd5", strokeWidth=3, point=alt.OverlayMarkDef(color="#5b9bd5", size=70)).encode(x=x, y=y)
-        lap += alt.Chart(df).mark_text(dy=-15, fontSize=13, fontWeight="bold").encode(
-            x=x, y=y, text="Label:N", color=warna)
+        for kode, dy in (("a", -fs - 3), ("b", fs + 5)):
+            lap += alt.Chart(df).transform_filter(alt.datum.Pos == kode).mark_text(dy=dy, fontSize=fs, fontWeight="bold").encode(
+                x=x, y=y, text="Label:N", color=warna)
         if abs_tgl:
             ab = pd.DataFrame({"Tanggal": list(abs_tgl), "Kode": list(abs_tgl.values()), "a": 0, "b": atas})
-            lap += alt.Chart(ab).mark_bar(size=26, cornerRadius=6, stroke="#00a2e8", strokeWidth=1.5, fill="#fff", opacity=1).encode(
+            lap += alt.Chart(ab).mark_bar(size=26 if len(hari) <= 14 else 14, cornerRadius=6, stroke="#00a2e8", strokeWidth=1.5, fill="#fff", opacity=1).encode(
                 x=x, y=alt.Y("a:Q"), y2="b:Q")
-            lap += alt.Chart(ab).mark_text(angle=270, fontSize=13, fontWeight="bold", color="#000").encode(
+            lap += alt.Chart(ab).mark_text(angle=270, fontSize=fs, fontWeight="bold", color="#000").encode(
                 x=x, y=alt.Y("mid:Q"), text="Kode:N").transform_calculate(mid=str(atas // 2))
-        st.altair_chart(lap.properties(height=300), width="stretch")
+        lap = lap.properties(height=300)
+        st.altair_chart(lap, width="stretch")
+        try:  # unduh gambar grafik (butuh vl-convert-python; bila tidak ada, tombol tidak ditampilkan)
+            png = lap.properties(width=max(500, 34 * len(hari))).configure(background="#ffffff").to_dict()
+            import vl_convert as vlc
+            st.download_button("Unduh gambar grafik", vlc.vegalite_to_png(png, scale=2),
+                               file_name=f"GRAFIK_{nama.replace(' ', '_')}_{bln}.png", mime="image/png", width="stretch")
+        except Exception:
+            pass
     st.markdown("**REKAP TIDAK TARGET**")
     tt = logic.tidak_target(bln, prn)
     if not tt:
         st.caption("Tidak ada hari di bawah target.")
-    for r in tt:
+    for n_, r in enumerate(tt):
+      with st.container(key=f"tt_{n_}"):
         c = st.columns([1.3, 1.2, 5, 1.3], vertical_alignment="center")
         c[0].write(tgl_id(r["tgl"]))
         c[1].markdown(kotak(r["persen"], 1), unsafe_allow_html=True)
@@ -370,7 +425,8 @@ def dlg_rata(bln, prn):
     st.markdown("**ABSENSI**")
     if not absen:
         st.caption("Tidak ada catatan absensi.")
-    for a in absen:
+    for n_, a in enumerate(absen):
+      with st.container(key=f"ab_{n_}"):
         c = st.columns([1.3, 2, 4])
         c[0].write(tgl_id(a["tgl"]))
         c[1].write(logic.NAMA_ABSEN.get(a["kode"], a["kode"]))
@@ -398,8 +454,17 @@ def rekap(bln):
 
 
 baris = rekap(bulan)
+# tampilan smartphone: admin boleh melihat siapa pun (pilih nama), karyawan hanya dirinya; belum login = tabel ringkas
+_me = st.session_state.get("me")
+if st.session_state.get("adm"):
+    _boleh, _mode = list(range(len(baris))), "admin"
+elif _me:
+    _boleh, _mode = [i for i, b in enumerate(baris) if b["prn"] == _me], "me"
+else:
+    _boleh, _mode = [], ""
 klik = tabel(tabel_html(baris, int(bulan[:4]), int(bulan[5:])), key="tabel",
-             nama_file=f"MONITORING_HASIL_KERJA_{bulan}.png")
+             nama_file=f"MONITORING_HASIL_KERJA_{bulan}.png",
+             kal=kalender_data(baris, int(bulan[:4]), int(bulan[5:]), _boleh), mode=_mode)
 
 
 def buka_hari(prn, tgl, jenis="h"):

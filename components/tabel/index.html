@@ -23,8 +23,43 @@ table.t td.ab{background:#ffff00}
 .v.kg:after{content:'';position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#1a73e8}
 .v.kg.ada:after{width:14px;height:14px;margin:-7px 0 0 -7px}
 .k{cursor:pointer}.k:hover{outline:2px solid #1ba1e2;outline-offset:1px;background:#e8f6fd}
+
+/* ---- smartphone: tabel ringkas + kalender per orang ---- */
+#kal{display:none;background:#fff}
+.adm{display:flex;align-items:center;gap:8px;margin:0 0 8px 0}
+.adm .tag{background:#ffff00;border:2px solid #000;border-radius:6px;font:800 12px system-ui,sans-serif;padding:3px 7px;white-space:nowrap}
+.adm select{flex:1;min-width:0;font:600 14px system-ui,sans-serif;padding:6px;border:2px solid #000;border-radius:8px;background:#fff}
+.nm{font:800 18px "Source Sans Pro",system-ui,sans-serif;text-align:center;color:#000;margin:2px 0}
+.rt{display:flex;justify-content:center;align-items:center;gap:8px;margin:0 0 8px 0}
+.rt .k{display:inline-flex;align-items:center;gap:8px;font:700 20px "Source Sans Pro",system-ui,sans-serif;color:#000;padding:2px 6px;border-radius:6px}
+.rt .k.m{color:#e00000}
+.rt svg{width:26px;height:26px;stroke:#1a73e8;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.hd,.gr{display:grid;grid-template-columns:repeat(7,1fr)}
+.hd span{text-align:center;font:700 11px system-ui,sans-serif;color:#000;padding:3px 0}
+.hd span.we{color:#e00000}
+.c{position:relative;height:52px;border:1px solid #d0d0d0;margin:0 -1px -1px 0;background:#fff;box-sizing:border-box}
+.c.off{border-color:transparent;background:transparent}
+.c.lb{background:#f4c2dd}.c.ab{background:#ffff00}
+.c .dt{position:absolute;left:3px;top:1px;font:600 9px system-ui,sans-serif;color:#333;font-style:normal}
+.c .b{position:absolute;left:3px;right:3px;top:12px;bottom:3px;display:flex;align-items:center;justify-content:center;
+  box-sizing:border-box;border:2px solid #000;border-radius:6px;background:#fff;font:800 14px "Source Sans Pro",system-ui,sans-serif;color:#000;padding:0}
+.c .b.m{color:#e00000}.c .b.y{background:#ffff00;font-size:15px}
+.c .b.kg{width:auto;height:auto;position:absolute}
+.c .b.kg:after{content:'';width:8px;height:8px;border-radius:50%;background:#1a73e8;position:static;margin:0}
+.c .b.kg.ada:after{width:14px;height:14px}
+.c .b.kg:after{display:block}
+@media (max-width:640px){
+  .bar{margin:0 0 4px 0}.bar button{font-size:12px;padding:4px 10px}
+  table.t{font-size:10px}
+  table.t td.n,table.t th.n{min-width:92px;max-width:92px;padding-left:2px;font-size:10px;white-space:normal;line-height:1.05}
+  table.t th,table.t td{height:26px;padding:2px 0}
+  .v{padding:0 2px;border-width:1.5px;border-radius:4px;font-size:10px}
+  .v.kd{font-size:11px;min-width:14px}
+  .v.kg{width:17px;height:17px}
+  .v.kg:after{width:7px;height:7px;margin:-3.5px 0 0 -3.5px}.v.kg.ada:after{width:10px;height:10px;margin:-5px 0 0 -5px}
+}
 </style></head>
-<body><div id="stage"><div class="bar"><button id="unduh">⬇ UNDUH GAMBAR</button></div><div class="wrap" id="w"></div></div>
+<body><div id="stage"><div class="bar"><button id="unduh">⬇ UNDUH GAMBAR</button></div><div class="wrap" id="w"></div><div id="kal"></div></div>
 <script>
 function post(t,d){window.parent.postMessage(Object.assign({isStreamlitMessage:true,type:t},d),"*");}
 var namaFile="monitoring.png";
@@ -60,19 +95,48 @@ function unduh(){
     document.body.appendChild(a);a.click();document.body.removeChild(a);},"image/png");
 }
 document.getElementById("unduh").onclick=unduh;
+
+var D={kal:[],mode:""},pilih=0,IKON='<svg viewBox="0 0 24 24"><polyline points="3,17 9,11 13,15 21,6"/><polyline points="15,6 21,6 21,12"/></svg>';
+function pasangKlik(root){
+  root.querySelectorAll(".k").forEach(function(el){
+    el.onclick=function(){post("streamlit:setComponentValue",{value:{k:el.dataset.k,p:el.dataset.p,d:el.dataset.d||"",n:Date.now()},dataType:"json"});};
+  });
+}
+function esc(t){var d=document.createElement("div");d.textContent=t;return d.innerHTML;}
+function kalender(){
+  var k=document.getElementById("kal");
+  if(!D.kal.length){k.innerHTML="";return;}
+  if(pilih>=D.kal.length)pilih=0;
+  var x=D.kal[pilih],h="";
+  if(D.mode==="admin"){h+='<div class="adm"><span class="tag">&#128276; MODE ADMIN</span><select id="pil">';
+    D.kal.forEach(function(o,i){h+='<option value="'+i+'"'+(i===pilih?" selected":"")+">"+esc(o.nama)+"</option>";});h+="</select></div>";}
+  h+='<div class="nm">'+esc(x.nama)+"</div>";
+  if(x.rata)h+='<div class="rt"><span class="k'+(x.rm?" m":"")+'" data-k="r" data-p="'+x.i+'">'+esc(x.rata)+IKON+"</span></div>";
+  h+='<div class="hd">'+["Sen","Sel","Rab","Kam","Jum","Sab","Min"].map(function(n,i){return '<span class="'+(i>4?"we":"")+'">'+n+"</span>";}).join("")+"</div>";
+  h+='<div class="gr">'+x.cells+"</div>";
+  k.innerHTML=h;pasangKlik(k);
+  var p=document.getElementById("pil");if(p)p.onchange=function(){pilih=+p.value;kalender();tinggi();};
+}
+function tampil(){
+  var hp=window.innerWidth<=640&&D.kal.length>0;
+  document.getElementById("kal").style.display=hp?"block":"none";
+  document.getElementById("w").style.display=hp?"none":"block";
+  document.querySelector(".bar").style.display=hp?"none":"flex";
+  if(hp)kalender();
+}
 var terakhir=null;
 window.addEventListener("message",function(e){
   if(!e.data||e.data.type!=="streamlit:render")return;
   var a=e.data.args||{};
   if(a.nama_file)namaFile=a.nama_file;
-  if(a.html===terakhir)return;
-  terakhir=a.html;
+  var tanda=a.html+JSON.stringify(a.kal||[])+(a.mode||"");
+  if(tanda===terakhir)return;
+  terakhir=tanda;
+  D={kal:a.kal||[],mode:a.mode||""};
   var w=document.getElementById("w");w.innerHTML=a.html;
-  w.querySelectorAll(".k").forEach(function(el){
-    el.onclick=function(){post("streamlit:setComponentValue",{value:{k:el.dataset.k,p:el.dataset.p,d:el.dataset.d||"",n:Date.now()},dataType:"json"});};
-  });
-  tinggi();
+  pasangKlik(w);
+  tampil();tinggi();
 });
 post("streamlit:componentReady",{apiVersion:1});
-window.addEventListener("resize",tinggi);
+window.addEventListener("resize",function(){tampil();tinggi();});
 </script></body></html>

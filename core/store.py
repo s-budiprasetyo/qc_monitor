@@ -83,6 +83,7 @@ class _Buku:
         self._gs = gspread
         self.sh = sh
         self._tabs = None
+        self._snap = None  # (waktu, {tab: baris}) hasil satu kali baca banyak tab sekaligus
 
     def _retry(self, fn):
         for i in range(6):
@@ -111,10 +112,36 @@ class _Buku:
             self._sheets(segar=True)
             return fn()
 
+    def _snapshot(self):
+        """Tab pengaturan kecil dibaca sekaligus dalam SATU permintaan API (bukan satu per tab) lalu dipakai 20 detik.
+        Tab bulanan (besar) dan foto tidak ikut. Gagal apa pun -> None, pembaca kembali ke cara lama."""
+        if self._snap and time.time() - self._snap[0] < 20:
+            return self._snap[1]
+        try:
+            judul = [t for t in self._sheets() if t not in TAB_LAPORAN and t != "foto_alasan" and not _POLA_BULAN.match(t)]
+            rng = ["'" + t.replace("'", "''") + "'" for t in judul]
+            vr = self._retry(lambda: self.sh.values_batch_get(rng)).get("valueRanges", [])
+            hasil = {t: vr[i].get("values", []) for i, t in enumerate(judul)}
+            self._snap = (time.time(), hasil)
+            return hasil
+        except Exception:
+            self._snap = None
+            return None
+
+    def _lepas_snapshot(self):
+        self._snap = None
+
     def read(self, nama):
         def kerja():
             ws = self._sheets().get(nama)
             if ws is None:
+                return pd.DataFrame(columns=kolom_tabel(nama))
+            snap = None if nama == "foto_alasan" or _POLA_BULAN.match(nama) else self._snapshot()
+            if snap is not None and nama in snap:
+                v = snap[nama]
+                if v:
+                    n = len(v[0])
+                    return pd.DataFrame([(r + [""] * n)[:n] for r in v[1:]], columns=v[0])
                 return pd.DataFrame(columns=kolom_tabel(nama))
             v = self._retry(ws.get_all_values)
             if not v:
@@ -123,6 +150,7 @@ class _Buku:
         return self._segarkan_bila_tab_hilang(kerja)
 
     def write(self, nama, df):
+        self._lepas_snapshot()
         df = df.fillna("").astype(str)
         baris, kol = max(len(df) + 10, 100), max(len(df.columns), 6)
 
@@ -190,6 +218,7 @@ class _Buku:
         self._segarkan_bila_tab_hilang(lambda: self._tambah_baris(nama, kolom, baris))
 
     def _tambah_baris(self, nama, kolom, baris):
+        self._lepas_snapshot()
         ws = self._tab_laporan(nama, kolom, 1000)
         if ws.col_count < len(kolom):  # kisi terlalu sempit untuk semua kolom
             self._retry(lambda: ws.resize(cols=len(kolom)))
@@ -211,6 +240,7 @@ class _Buku:
         return self._segarkan_bila_tab_hilang(lambda: self._hapus_baris(nama, cocok))
 
     def _hapus_baris(self, nama, cocok):
+        self._lepas_snapshot()
         if nama not in [w.title for w in self._retry(lambda: self.sh.worksheets())]:
             return 0
         ws = self.sh.worksheet(nama)

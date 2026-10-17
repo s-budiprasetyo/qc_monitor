@@ -65,3 +65,28 @@ def gaya_global():
 [data-testid="stDialog"],[data-testid="stDialog"] > div{backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
 [data-testid="stAppViewContainer"] *{transition-duration:0s !important}
 </style>""", unsafe_allow_html=True)
+
+
+def gaya_responsif():
+    """Khusus halaman utama: jendela di tengah layar (desktop) dan bottom-sheet dari bawah (smartphone)."""
+    st.markdown("""<style>
+[data-testid='stDialog']{align-items:center !important}
+[data-testid='stDialog'] [role='dialog']{max-height:92vh;overflow:auto}
+@media (max-width:640px){
+  [data-testid='stDialog']{align-items:flex-end !important}
+  [data-testid='stDialog'] > div{margin:0 !important;width:100vw !important;max-width:100vw !important}
+  [data-testid='stDialog'] [role='dialog']{width:100vw !important;max-width:100vw !important;margin:0 !important;
+    border-radius:16px 16px 0 0 !important;max-height:88vh;padding-left:12px !important;padding-right:12px !important}
+  [data-testid='stDialog'] [role='dialog']::before{content:'';display:block;width:44px;height:5px;border-radius:3px;background:#bbb;margin:-6px auto 12px}
+  .kp span{font-size:.95rem}
+  .kp{padding-right:100px}
+  table.d{font-size:11px}table.d th,table.d td{padding:3px 3px}
+  /* kartu untuk baris REKAP TIDAK TARGET */
+  [class*='st-key-tt_']{border:2px solid #000;border-radius:8px;padding:8px;margin-bottom:8px}
+  [class*='st-key-ab_']{border:2px solid #000;border-radius:8px;padding:6px 8px;margin-bottom:6px}
+  [class*='st-key-tt_'] [data-testid='stVerticalBlock'],[class*='st-key-ab_'] [data-testid='stVerticalBlock']{gap:.4rem !important}
+  [class*='st-key-tt_'] [data-testid='stHorizontalBlock'],[class*='st-key-ab_'] [data-testid='stHorizontalBlock']{gap:.3rem !important;flex-wrap:wrap}
+  [class*='st-key-tt_'] [data-testid='stColumn'],[class*='st-key-ab_'] [data-testid='stColumn']{width:100% !important;flex:1 1 100% !important}
+  h1.judul{font-size:1.25rem}
+}
+</style>""", unsafe_allow_html=True)
