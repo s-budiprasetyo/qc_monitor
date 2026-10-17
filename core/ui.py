@@ -72,14 +72,18 @@ def gaya_responsif():
     st.markdown("""<style>
 [data-testid='stDialog']{align-items:center !important}
 [data-testid='stDialog'] [role='dialog']{max-height:92vh;overflow:auto}
+.sx{overflow-x:auto}
 @media (max-width:640px){
-  [data-testid='stDialog']{align-items:flex-end !important}
-  [data-testid='stDialog'] > div{margin:0 !important;width:100vw !important;max-width:100vw !important}
-  [data-testid='stDialog'] [role='dialog']{width:100vw !important;max-width:100vw !important;margin:0 !important;
-    border-radius:16px 16px 0 0 !important;max-height:88vh;padding:0 !important}
+  [data-testid='stDialog']{align-items:center !important;padding-bottom:7vh !important;box-sizing:border-box}
+  [data-testid='stDialog'] > div{margin:0 auto !important;width:94vw !important;max-width:94vw !important}
+  [data-testid='stDialog'] [role='dialog']{width:94vw !important;max-width:94vw !important;margin:0 auto !important;
+    border-radius:16px !important;max-height:84vh;padding:0 !important}
+  .sx{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .sx table.d{min-width:600px}
   .kp span{font-size:.95rem}
   .kp{padding-right:100px}
-  table.d{font-size:11px}table.d th,table.d td{padding:3px 3px}
+  [data-testid='stDialog'] table.d{font-size:10.5px}[data-testid='stDialog'] table.d th{font-size:9.5px;padding:3px 2px;white-space:normal}[data-testid='stDialog'] table.d td{padding:3px 2px}
+  [data-testid='stDialog'] table.d .v{font-size:10.5px;padding:0 3px;border-width:1.5px}
   /* kartu untuk baris REKAP TIDAK TARGET */
   [class*='st-key-tt_']{border:2px solid #000;border-radius:8px;padding:8px;margin-bottom:8px}
   [class*='st-key-nt_']{border:1px solid #cfd8e6;border-radius:10px;padding:8px;margin-bottom:8px;background:#f6f8fb}

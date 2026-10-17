@@ -248,14 +248,14 @@ def dlg_hari(bln, prn, tgl):
     nama = logic.peta_nama_prn().get(prn, prn)
     st.markdown(f"<div class='id'><b>TANGGAL</b>: {tgl_id(tgl)} &nbsp;&nbsp; <b>NAMA</b>: {html.escape(nama)}</div>", unsafe_allow_html=True)
     rinci, total = logic.detail_hari(bln, prn, tgl)
-    h = "<table class='d'><tr><th>TYPE</th><th>WARNA</th><th>PABRIK</th><th>FORMING</th><th>OPERATION</th><th>PERIKSA</th><th>TARGET</th><th>% HASIL KERJA</th></tr>"
+    h = "<div style='overflow-x:auto'><table class='d'><tr><th>TYPE</th><th>WARNA</th><th>PABRIK</th><th>FORMING</th><th>OPERATION</th><th>PERIKSA</th><th>TARGET</th><th>% HASIL KERJA</th></tr>"
     for r in rinci:
         h += (f"<tr><td class='l'>{html.escape(r['type'])}</td><td>{html.escape(r['warna']) or '-'}</td>"
               f"<td>{html.escape(r['pabrik']) or '-'}</td><td>{html.escape(r['forming']) or '-'}</td><td>OP{html.escape(r['op'])}</td><td>{angka(r['periksa'])}</td>"
               f"<td>{angka(r['target']) if r['target'] else '-'}</td>"
               f"<td>{kotak(r['pct'], 1) if r['pct'] is not None else '-'}</td></tr>")
-    h += f"<tr class='tot'><td colspan='7' class='l'>% TOTAL</td><td>{kotak(total, 1) if total is not None else '-'}</td></tr></table>"
-    st.markdown(h, unsafe_allow_html=True)
+    h += f"<tr class='tot'><td colspan='7' class='l'>% TOTAL</td><td>{kotak(total, 1) if total is not None else '-'}</td></tr></table></div>"
+    st.markdown(f"<div class='sx'>{h}</div>", unsafe_allow_html=True)
     ada = data.pengajuan_ada(prn, tgl)
     if ada:
         st.markdown("**ALASAN TIDAK TARGET YANG SUDAH DIAJUKAN**")

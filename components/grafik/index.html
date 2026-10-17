@@ -6,13 +6,13 @@ html,body{margin:0;padding:0;font-family:"Source Sans Pro",system-ui,sans-serif;
 .kartu{flex:1 1 0;min-width:0;background:#fff;border:1px solid #cfd8e6;border-radius:12px;padding:8px 6px 10px}
 .jd{text-align:center;font-weight:800;font-size:15px;margin:4px 0 0}
 .sj{text-align:center;font-size:12px;color:#556;margin:0 0 2px}
-svg{width:100%;max-width:460px;height:auto;display:block;margin:0 auto}
+svg{width:100%;max-width:520px;height:auto;display:block;margin:0 auto}
 .seg{cursor:pointer}.seg:hover{filter:brightness(.93)}
 .tg{cursor:pointer}.tg circle{fill:#fff;stroke:#1a73e8;stroke-width:2.2}.tg:hover circle{fill:#e8f0fe}
 .tg path,.tg rect,.tg line{stroke:#1a73e8;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 .bt{text-align:center;margin:2px 0 4px}
 .bt button{border:2px solid #1a73e8;background:#fff;color:#1a73e8;font:700 12px system-ui,sans-serif;border-radius:16px;padding:4px 12px;cursor:pointer}
-@media (max-width:640px){#root{flex-direction:column}}
+@media (max-width:640px){#root{flex-direction:column;gap:10px}.kartu{padding:6px 0 8px;border-radius:10px}svg{max-width:none}}
 </style></head><body><div id="root"></div>
 <script>
 function post(t,d){window.parent.postMessage(Object.assign({isStreamlitMessage:true,type:t},d),"*");}
@@ -23,15 +23,18 @@ function pol(r,deg){var a=(deg-90)*Math.PI/180;return [r*Math.cos(a),r*Math.sin(
 function baji(r0,r1,d0,d1){var a=pol(r1,d0),b=pol(r1,d1),c=pol(r0,d1),d=pol(r0,d0);
   return "M"+a+" A"+r1+" "+r1+" 0 0 1 "+b+" L"+c+" A"+r0+" "+r0+" 0 0 0 "+d+" Z";}
 function spiral(g,data){
-  var s=el("svg",{viewBox:"-178 -168 356 336"}),r0=22,rm=118,mx=Math.max.apply(null,data.kelas.map(function(k){return k.jumlah;}))||1;
+  var hp=window.innerWidth<=640;
+  var s=el("svg",{viewBox:hp?"-164 -138 328 276":"-178 -168 356 336"}),r0=hp?20:22,rm=hp?104:118,FT=[0.5,0.6,0.7,0.8,0.9,1],mx=Math.max.apply(null,data.kelas.map(function(k){return k.jumlah;}))||1;
   [0.25,0.5,0.75,1].forEach(function(f){el("circle",{r:r0+(rm-r0)*f,fill:"none",stroke:"#aaa","stroke-width":.6,"stroke-dasharray":"1.5 2.5"},s);});
   data.kelas.forEach(function(k,i){
-    var R=r0+(rm-r0)*(0.1+0.9*k.jumlah/mx),d0=60*i,d1=60*i+60;
+    var R=r0+(rm-r0)*FT[i],d0=60*i,d1=60*i+60;
+    var hit=el("path",{d:baji(r0,rm+(hp?30:34),d0,d1),fill:"rgba(0,0,0,0)","pointer-events":"all","class":"seg"},s);
+    hit.onclick=function(){klik(g,i);};
     var p=el("path",{d:baji(r0,R,d0,d1),fill:k.warna,stroke:"#fff","stroke-width":2.5,"class":"seg"},s);
     p.onclick=function(){klik(g,i);};
-    var m=pol(rm+26,(d0+d1)/2);
-    var t=el("text",{x:m[0],y:m[1]-2,"text-anchor":"middle","font-size":10,"font-weight":800,"pointer-events":"none"},s);t.textContent=k.label;
-    var t2=el("text",{x:m[0],y:m[1]+10,"text-anchor":"middle","font-size":11,"font-weight":800,"pointer-events":"none"},s);t2.textContent="("+k.jumlah+")";
+    var m=pol(rm+(hp?20:26),(d0+d1)/2);
+    var t=el("text",{x:m[0],y:m[1]-3,"text-anchor":"middle","font-size":hp?12.5:10.5,"font-weight":800,"pointer-events":"none"},s);t.textContent=k.label;
+    var t2=el("text",{x:m[0],y:m[1]+(hp?12:10),"text-anchor":"middle","font-size":hp?13.5:11.5,"font-weight":800,"pointer-events":"none"},s);t2.textContent="("+k.jumlah+")";
   });
   var tg=el("g",{"class":"tg"},s);el("circle",{r:r0-3},tg);
   el("path",{d:"M-7 6 V-1 M0 6 V-8 M7 6 V1"},tg);

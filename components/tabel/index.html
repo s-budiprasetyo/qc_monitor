@@ -59,7 +59,7 @@ table.t td.ab{background:#ffff00}
   .v.kg:after{width:7px;height:7px;margin:-3.5px 0 0 -3.5px}.v.kg.ada:after{width:10px;height:10px;margin:-5px 0 0 -5px}
 }
 </style></head>
-<body><div id="stage"><div class="bar"><button id="unduh">⬇ UNDUH GAMBAR</button></div><div class="wrap" id="w"></div><div id="kal"></div></div>
+<body><div id="stage"><div id="kal"></div><div class="bar"><button id="unduh">⬇ UNDUH GAMBAR</button></div><div class="wrap" id="w"></div></div>
 <script>
 function post(t,d){window.parent.postMessage(Object.assign({isStreamlitMessage:true,type:t},d),"*");}
 var namaFile="monitoring.png";
@@ -96,7 +96,7 @@ function unduh(){
 }
 document.getElementById("unduh").onclick=unduh;
 
-var D={kal:[],mode:""},pilih=0,IKON='<svg viewBox="0 0 24 24"><polyline points="3,17 9,11 13,15 21,6"/><polyline points="15,6 21,6 21,12"/></svg>';
+var D={kal:[],mode:""},pilih=-1,IKON='<svg viewBox="0 0 24 24"><polyline points="3,17 9,11 13,15 21,6"/><polyline points="15,6 21,6 21,12"/></svg>';
 function pasangKlik(root){
   root.querySelectorAll(".k").forEach(function(el){
     el.onclick=function(){post("streamlit:setComponentValue",{value:{k:el.dataset.k,p:el.dataset.p,d:el.dataset.d||"",n:Date.now()},dataType:"json"});};
@@ -106,23 +106,27 @@ function esc(t){var d=document.createElement("div");d.textContent=t;return d.inn
 function kalender(){
   var k=document.getElementById("kal");
   if(!D.kal.length){k.innerHTML="";return;}
-  if(pilih>=D.kal.length)pilih=0;
+  var adm=D.mode==="admin";
+  if(pilih>=D.kal.length||(pilih<0&&!adm))pilih=adm?-1:0;
   var x=D.kal[pilih],h="";
-  if(D.mode==="admin"){h+='<div class="adm"><span class="tag">&#128276; MODE ADMIN</span><select id="pil">';
+  if(adm){h+='<div class="adm"><span class="tag">&#128276; MODE ADMIN</span><select id="pil"><option value="-1"'+(pilih<0?" selected":"")+">Semua karyawan</option>";
     D.kal.forEach(function(o,i){h+='<option value="'+i+'"'+(i===pilih?" selected":"")+">"+esc(o.nama)+"</option>";});h+="</select></div>";}
+  if(pilih<0){k.innerHTML=h;var p0=document.getElementById("pil");p0.onchange=function(){pilih=+p0.value;tampil();tinggi();};return;}
   h+='<div class="nm">'+esc(x.nama)+"</div>";
   if(x.rata)h+='<div class="rt"><span class="k'+(x.rm?" m":"")+'" data-k="r" data-p="'+x.i+'">'+esc(x.rata)+IKON+"</span></div>";
   h+='<div class="hd">'+["Sen","Sel","Rab","Kam","Jum","Sab","Min"].map(function(n,i){return '<span class="'+(i>4?"we":"")+'">'+n+"</span>";}).join("")+"</div>";
   h+='<div class="gr">'+x.cells+"</div>";
   k.innerHTML=h;pasangKlik(k);
-  var p=document.getElementById("pil");if(p)p.onchange=function(){pilih=+p.value;kalender();tinggi();};
+  var p=document.getElementById("pil");if(p)p.onchange=function(){pilih=+p.value;tampil();tinggi();};
 }
 function tampil(){
   var hp=window.innerWidth<=640&&D.kal.length>0;
   document.getElementById("kal").style.display=hp?"block":"none";
-  document.getElementById("w").style.display=hp?"none":"block";
-  document.querySelector(".bar").style.display=hp?"none":"flex";
+  if(hp&&D.mode==="admin"&&pilih===undefined)pilih=-1;
   if(hp)kalender();
+  var semua=!hp||pilih<0;
+  document.getElementById("w").style.display=semua?"block":"none";
+  document.querySelector(".bar").style.display=semua?"flex":"none";
 }
 var terakhir=null;
 window.addEventListener("message",function(e){
