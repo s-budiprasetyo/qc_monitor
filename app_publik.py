@@ -11,7 +11,7 @@ import streamlit as st
 from core import data, logic, parsers
 from core.bulan import pilih_bulan
 from core.tabel import tabel
-from core.ui import gaya_global, gaya_responsif, ikon, kepala, kontrol_jendela
+from core.ui import gaya_global, gaya_responsif, kepala_pub, kontrol_jendela_pub
 
 BULAN = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS",
          "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"]
@@ -199,8 +199,8 @@ def img_foto(fid):
 
 @st.dialog("LOGIN")
 def dlg_login():
-    kontrol_jendela("login")
-    kepala("evaluasi", "LOGIN KARYAWAN")
+    kontrol_jendela_pub("login")
+    kepala_pub("login", "LOGIN KARYAWAN")
     google_ok, perlu = "", False
     if "auth" in st.secrets:  # langkah 1: akun Google terverifikasi (email dicatat otomatis di setiap posting)
         try:
@@ -234,8 +234,8 @@ def dlg_login():
 
 @st.dialog("HASIL KERJA", width="large")
 def dlg_hari(bln, prn, tgl):
-    kontrol_jendela("hari")
-    kepala("hasil", "HASIL KERJA HARIAN")
+    kontrol_jendela_pub("hari")
+    kepala_pub("hasil", "HASIL KERJA HARIAN")
     nama = logic.peta_nama_prn().get(prn, prn)
     st.markdown(f"<div class='id'><b>TANGGAL</b>: {tgl_id(tgl)} &nbsp;&nbsp; <b>NAMA</b>: {html.escape(nama)}</div>", unsafe_allow_html=True)
     rinci, total = logic.detail_hari(bln, prn, tgl)
@@ -266,8 +266,8 @@ def dlg_hari(bln, prn, tgl):
 
 @st.dialog("NOTES", width="large")
 def dlg_notes(bln, prn, tgl):
-    kontrol_jendela("notes")
-    kepala("evaluasi", "NOTES — ALASAN TIDAK TARGET")
+    kontrol_jendela_pub("notes")
+    kepala_pub("notes", "NOTES — ALASAN TIDAK TARGET")
     nama = logic.peta_nama_prn().get(prn, prn)
     st.markdown(f"<div class='id'><b>TANGGAL</b>: {tgl_id(tgl)} &nbsp;&nbsp; <b>NAMA</b>: {html.escape(nama)}</div>",
                 unsafe_allow_html=True)
@@ -280,15 +280,16 @@ def dlg_notes(bln, prn, tgl):
     items = []
     for i in range(5):
         l = lama[i] if i < len(lama) else {"masalah": "", "menit": 0, "foto": ""}
-        c = st.columns([5, 1.6, 2.4], vertical_alignment="center")
-        m = c[0].text_input("masalah", key=f"nm_{tgl}_{i}", value=l["masalah"], label_visibility="collapsed",
-                            placeholder=f"Masalah {i + 1}", max_chars=200)
-        w = c[1].number_input("menit", key=f"nw_{tgl}_{i}", value=int(l["menit"]), min_value=0, max_value=480, step=5,
-                              label_visibility="collapsed")
-        f = c[2].file_uploader("foto", key=f"nf_{tgl}_{i}", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
-        if l["foto"] and not f:
-            c[2].caption("📷 foto tersimpan (unggah lagi untuk mengganti)")
-        items.append((m.strip(), int(w), f, l["foto"]))
+        with st.container(key=f"nt_{i}"):
+          c = st.columns([5, 1.6, 2.4], vertical_alignment="center")
+          m = c[0].text_input("masalah", key=f"nm_{tgl}_{i}", value=l["masalah"], label_visibility="collapsed",
+                              placeholder=f"Masalah {i + 1}", max_chars=200)
+          w = c[1].number_input("menit", key=f"nw_{tgl}_{i}", value=int(l["menit"]), min_value=0, max_value=480, step=5,
+                                label_visibility="collapsed")
+          f = c[2].file_uploader("foto", key=f"nf_{tgl}_{i}", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
+          if l["foto"] and not f:
+              c[2].caption("📷 foto tersimpan (unggah lagi untuk mengganti)")
+          items.append((m.strip(), int(w), f, l["foto"]))
     isi = [x for x in items if x[0]]
     total = sum(x[1] for x in isi)
     st.markdown(f"**Total waktu bermasalah: {total} menit**")
@@ -315,8 +316,8 @@ def dlg_notes(bln, prn, tgl):
 
 @st.dialog("KEGIATAN HARI INI", width="large")
 def dlg_kegiatan(bln, prn, tgl):
-    kontrol_jendela("keg")
-    kepala("hasil", "KEGIATAN HARI INI")
+    kontrol_jendela_pub("keg")
+    kepala_pub("kegiatan", "KEGIATAN HARI INI")
     nama = logic.peta_nama_prn().get(prn, prn)
     st.markdown(f"<div class='id'><b>TANGGAL</b>: {tgl_id(tgl)} &nbsp;&nbsp; <b>NAMA</b>: {html.escape(nama)}</div>",
                 unsafe_allow_html=True)
@@ -341,9 +342,9 @@ def dlg_kegiatan(bln, prn, tgl):
 
 @st.dialog("TERIMA KASIH")
 def dlg_terima(pesan="Alasan kamu sudah diajukan ke atasan."):
-    kontrol_jendela("terima")
-    st.markdown(f"<h3 style='text-align:center'>TERIMA KASIH</h3><p style='text-align:center'>{html.escape(pesan)}</p>",
-                unsafe_allow_html=True)
+    kontrol_jendela_pub("terima")
+    kepala_pub("terima", "TERIMA KASIH")
+    st.markdown(f"<p style='text-align:center'>{html.escape(pesan)}</p>", unsafe_allow_html=True)
     g = st.session_state.pop("galat_jejak", "")
     if g:
         st.warning("Data tersimpan, tetapi jejak email gagal ditulis ke Google Sheet. Beri tahu admin. Rincian: " + g)
@@ -353,8 +354,8 @@ def dlg_terima(pesan="Alasan kamu sudah diajukan ke atasan."):
 
 @st.dialog("REKAP BULANAN", width="large")
 def dlg_rata(bln, prn):
-    kontrol_jendela("rata")
-    kepala("evaluasi", "REKAP BULANAN")
+    kontrol_jendela_pub("rata")
+    kepala_pub("rekap", "REKAP BULANAN")
     nama = logic.peta_nama_prn().get(prn, prn)
     st.markdown(f"<div class='id'><b>NAMA</b>: {html.escape(nama)} "
                 f"&nbsp;&nbsp; <b>BULAN</b>: {nama_bulan(bln)}</div>", unsafe_allow_html=True)
@@ -382,26 +383,58 @@ def dlg_rata(bln, prn):
             pos.append(ps)
             prev_v, prev_pos = v, ps
         df["Pos"] = pos
-        fs = 13 if len(hari) <= 14 else 10
         atas = max(120, int(max([v for v in nilai.values()] + [100]) // 20 + 1) * 20)
-        x = alt.X("Tanggal:O", title=None, sort=hari, axis=alt.Axis(labelAngle=0, labelFontSize=fs, labelColor="#000", domainColor="#000", tickColor="#000"))
-        y = alt.Y("Persen:Q", title=None, scale=alt.Scale(domain=[0, atas]),
-                  axis=alt.Axis(labelExpr="datum.value + '%'", tickCount=atas // 20, labelFontSize=13, labelColor="#000", domainColor="#000", tickColor="#000"))
-        warna = alt.condition("datum.Merah", alt.value("#e00000"), alt.value("#222"))
-        lap = alt.Chart(df).mark_line(color="#5b9bd5", strokeWidth=3, point=alt.OverlayMarkDef(color="#5b9bd5", size=70)).encode(x=x, y=y)
-        for kode, dy in (("a", -fs - 3), ("b", fs + 5)):
-            lap += alt.Chart(df).transform_filter(alt.datum.Pos == kode).mark_text(dy=dy, fontSize=fs, fontWeight="bold").encode(
-                x=x, y=y, text="Label:N", color=warna)
-        if abs_tgl:
-            ab = pd.DataFrame({"Tanggal": list(abs_tgl), "Kode": list(abs_tgl.values()), "a": 0, "b": atas})
-            lap += alt.Chart(ab).mark_bar(size=26 if len(hari) <= 14 else 14, cornerRadius=6, stroke="#00a2e8", strokeWidth=1.5, fill="#fff", opacity=1).encode(
-                x=x, y=alt.Y("a:Q"), y2="b:Q")
-            lap += alt.Chart(ab).mark_text(angle=270, fontSize=fs, fontWeight="bold", color="#000").encode(
-                x=x, y=alt.Y("mid:Q"), text="Kode:N").transform_calculate(mid=str(atas // 2))
-        lap = lap.properties(height=300)
-        st.altair_chart(lap, width="stretch")
+        ab = pd.DataFrame({"Tanggal": list(abs_tgl), "Kode": list(abs_tgl.values()), "a": 0, "b": atas}) if abs_tgl else None
+
+        def buat(fs, sumbu, lebar=None):
+            """sumbu='penuh' (desktop) | 'isi' (bagian yang digeser, tanpa angka sumbu Y) | 'y' (hanya sumbu Y, tetap di kiri)"""
+            hitam = dict(labelColor="#000", domainColor="#000", tickColor="#000")
+            if sumbu == "y":
+                ya = alt.Axis(labelExpr="datum.value + '%'", tickCount=atas // 20, labelFontSize=13, **hitam)
+            elif sumbu == "isi":
+                ya = alt.Axis(labels=False, ticks=False, domain=False, tickCount=atas // 20)
+            else:
+                ya = alt.Axis(labelExpr="datum.value + '%'", tickCount=atas // 20, labelFontSize=13, **hitam)
+            x = alt.X("Tanggal:O", title=None, sort=hari, axis=alt.Axis(
+                labelAngle=0, labelFontSize=fs, **{**hitam, "labelColor": "rgba(0,0,0,0)" if sumbu == "y" else "#000"}))
+            y = alt.Y("Persen:Q", title=None, scale=alt.Scale(domain=[0, atas]), axis=ya)
+            if sumbu == "y":  # grafik kosong, hanya untuk menggambar sumbu Y dengan tinggi yang sama
+                return alt.Chart(df).mark_line(opacity=0).encode(x=x, y=y).properties(height=300, width=1)
+            warna = alt.condition("datum.Merah", alt.value("#e00000"), alt.value("#222"))
+            lap = alt.Chart(df).mark_line(color="#5b9bd5", strokeWidth=3, point=alt.OverlayMarkDef(color="#5b9bd5", size=70)).encode(x=x, y=y)
+            for kode, dy in (("a", -fs - 3), ("b", fs + 5)):
+                lap += alt.Chart(df).transform_filter(alt.datum.Pos == kode).mark_text(dy=dy, fontSize=fs, fontWeight="bold").encode(
+                    x=x, y=y, text="Label:N", color=warna)
+            if ab is not None:
+                lap += alt.Chart(ab).mark_bar(size=26, cornerRadius=6, stroke="#00a2e8", strokeWidth=1.5, fill="#fff", opacity=1).encode(
+                    x=x, y=alt.Y("a:Q"), y2="b:Q")
+                lap += alt.Chart(ab).mark_text(angle=270, fontSize=fs, fontWeight="bold", color="#000").encode(
+                    x=x, y=alt.Y("mid:Q"), text="Kode:N").transform_calculate(mid=str(atas // 2))
+            return lap.properties(height=300, **({"width": lebar} if lebar else {}))
+
+        svg = None
+        try:
+            import vl_convert as vlc
+            cfg = lambda c, pad: c.properties(padding=pad).configure(background="#ffffff").to_dict()
+            svg_y = vlc.vegalite_to_svg(cfg(buat(13, "y"), {"left": 4, "right": 0, "top": 12, "bottom": 6}))
+            svg_isi = vlc.vegalite_to_svg(cfg(buat(13, "isi", lebar=max(300, 54 * len(hari))), {"left": 0, "right": 14, "top": 12, "bottom": 6}))
+            svg = (svg_y, svg_isi)
+        except Exception:
+            svg = None
+        if svg:
+            # HP: sumbu Y tetap di kiri, hanya bagian grafik yang digeser kiri-kanan (jarak antar tanggal lega)
+            st.markdown("<style>.gr-hp{display:none}@media (max-width:640px){.st-key-gr_desk{display:none}.gr-hp{display:flex}}"
+                        ".gr-hp{align-items:flex-start;border:1px solid #cfd8e6;border-radius:8px;background:#fff;padding:4px 0}"
+                        ".gr-hp .y{flex:none;background:#fff;z-index:2}.gr-hp .s{overflow-x:auto;flex:1;min-width:0}"
+                        ".gr-hp svg{display:block;max-width:none}</style>", unsafe_allow_html=True)
+            st.markdown(f"<div class='gr-hp'><div class='y'>{svg[0]}</div><div class='s'>{svg[1]}</div></div>"
+                        "<div class='gr-hp' style='border:none;font-size:11px;color:#667;padding:0'>&#8596; geser grafik ke kiri / kanan</div>",
+                        unsafe_allow_html=True)
+        fs_d = 13 if len(hari) <= 14 else 10
+        with st.container(key="gr_desk"):
+            st.altair_chart(buat(fs_d, "penuh"), width="stretch")
         try:  # unduh gambar grafik (butuh vl-convert-python; bila tidak ada, tombol tidak ditampilkan)
-            png = lap.properties(width=max(500, 34 * len(hari))).configure(background="#ffffff").to_dict()
+            png = buat(13, "penuh", lebar=max(500, 40 * len(hari))).configure(background="#ffffff").to_dict()
             import vl_convert as vlc
             st.download_button("Unduh gambar grafik", vlc.vegalite_to_png(png, scale=2),
                                file_name=f"GRAFIK_{nama.replace(' ', '_')}_{bln}.png", mime="image/png", width="stretch")
