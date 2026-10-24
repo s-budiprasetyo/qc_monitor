@@ -69,30 +69,55 @@ function tinggi(){
   post("streamlit:setFrameHeight",{height:Math.ceil(document.getElementById("stage").getBoundingClientRect().height)+6});
 }
 // gambar tabel lengkap (tanpa terpotong scroll) digambar sendiri di canvas, tanpa pustaka luar
-function unduh(){
+var bulanLabel="";
+function gambarBagian(bag,no,total){
   var w=document.getElementById("w"),t=w.querySelector("table");if(!t)return;
   var kl=document.createElement("div");kl.style.cssText="position:absolute;left:-99999px;top:0;background:#fff";
-  var tk=t.cloneNode(true);tk.querySelectorAll("th,td").forEach(function(e){e.style.position="static";e.style.maxWidth="none";});
+  var tk=t.cloneNode(false);tk.className=t.className;
+  var tb=document.createElement("tbody");tk.appendChild(tb);
+  tb.appendChild(t.querySelector("tr").cloneNode(true));
+  bag.rows.forEach(function(r){tb.appendChild(r.cloneNode(true));});
+  tk.querySelectorAll("th,td").forEach(function(e){e.style.position="static";e.style.maxWidth="none";});
   tk.style.width="auto";kl.appendChild(tk);document.body.appendChild(kl);
-  var tr=tk.getBoundingClientRect(),S=2,cv=document.createElement("canvas");
-  cv.width=Math.ceil(tr.width*S)+2;cv.height=Math.ceil(tr.height*S)+2;
+  var tr=tk.getBoundingClientRect(),S=2,TH=bag.judul?92:0,lebar=Math.max(tr.width,640);
+  var cv=document.createElement("canvas");
+  cv.width=Math.ceil(lebar*S)+2;cv.height=Math.ceil((tr.height+TH)*S)+2;
   var g=cv.getContext("2d");g.scale(S,S);g.fillStyle="#fff";g.fillRect(0,0,cv.width,cv.height);
   function rr(x,y,w2,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w2,y,x+w2,y+h,r);g.arcTo(x+w2,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w2,y,r);g.closePath();}
+  if(bag.judul){
+    g.fillStyle="#000";g.textAlign="center";g.textBaseline="middle";
+    g.font="bold 34px Arial, sans-serif";g.fillText("MONITORING HASIL KERJA KARYAWAN",lebar/2,34);
+    g.font="bold 22px Arial, sans-serif";g.fillText("BULAN "+bulanLabel+(bag.sub||""),lebar/2,72);
+    g.textAlign="left";
+  }
+  var ox=(lebar-tr.width)/2;
   tk.querySelectorAll("th,td").forEach(function(e){
-    var r=e.getBoundingClientRect(),x=r.left-tr.left,y=r.top-tr.top,cs=getComputedStyle(e);
+    var r=e.getBoundingClientRect(),x=r.left-tr.left+ox,y=r.top-tr.top+TH,cs=getComputedStyle(e);
     g.fillStyle=cs.backgroundColor;g.fillRect(x,y,r.width,r.height);
     g.strokeStyle="#000";g.lineWidth=1;g.strokeRect(x+.5,y+.5,r.width-1,r.height-1);
     var v=e.querySelector(".v");if(v&&v.classList.contains("kg")){var cx=x+r.width/2,cy=y+r.height/2;g.fillStyle="#fff";g.lineWidth=2;g.strokeStyle="#000";rr(cx-11,cy-11,22,22,5);g.fill();g.stroke();g.fillStyle="#1a73e8";g.beginPath();g.arc(cx,cy,v.classList.contains("ada")?7:5,0,7);g.fill();return;}var teks=(v||e).textContent.trim();if(!teks)return;
     var f=getComputedStyle(v||e);g.font=(f.fontWeight>=600?"bold ":"")+f.fontSize+" Arial, sans-serif";
-    g.textBaseline="middle";var lebar=g.measureText(teks).width;
-    var kiri=e.classList.contains("n"),tx=kiri?x+5:x+(r.width-lebar)/2,ty=y+r.height/2+1;
-    if(v){var bw=lebar+10,bh=22,bx=x+(r.width-bw)/2,by=y+(r.height-bh)/2;
+    g.textBaseline="middle";var lb=g.measureText(teks).width;
+    var kiri=e.classList.contains("n"),tx=kiri?x+5:x+(r.width-lb)/2,ty=y+r.height/2+1;
+    if(v){var bw=lb+10,bh=22,bx=x+(r.width-bw)/2,by=y+(r.height-bh)/2;
       g.fillStyle=getComputedStyle(v).backgroundColor;rr(bx,by,bw,bh,5);g.fill();g.lineWidth=2;g.strokeStyle="#000";g.stroke();}
     g.fillStyle=f.color;g.fillText(teks,tx,ty);
   });
   document.body.removeChild(kl);
-  cv.toBlob(function(b){var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=namaFile;
+  cv.toBlob(function(b){var a=document.createElement("a");a.href=URL.createObjectURL(b);
+    a.download=namaFile.replace(/\.png$/i,"")+"_"+no+"dari"+total+".png";
     document.body.appendChild(a);a.click();document.body.removeChild(a);},"image/png");
+}
+// 3 gambar: QC bagian 1 (judul), QC bagian 2 (tanpa judul), QC SK (judul); bila QC pendek jadi 1 gambar
+function unduh(){
+  var t=document.getElementById("w").querySelector("table");if(!t)return;
+  var rows=[].slice.call(t.querySelectorAll("tr")).slice(1);
+  var qc=rows.filter(function(r){return r.dataset.b!=="SK";}),sk=rows.filter(function(r){return r.dataset.b==="SK";});
+  var parts=[];
+  if(qc.length>22){var h=Math.ceil(qc.length/2);parts.push({rows:qc.slice(0,h),judul:true,sub:""});parts.push({rows:qc.slice(h),judul:false});}
+  else if(qc.length)parts.push({rows:qc,judul:true,sub:""});
+  if(sk.length)parts.push({rows:sk,judul:true,sub:" — QC SK"});
+  parts.forEach(function(p,i){setTimeout(function(){gambarBagian(p,i+1,parts.length);},i*900);});
 }
 document.getElementById("unduh").onclick=unduh;
 
@@ -133,6 +158,7 @@ window.addEventListener("message",function(e){
   if(!e.data||e.data.type!=="streamlit:render")return;
   var a=e.data.args||{};
   if(a.nama_file)namaFile=a.nama_file;
+  bulanLabel=a.bulan_label||"";
   var tanda=a.html+JSON.stringify(a.kal||[])+(a.mode||"");
   if(tanda===terakhir)return;
   terakhir=tanda;

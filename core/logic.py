@@ -334,6 +334,8 @@ def rekap_bulan(bulan):
     awal = f"{bulan}-01"
     baris = []
     produktif = pernah_menghasilkan(bulan)
+    _ik = info_karyawan()
+    bagian_prn = dict(zip(_ik["prn"], _ik["bagian"]))
     for prn in karyawan_dikenal(bulan):
         if prn not in produktif:
             continue  # belum pernah menghasilkan pcs (karyawan baru): tersimpan, belum ditampilkan
@@ -353,7 +355,7 @@ def rekap_bulan(bulan):
                 hari[d] = ("libur", None)
             elif (prn, tgl) in keg:
                 hari[d] = ("keg", None)  # masuk tapi mengerjakan kegiatan lain (tanpa pcs)
-        baris.append({"prn": prn, "nama": nama.get(prn, prn), "hari": hari,
+        baris.append({"prn": prn, "nama": nama.get(prn, prn), "hari": hari, "bagian": bagian_prn.get(prn, "QC"),
                       "rata": sum(nilai) / len(nilai) if nilai else None})
     return baris
 

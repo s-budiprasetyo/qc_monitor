@@ -97,7 +97,7 @@ def tabel_html(baris, tahun, bln):
         h += f"<th class='{'we' if calendar.weekday(tahun, bln, d) >= 5 else ''}'>{d}</th>"
     h += "<th>RATA RATA</th></tr>"
     for i, b in enumerate(baris):  # PRN tidak ditaruh di halaman: sel memakai nomor baris, dipetakan lagi di server
-        h += f"<tr><td class='n'>{html.escape(b['nama'])}</td>"
+        h += f"<tr data-b='{html.escape(b.get('bagian', 'QC'))}'><td class='n'>{html.escape(b['nama'])}</td>"
         for d in range(1, n_hari + 1):
             jenis, nilai = b["hari"].get(d, (None, None))
             h += sel(jenis, nilai, str(i), d)
@@ -531,7 +531,7 @@ elif _me:
 else:
     _boleh, _mode = [], ""
 klik = tabel(tabel_html(baris, int(bulan[:4]), int(bulan[5:])), key="tabel",
-             nama_file=f"MONITORING_HASIL_KERJA_{bulan}.png",
+             nama_file=f"MONITORING_HASIL_KERJA_{bulan}.png", bulan_label=nama_bulan(bulan),
              kal=kalender_data(baris, int(bulan[:4]), int(bulan[5:]), _boleh), mode=_mode)
 
 
