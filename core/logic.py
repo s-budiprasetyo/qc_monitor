@@ -129,6 +129,8 @@ def usulan_verifikasi():
             silang = not tampil_default(jenis.get(p, ""))  # yang tidak menghasilkan (supervisor, admin, dll) ✕
         baris.append({"prn": p, "nama": n, "jenis": jenis.get(p, ""), "ada_sap": p in sap, "ada_jadwal": p in ada_jadwal,
                       "baru": p not in putus, "silang": silang})
+    if not baris:
+        return pd.DataFrame(columns=["prn", "nama", "jenis", "ada_sap", "ada_jadwal", "baru", "silang"])
     return pd.DataFrame(baris).sort_values(["baru", "ada_sap", "nama"], ascending=[False, True, True]).reset_index(drop=True)
 
 
