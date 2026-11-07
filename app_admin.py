@@ -3,7 +3,7 @@ import difflib
 import io
 import time
 import hmac
-from datetime import date
+from datetime import date, datetime
 
 import pandas as pd
 import streamlit as st
@@ -12,6 +12,7 @@ from core import calc, data, logic, parsers
 from core.grid import jadwal_grid
 from core.bulan import pilih_bulan
 from core.hub import hub
+from core.store import BukuBulananBelumAda
 from core.ui import gaya_global, ikon, kepala, kontrol_jendela
 
 BULAN = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS",
@@ -157,11 +158,12 @@ def dlg_hasil():
                    "pada bulannya masing-masing.")
     if st.button("UPLOAD", type="primary"):
         with st.spinner("Menyimpan ke Google Sheet… tunggu sebentar, jangan klik lagi."):
-            sebelum = {x["bulan"] for x in data.info_buku()}
-            data.simpan_hasil(df)
-            baru_b = [x["nama"] for x in data.info_buku() if x["bulan"] not in sebelum]
-            sukses("FILE BERHASIL DI UPDATE" + (f". Google Sheet baru dibuat otomatis: {', '.join(baru_b)}" if baru_b else ""),
-                   "FILE HASIL KERJA")
+            try:
+                data.simpan_hasil(df)
+            except BukuBulananBelumAda as e:
+                st.error(str(e))
+                return
+            sukses("FILE BERHASIL DI UPDATE", "FILE HASIL KERJA")
 
 
 @st.dialog("DATA AWAL", width="large")
@@ -352,7 +354,11 @@ def dlg_jadwal():
     a, b = st.columns(2)
     if a.button("UPLOAD", type="primary", disabled=not hasil, width="stretch"):
         baru = pd.concat(hasil, ignore_index=True)
-        data.upsert("jadwal_" + bulan, baru, ["prn", "tgl"])
+        try:
+            data.upsert("jadwal_" + bulan, baru, ["prn", "tgl"])
+        except BukuBulananBelumAda as e:
+            st.error(str(e))
+            return
         bag = pd.concat([pd.DataFrame({"prn": sorted(set(o["prn"])), "bagian": lb})
                          for o, lb in zip(hasil, labels)], ignore_index=True)
         data.upsert("bagian", bag, ["prn"])
@@ -708,8 +714,20 @@ buku = data.info_buku()
 if buku:
     tautan = " &nbsp;·&nbsp; ".join(f"<a href='{b['url']}' target='_blank'>{b['nama']}</a>" for b in buku)
     st.markdown(f"<p style='font-size:13px'>Google Sheet bulanan: {tautan}</p>", unsafe_allow_html=True)
-elif data.pakai_google_sheet():
-    st.caption("Google Sheet bulanan otomatis belum aktif (isi drive_folder_id di Secrets app admin).")
+if data.pakai_google_sheet():
+    with st.expander("Hubungkan Google Sheet bulanan"):
+        st.caption("Master (sheet_id di Secrets) tidak perlu diganti. Tiap bulan buat Google Sheet kosong, bagikan ke akun layanan "
+                   "sebagai Editor, lalu tempel linknya di sini. Data bulan itu (hasil, jadwal, lembur, absensi, alasan + foto) tersimpan di sana.")
+        bl_ini = datetime.now(data.WIB).strftime("%Y-%m")
+        pilihan = [f"{th}-{bl:02d}" for th in (datetime.now(data.WIB).year - 1, datetime.now(data.WIB).year, datetime.now(data.WIB).year + 1) for bl in range(1, 13)]
+        c1, c2 = st.columns([1, 3])
+        bl_pilih = c1.selectbox("Bulan", pilihan, index=pilihan.index(bl_ini), key="hub_bulan")
+        link = c2.text_input("Link Google Sheet bulan ini", key="hub_link", placeholder="https://docs.google.com/spreadsheets/d/…")
+        if st.button("Hubungkan", key="hub_btn", disabled=not link.strip()):
+            try:
+                st.success(f"Terhubung: {data.hubungkan_buku(bl_pilih, link)} → bulan {bl_pilih}. Data baru bulan itu disimpan di sana.")
+            except ValueError as e:
+                st.error(str(e))
 if data.pakai_google_sheet():
     with st.expander("Uji jejak Google Sheet"):
         st.caption("Menulis satu baris uji ke tab ALASAN TIDAK TARGET bulan ini untuk memastikan jejak email bisa tersimpan.")

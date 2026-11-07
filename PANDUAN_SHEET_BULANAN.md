@@ -19,3 +19,10 @@ Bulan yang sudah ada di Google Sheet utama (mis. September) **tetap di sana**. G
 
 Bila pembuatan gagal (mis. Drive API belum aktif atau folder belum dibagikan), data tetap aman tersimpan di Google Sheet utama
 dan pesan penyebabnya muncul di jendela hasil upload.
+
+## Pembaruan tahap 7a (penyimpanan dua file)
+- `sheet_id` di Secrets = Sheet UTAMA (master) dan TIDAK diganti tiap bulan.
+- Tiap bulan: buat Google Sheet kosong, bagikan ke akun layanan sebagai Editor, lalu
+  (a) beri nama `TOTOQC YYYY-MM` (otomatis ditemukan), atau (b) tempel linknya di app admin: Informasi -> Hubungkan Google Sheet bulanan.
+- Bulan tanpa Sheet terhubung: upload hasil kerja/jadwal DITOLAK (kecuali bulan lama yang masih di Sheet utama).
+- Lembur, absensi, alasan, pengajuan, kegiatan, pindah_hasil, masalah_abaikan dan foto alasan disimpan di Sheet bulan masing-masing.

@@ -40,7 +40,7 @@ def daftar_bulan():
     c, sekarang_ = _tembolok(), time.time()
     if "_bulan" in c and sekarang_ - c["_bulan"][0] < TTL:
         return list(c["_bulan"][1])
-    hasil = sorted(t[6:] for t in store().tables() if t.startswith("hasil_"))
+    hasil = sorted({t[6:] for t in store().tables() if t.startswith("hasil_")})
     c["_bulan"] = (sekarang_, hasil)
     return list(hasil)
 
@@ -57,6 +57,10 @@ def tulis(nama, df):
 def simpan_hasil(df):
     """Simpan per bulan Posting Date. Tanggal yang sama ditimpa, tanggal lain tetap aman."""
     df = df.assign(bulan=df["tgl"].str[:7])
+    pastikan = getattr(store(), "pastikan_bulan", None)
+    if pastikan:  # tolak SEBELUM menyimpan apa pun bila ada bulan yang Google Sheet-nya belum terhubung
+        for bulan in sorted(df["bulan"].unique()):
+            pastikan(bulan)
     for bulan, bagian in df.groupby("bulan"):
         nama = f"hasil_{bulan}"
         lama = store().read(nama)
@@ -135,6 +139,17 @@ def info_buku():
         return []
 
 
+def hubungkan_buku(bulan, tautan):
+    """Admin menempel link Google Sheet bulan itu. Return nama file; ValueError bila gagal."""
+    st_ = store()
+    if not hasattr(st_, "hubungkan_link"):
+        raise ValueError("Penyimpanan lokal (uji): tidak memakai Google Sheet.")
+    nama = st_.hubungkan_link(bulan, tautan)
+    c = _tembolok()
+    c.clear()
+    return nama
+
+
 def peringatan_store():
     """Pesan masalah dari penyimpanan (mis. gagal membuat Google Sheet bulan baru); dibaca lalu dikosongkan."""
     p = getattr(store(), "peringatan", None)
@@ -185,6 +200,24 @@ def kecilkan_foto(isi, batas=42000):
     return teks
 
 
+def _foto_baca(bulan):
+    c, t = _tembolok(), time.time()
+    k = f"_foto_{bulan}"
+    if k in c and t - c[k][0] < TTL:
+        return c[k][1].copy()
+    st_ = store()
+    df = st_.read_bulan("foto_alasan", bulan) if hasattr(st_, "read_bulan") else st_.read("foto_alasan")
+    c[k] = (t, df)
+    return df.copy()
+
+
+def _foto_tulis(bulan, df):
+    store().write_bulan("foto_alasan", bulan, df)
+    c = _tembolok()
+    c["_v"] = c.get("_v", 0) + 1
+    c[f"_foto_{bulan}"] = (time.time(), df.fillna("").astype(str).reset_index(drop=True))
+
+
 def pengajuan_ada(prn, tgl):
     p = baca("pengajuan")
     return bool(((p["prn"] == prn) & (p["tgl"] == tgl)).any())
@@ -208,7 +241,7 @@ def simpan_alasan(prn, nama, tgl, items, email=""):
         email = f"(tanpa Google) {u.iloc[0]}" if len(u) else "(tanpa Google)"
     revisi = pengajuan_ada(prn, tgl)
     lama = {f"{prn}|{tgl}|{n}": r["foto"] for n, r in enumerate(alasan_hari(prn, tgl), 1)}
-    foto_lama = baca("foto_alasan")
+    foto_lama = _foto_baca(tgl[:7])
     foto_lama = dict(zip(foto_lama["id"], foto_lama["data"]))
     baris, fotos = [], []
     for n, it in enumerate(items, 1):
@@ -225,9 +258,9 @@ def simpan_alasan(prn, nama, tgl, items, email=""):
     # hapus isi lama hari ini (termasuk baris nomor tinggi yang tidak dipakai lagi), lalu tulis yang baru
     al = baca("alasan")
     tulis("alasan", pd.concat([al[~((al["prn"] == prn) & (al["tgl"] == tgl))], pd.DataFrame(baris)], ignore_index=True))
-    ft = baca("foto_alasan")
+    ft = _foto_baca(tgl[:7])
     ft = ft[~ft["id"].str.startswith(f"{prn}|{tgl}|")]
-    tulis("foto_alasan", pd.concat([ft, pd.DataFrame(fotos, columns=["id", "data"])], ignore_index=True))
+    _foto_tulis(tgl[:7], pd.concat([ft, pd.DataFrame(fotos, columns=["id", "data"])], ignore_index=True))
     upsert("pengajuan", pd.DataFrame([{"prn": prn, "tgl": tgl, "menit": str(total), "status": "menunggu",
                                        "waktu": sekarang(), "email": email}]), ["prn", "tgl"])
     try:
@@ -246,8 +279,8 @@ def hapus_pengajuan(prn, tgl):
     for nama, kunci in (("pengajuan", None), ("alasan", None)):
         t = baca(nama)
         tulis(nama, t[~((t["prn"] == prn) & (t["tgl"] == tgl))])
-    ft = baca("foto_alasan")
-    tulis("foto_alasan", ft[~ft["id"].str.startswith(f"{prn}|{tgl}|")])
+    ft = _foto_baca(tgl[:7])
+    _foto_tulis(tgl[:7], ft[~ft["id"].str.startswith(f"{prn}|{tgl}|")])
     try:  # jejak di tab Google Sheet ikut dihapus
         k = baca("karyawan")
         nama = k.loc[k["prn"] == prn, "nama_web"]
@@ -258,7 +291,10 @@ def hapus_pengajuan(prn, tgl):
 
 
 def foto_alasan(fid):
-    f = baca("foto_alasan")
+    try:
+        f = _foto_baca(fid.split("|")[1][:7])
+    except IndexError:
+        return None
     x = f.loc[f["id"] == fid, "data"]
     return x.iloc[0] if len(x) else None
 
