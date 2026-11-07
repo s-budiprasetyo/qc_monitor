@@ -486,6 +486,91 @@ class SheetsStore:
                 pass
         return hasil
 
+
+    # --- merapikan Sheet utama: periksa / salin / hapus salinan lama bulan yang sudah punya Sheet sendiri
+    def _kunci_cek(self, nama):
+        return ["tgl"] if nama.startswith("hasil_") else ["prn", "tgl"]
+
+    def audit_bulan(self, bulan):
+        """Bandingkan Sheet utama dengan Sheet bulan. Return list dict(tabel, master, buku, status) dengan status:
+        'aman' (salinan master boleh dihapus), 'salin' (ada data di master yang belum ada di Sheet bulan), 'kosong' (tidak ada di master)."""
+        b = self._buka(bulan)
+        if b is None:
+            raise ValueError(f"Sheet bulan {bulan} belum terhubung.")
+        ada_master = set(self.utama.tables(segar=True))
+        hasil = []
+        for nama in (f"hasil_{bulan}", f"jadwal_{bulan}"):
+            m = self.utama.read(nama) if nama in ada_master else None
+            k = b.read(nama) if b.punya_tab(nama) else None
+            if m is None:
+                hasil.append(dict(tabel=nama, master=0, buku=0 if k is None else len(k), status="kosong"))
+                continue
+            kc = self._kunci_cek(nama)
+            kunci_k = set(map(tuple, k[kc].values.tolist())) if k is not None else set()
+            kurang = [t for t in map(tuple, m[kc].values.tolist()) if t not in kunci_k]
+            hasil.append(dict(tabel=nama, master=len(m), buku=0 if k is None else len(k), status="salin" if kurang else "aman"))
+        for nama in TABEL_BULANAN:
+            m = self.utama.read(nama)
+            m = m[m["tgl"].astype(str).str[:7] == bulan]
+            hasil.append(dict(tabel=nama, master=len(m), buku=0, status="salin" if len(m) else "kosong"))
+        f = self.utama.read("foto_alasan") if "foto_alasan" in ada_master else pd.DataFrame(columns=["id", "data"])
+        f = f[f["id"].str.contains(f"|{bulan}-", regex=False)]
+        kf = b.read("foto_alasan") if b.punya_tab("foto_alasan") else pd.DataFrame(columns=["id", "data"])
+        kurang = set(f["id"]) - set(kf["id"])
+        hasil.append(dict(tabel="foto_alasan", master=len(f), buku=len(kf),
+                          status="kosong" if not len(f) else ("salin" if kurang else "aman")))
+        return hasil
+
+    def salin_bulan(self, bulan):
+        """Salin (bukan pindah) data bulan itu dari Sheet utama ke Sheet bulan. Tidak ada yang dihapus. Return jumlah tabel disalin."""
+        b = self._buka(bulan)
+        if b is None:
+            raise ValueError(f"Sheet bulan {bulan} belum terhubung.")
+        n = 0
+        for a in self.audit_bulan(bulan):
+            if a["status"] != "salin":
+                continue
+            nama = a["tabel"]
+            if nama in TABEL_BULANAN:
+                self._tulis_bulanan(nama, self._baca_bulanan(nama))  # buku ditulis dulu, lalu master dirapikan
+            elif nama == "foto_alasan":
+                m = self.utama.read(nama)
+                m = m[m["id"].str.contains(f"|{bulan}-", regex=False)]
+                k = b.read(nama) if b.punya_tab(nama) else pd.DataFrame(columns=["id", "data"])
+                b.write(nama, pd.concat([k, m[~m["id"].isin(set(k["id"]))]], ignore_index=True))
+            else:
+                m = self.utama.read(nama)
+                if b.punya_tab(nama):
+                    k = b.read(nama)
+                    kc = self._kunci_cek(nama)
+                    ada = set(map(tuple, k[kc].values.tolist()))
+                    baru = m[[tuple(r) not in ada for r in m[kc].values.tolist()]]
+                    gab = pd.concat([k, baru], ignore_index=True)
+                else:
+                    gab = m
+                b.write(nama, gab)
+            n += 1
+        return n
+
+    def hapus_dari_master(self, bulan):
+        """Hapus salinan lama di Sheet utama, HANYA untuk tabel yang diperiksa 'aman'. Return daftar tabel yang dihapus."""
+        dihapus = []
+        for a in self.audit_bulan(bulan):
+            if a["status"] != "aman":
+                continue
+            if a["tabel"] == "foto_alasan":  # hanya baris bulan itu yang dihapus dari master
+                f = self.utama.read("foto_alasan")
+                self.utama.write("foto_alasan", f[~f["id"].str.contains(f"|{bulan}-", regex=False)])
+                dihapus.append("foto_alasan (baris bulan ini)")
+                continue
+            ws = self.utama._sheets(segar=True).get(a["tabel"])
+            if ws is not None:
+                self._retry(lambda: self.sh.del_worksheet(ws))
+                self.utama._sheets(segar=True)
+                self.utama._lepas_snapshot()
+                dihapus.append(a["tabel"])
+        return dihapus
+
     # --- laporan (tab terlihat). bulan=None -> Sheet utama
     def _buku_laporan(self, bulan):
         return (self._buka(bulan) if bulan else None) or self.utama

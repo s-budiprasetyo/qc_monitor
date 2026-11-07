@@ -728,6 +728,32 @@ if data.pakai_google_sheet():
                 st.success(f"Terhubung: {data.hubungkan_buku(bl_pilih, link)} → bulan {bl_pilih}. Data baru bulan itu disimpan di sana.")
             except ValueError as e:
                 st.error(str(e))
+if data.pakai_google_sheet() and buku:
+    with st.expander("Rapikan Sheet utama (pindahkan data bulan ke file bulanannya)"):
+        st.caption("Alat ini AMAN: langkah Salin tidak menghapus apa pun; langkah Hapus hanya menghapus tab di Sheet utama yang "
+                   "datanya sudah lengkap di file bulan. Sebelum menghapus, buat salinan Sheet utama di Google Drive.")
+        bl_r = st.selectbox("Bulan", [b["bulan"] for b in buku], key="rp_bulan")
+        if st.button("1. Periksa", key="rp_cek"):
+            st.session_state["rp_hasil"] = (bl_r, data.rapikan("periksa", bl_r))
+        hs = st.session_state.get("rp_hasil")
+        if hs and hs[0] == bl_r:
+            ket = {"aman": "✅ lengkap di file bulan (boleh dihapus dari master)", "salin": "⚠ belum lengkap di file bulan → klik Salin",
+                   "kosong": "— tidak ada di master"}
+            st.table(pd.DataFrame([{"Tabel": x["tabel"], "Baris di master": x["master"], "Baris di file bulan": x["buku"], "Status": ket[x["status"]]}
+                                   for x in hs[1]]))
+            if any(x["status"] == "salin" for x in hs[1]) and st.button("2. Salin yang belum ada ke file bulan", key="rp_salin"):
+                with st.spinner("Menyalin…"):
+                    n = data.rapikan("salin", bl_r)
+                st.session_state["rp_hasil"] = (bl_r, data.rapikan("periksa", bl_r))
+                st.success(f"{n} tabel disalin. Klik Periksa lagi untuk memastikan.")
+                st.rerun()
+            if any(x["status"] == "aman" for x in hs[1]):
+                oke = st.checkbox("Saya sudah membuat salinan Sheet utama di Google Drive", key="rp_oke")
+                if st.button("3. Hapus salinan lama di master", key="rp_hapus", disabled=not oke):
+                    with st.spinner("Menghapus…"):
+                        dihapus = data.rapikan("hapus", bl_r)
+                    st.session_state.pop("rp_hasil", None)
+                    st.success("Dihapus dari master: " + (", ".join(dihapus) or "tidak ada"))
 if data.pakai_google_sheet():
     with st.expander("Uji jejak Google Sheet"):
         st.caption("Menulis satu baris uji ke tab ALASAN TIDAK TARGET bulan ini untuk memastikan jejak email bisa tersimpan.")

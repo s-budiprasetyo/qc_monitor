@@ -150,6 +150,16 @@ def hubungkan_buku(bulan, tautan):
     return nama
 
 
+def rapikan(aksi, bulan):
+    """aksi: 'periksa' | 'salin' | 'hapus'. Return hasil dari store."""
+    st_ = store()
+    r = {"periksa": "audit_bulan", "salin": "salin_bulan", "hapus": "hapus_dari_master"}[aksi]
+    hasil = getattr(st_, r)(bulan)
+    if aksi != "periksa":
+        _tembolok().clear()
+    return hasil
+
+
 def peringatan_store():
     """Pesan masalah dari penyimpanan (mis. gagal membuat Google Sheet bulan baru); dibaca lalu dikosongkan."""
     p = getattr(store(), "peringatan", None)
