@@ -157,6 +157,10 @@ def rapikan(aksi, bulan):
     hasil = getattr(st_, r)(bulan)
     if aksi != "periksa":
         _tembolok().clear()
+        try:  # laporan riwayat bulan itu ikut pindah ke Sheet bulannya
+            sinkron_riwayat()
+        except Exception:
+            pass
     return hasil
 
 

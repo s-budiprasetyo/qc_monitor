@@ -185,8 +185,11 @@ class _Buku:
                 self._tabs[nama] = ws
             self._retry(ws.clear)
             self._retry(lambda: ws.resize(rows=baris, cols=kol))
-            self._retry(lambda: ws.update(range_name="A1", values=[list(df.columns)] + df.values.tolist(),
-                                          value_input_option="RAW"))
+            semua = [list(df.columns)] + df.values.tolist()
+            # dipecah per bagian (<= ~150 ribu sel) supaya tidak melewati batas ukuran kiriman Google
+            per = max(50, 150000 // max(1, len(df.columns)))
+            for i in range(0, len(semua), per):
+                self._retry(lambda i=i: ws.update(range_name=f"A{i + 1}", values=semua[i:i + per], value_input_option="RAW"))
         self._segarkan_bila_tab_hilang(kerja)
         if nama not in TAB_LAPORAN:
             try:
