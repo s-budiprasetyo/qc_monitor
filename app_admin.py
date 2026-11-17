@@ -2,13 +2,13 @@
 import difflib
 import io
 import time
-import hmac
 from datetime import date, datetime
 
 import pandas as pd
 import streamlit as st
 
-from core import calc, data, logic, parsers
+import halaman_foreman
+from core import akses, calc, data, logic, parsers
 from core.grid import jadwal_grid
 from core.bulan import pilih_bulan
 from core.hub import hub
@@ -63,37 +63,6 @@ def pilihan_bulan():
 
 def nama_bulan(k):
     return f"{BULAN[int(k[5:]) - 1]} {k[:4]}"
-
-
-# ---------------------------------------------------------------- gerbang admin
-def gerbang():
-    """Hanya admin: akun Google yang terdaftar (bila login Google aktif) + user dan password."""
-    try:
-        adm = st.secrets.get("admin")
-    except Exception:  # file secrets belum ada
-        adm = None
-    if not adm:
-        st.error("Pengaturan [admin] belum ada di secrets. Halaman admin dikunci.")
-        st.stop()
-    if "auth" in st.secrets:  # login Google aktif
-        if not st.user.is_logged_in:
-            st.title("WELCOME ADMIN QC TOTO")
-            st.button("Masuk dengan Google", on_click=st.login)
-            st.stop()
-        if st.user.email.lower() not in [e.lower() for e in adm.get("emails", [])]:
-            st.error("Akun ini tidak punya akses admin.")
-            st.button("Keluar", on_click=st.logout)
-            st.stop()
-    if not st.session_state.get("admin_ok"):
-        st.markdown("<h1 class='judul'>WELCOME ADMIN QC TOTO</h1>", unsafe_allow_html=True)
-        with st.form("login"):
-            u, p = st.text_input("User"), st.text_input("Password", type="password")
-            if st.form_submit_button("Masuk"):
-                if hmac.compare_digest(u.encode(), str(adm["user"]).encode()) and hmac.compare_digest(p.encode(), str(adm["password"]).encode()):
-                    st.session_state["admin_ok"] = True
-                    st.rerun()
-                st.error("User atau password salah.")
-        st.stop()
 
 
 # ---------------------------------------------------------------- jendela
@@ -638,125 +607,135 @@ def dlg_eval():
 
 
 # ---------------------------------------------------------------- halaman
-gerbang()
-st.markdown(CSS, unsafe_allow_html=True)
-gaya_global()
-belum_ada = data.baca("karyawan").empty or data.baca("target").empty
-baru, tanpa, bentrok = ([], pd.DataFrame(), []) if belum_ada else masalah_cache(data.versi())
-jumlah = hitung_jumlah(baru, tanpa, bentrok) if not belum_ada else 0
+def halaman_admin():
+    akses.butuh(akses.ADMIN)
+    st.markdown(CSS, unsafe_allow_html=True)
+    gaya_global()
+    akses.bilah(PG_FOREMAN, "Ke halaman Foreman")
+    belum_ada = data.baca("karyawan").empty or data.baca("target").empty
+    baru, tanpa, bentrok = ([], pd.DataFrame(), []) if belum_ada else masalah_cache(data.versi())
+    jumlah = hitung_jumlah(baru, tanpa, bentrok) if not belum_ada else 0
 
-if st.session_state.get("toast"):
-    st.toast(st.session_state.pop("toast"), icon="✅")
-pesan = st.session_state.pop("sukses", None)
-if pesan:
-    dlg_sukses(pesan)
-elif st.session_state.pop("verif", False):
-    dlg_verif()
-elif st.session_state.pop("bel_buka", False) and jumlah:
-    dlg_lonceng(baru, tanpa, bentrok)
-elif not belum_ada and data.baca("roster").empty and not st.session_state.get("verif_ditawari"):
-    st.session_state["verif_ditawari"] = True  # sekali per sesi: daftar pantau belum pernah diverifikasi
-    dlg_verif()
-
-st.markdown("<h1 class='judul'>WELCOME ADMIN QC TOTO</h1>", unsafe_allow_html=True)
-
-atas1, atas2, atas3 = st.columns([1, 3, 3])
-with atas1, st.container(key="lonceng"):
-    if st.button("🔔" + (f" :red-badge[{jumlah}]" if jumlah else ""), key="bel"):
-        dlg_lonceng(baru, tanpa, bentrok)
-atas2.markdown("<div class='judul-update'>UPDATE DATA</div>", unsafe_allow_html=True)
-with atas3, st.container(key="awal"):
-    c0, c1, c2 = st.columns([1.3, 1.2, 1])
-    if c0.button("Verifikasi", icon=":material/how_to_reg:", width="stretch"):
-        st.session_state["max_verif"] = False
+    if st.session_state.get("toast"):
+        st.toast(st.session_state.pop("toast"), icon="✅")
+    pesan = st.session_state.pop("sukses", None)
+    if pesan:
+        dlg_sukses(pesan)
+    elif st.session_state.pop("verif", False):
         dlg_verif()
-    if c1.button("Data awal", icon=":material/settings:", width="stretch"):
-        st.session_state["max_awal"] = False
-        dlg_awal()
-    if c2.button("Keluar", width="stretch"):
-        st.session_state["admin_ok"] = False
-        st.rerun()
+    elif st.session_state.pop("bel_buka", False) and jumlah:
+        dlg_lonceng(baru, tanpa, bentrok)
+    elif not belum_ada and data.baca("roster").empty and not st.session_state.get("verif_ditawari"):
+        st.session_state["verif_ditawari"] = True  # sekali per sesi: daftar pantau belum pernah diverifikasi
+        dlg_verif()
 
-@st.dialog("BERHASIL")
-def dlg_hapus_ok(kembali):
-    st.markdown("<h3 style='text-align:center;margin:1.2rem 0'>DATA BERHASIL DI HAPUS</h3>", unsafe_allow_html=True)
-    if st.button("OK", type="primary", width="stretch"):
-        st.session_state["buka_tes"] = {"id": kembali, "n": time.time()}  # kembali ke jendela asal
-        st.rerun()
+    st.markdown("<h1 class='judul'>WELCOME ADMIN QC TOTO</h1>", unsafe_allow_html=True)
+
+    atas1, atas2, atas3 = st.columns([1, 3, 3])
+    with atas1, st.container(key="lonceng"):
+        if st.button("🔔" + (f" :red-badge[{jumlah}]" if jumlah else ""), key="bel"):
+            dlg_lonceng(baru, tanpa, bentrok)
+    atas2.markdown("<div class='judul-update'>UPDATE DATA</div>", unsafe_allow_html=True)
+    with atas3, st.container(key="awal"):
+        c0, c1 = st.columns([1.3, 1.2])
+        if c0.button("Verifikasi", icon=":material/how_to_reg:", width="stretch"):
+            st.session_state["max_verif"] = False
+            dlg_verif()
+        if c1.button("Data awal", icon=":material/settings:", width="stretch"):
+            st.session_state["max_awal"] = False
+            dlg_awal()
+
+    @st.dialog("BERHASIL")
+    def dlg_hapus_ok(kembali):
+        st.markdown("<h3 style='text-align:center;margin:1.2rem 0'>DATA BERHASIL DI HAPUS</h3>", unsafe_allow_html=True)
+        if st.button("OK", type="primary", width="stretch"):
+            st.session_state["buka_tes"] = {"id": kembali, "n": time.time()}  # kembali ke jendela asal
+            st.rerun()
 
 
-if st.session_state.get("hapus_ok"):
-    dlg_hapus_ok(st.session_state.pop("hapus_ok"))
+    if st.session_state.get("hapus_ok"):
+        dlg_hapus_ok(st.session_state.pop("hapus_ok"))
 
-MENU = {"hasil": ("HASIL KERJA", dlg_hasil, "hasil", False),
-        "lembur": ("LEMBUR", dlg_lembur, "lembur", False),
-        "eval": ("EVALUASI KARYAWAN", dlg_eval, "evaluasi", False),
-        "absensi": ("ABSENSI", dlg_absensi, "absensi", False),
-        "jadwal": ("JADWAL KERJA", dlg_jadwal, "jadwal", False)}
-klik = hub([{"id": k, "label": v[0], "icon": ikon(v[2]), "disabled": v[3]} for k, v in MENU.items()], key="hub")
-klik = st.session_state.pop("buka_tes", None) or klik
-if klik and klik.get("n") != st.session_state.get("hub_n"):
-    st.session_state["hub_n"] = klik.get("n")
-    _, fungsi, _, mati = MENU[klik["id"]]
-    if fungsi and not mati:
-        st.session_state[f"max_{klik['id']}"] = False
-        st.session_state["jd_manual"] = False
-        fungsi()
+    MENU = {"hasil": ("HASIL KERJA", dlg_hasil, "hasil", False),
+            "lembur": ("LEMBUR", dlg_lembur, "lembur", False),
+            "eval": ("EVALUASI KARYAWAN", dlg_eval, "evaluasi", False),
+            "absensi": ("ABSENSI", dlg_absensi, "absensi", False),
+            "jadwal": ("JADWAL KERJA", dlg_jadwal, "jadwal", False)}
+    klik = hub([{"id": k, "label": v[0], "icon": ikon(v[2]), "disabled": v[3]} for k, v in MENU.items()], key="hub")
+    klik = st.session_state.pop("buka_tes", None) or klik
+    if klik and klik.get("n") != st.session_state.get("hub_n"):
+        st.session_state["hub_n"] = klik.get("n")
+        _, fungsi, _, mati = MENU[klik["id"]]
+        if fungsi and not mati:
+            st.session_state[f"max_{klik['id']}"] = False
+            st.session_state["jd_manual"] = False
+            fungsi()
 
-if belum_ada:
-    st.warning("Data karyawan dan target belum ada. Klik **Data awal** dan upload dua file Excel-nya.")
-log = data.baca("update_log")
-log = dict(zip(log["nama_file"], log["waktu"]))
-baris = "".join(f"<tr><td>{n}</td><td class='w'>{log.get(n, '-')}</td></tr>" for n in FILE_INFO)
-st.markdown("<h4 class='info'>► INFORMASI</h4><table class='info'><tr><th>NAMA FILE</th>"
-            f"<th>TERAKHIR UPDATE</th></tr>{baris}</table>", unsafe_allow_html=True)
-buku = data.info_buku()
-if buku:
-    tautan = " &nbsp;·&nbsp; ".join(f"<a href='{b['url']}' target='_blank'>{b['nama']}</a>" for b in buku)
-    st.markdown(f"<p style='font-size:13px'>Google Sheet bulanan: {tautan}</p>", unsafe_allow_html=True)
-if data.pakai_google_sheet():
-    with st.expander("Hubungkan Google Sheet bulanan"):
-        st.caption("Master (sheet_id di Secrets) tidak perlu diganti. Tiap bulan buat Google Sheet kosong, bagikan ke akun layanan "
-                   "sebagai Editor, lalu tempel linknya di sini. Data bulan itu (hasil, jadwal, lembur, absensi, alasan + foto) tersimpan di sana.")
-        bl_ini = datetime.now(data.WIB).strftime("%Y-%m")
-        pilihan = [f"{th}-{bl:02d}" for th in (datetime.now(data.WIB).year - 1, datetime.now(data.WIB).year, datetime.now(data.WIB).year + 1) for bl in range(1, 13)]
-        c1, c2 = st.columns([1, 3])
-        bl_pilih = c1.selectbox("Bulan", pilihan, index=pilihan.index(bl_ini), key="hub_bulan")
-        link = c2.text_input("Link Google Sheet bulan ini", key="hub_link", placeholder="https://docs.google.com/spreadsheets/d/…")
-        if st.button("Hubungkan", key="hub_btn", disabled=not link.strip()):
-            try:
-                st.success(f"Terhubung: {data.hubungkan_buku(bl_pilih, link)} → bulan {bl_pilih}. Data baru bulan itu disimpan di sana.")
-            except ValueError as e:
-                st.error(str(e))
-if data.pakai_google_sheet() and buku:
-    with st.expander("Rapikan Sheet utama (pindahkan data bulan ke file bulanannya)"):
-        st.caption("Alat ini AMAN: langkah Salin tidak menghapus apa pun; langkah Hapus hanya menghapus tab di Sheet utama yang "
-                   "datanya sudah lengkap di file bulan. Sebelum menghapus, buat salinan Sheet utama di Google Drive.")
-        bl_r = st.selectbox("Bulan", [b["bulan"] for b in buku], key="rp_bulan")
-        if st.button("1. Periksa", key="rp_cek"):
-            st.session_state["rp_hasil"] = (bl_r, data.rapikan("periksa", bl_r))
-        hs = st.session_state.get("rp_hasil")
-        if hs and hs[0] == bl_r:
-            ket = {"aman": "✅ lengkap di file bulan (boleh dihapus dari master)", "salin": "⚠ belum lengkap di file bulan → klik Salin",
-                   "kosong": "— tidak ada di master"}
-            st.table(pd.DataFrame([{"Tabel": x["tabel"], "Baris di master": x["master"], "Baris di file bulan": x["buku"], "Status": ket[x["status"]]}
-                                   for x in hs[1]]))
-            if any(x["status"] == "salin" for x in hs[1]) and st.button("2. Salin yang belum ada ke file bulan", key="rp_salin"):
-                with st.spinner("Menyalin…"):
-                    n = data.rapikan("salin", bl_r)
+    if belum_ada:
+        st.warning("Data karyawan dan target belum ada. Klik **Data awal** dan upload dua file Excel-nya.")
+    log = data.baca("update_log")
+    log = dict(zip(log["nama_file"], log["waktu"]))
+    baris = "".join(f"<tr><td>{n}</td><td class='w'>{log.get(n, '-')}</td></tr>" for n in FILE_INFO)
+    st.markdown("<h4 class='info'>► INFORMASI</h4><table class='info'><tr><th>NAMA FILE</th>"
+                f"<th>TERAKHIR UPDATE</th></tr>{baris}</table>", unsafe_allow_html=True)
+    buku = data.info_buku()
+    if buku:
+        tautan = " &nbsp;·&nbsp; ".join(f"<a href='{b['url']}' target='_blank'>{b['nama']}</a>" for b in buku)
+        st.markdown(f"<p style='font-size:13px'>Google Sheet bulanan: {tautan}</p>", unsafe_allow_html=True)
+    if data.pakai_google_sheet():
+        with st.expander("Hubungkan Google Sheet bulanan"):
+            st.caption("Master (sheet_id di Secrets) tidak perlu diganti. Tiap bulan buat Google Sheet kosong, bagikan ke akun layanan "
+                       "sebagai Editor, lalu tempel linknya di sini. Data bulan itu (hasil, jadwal, lembur, absensi, alasan + foto) tersimpan di sana.")
+            bl_ini = datetime.now(data.WIB).strftime("%Y-%m")
+            pilihan = [f"{th}-{bl:02d}" for th in (datetime.now(data.WIB).year - 1, datetime.now(data.WIB).year, datetime.now(data.WIB).year + 1) for bl in range(1, 13)]
+            c1, c2 = st.columns([1, 3])
+            bl_pilih = c1.selectbox("Bulan", pilihan, index=pilihan.index(bl_ini), key="hub_bulan")
+            link = c2.text_input("Link Google Sheet bulan ini", key="hub_link", placeholder="https://docs.google.com/spreadsheets/d/…")
+            if st.button("Hubungkan", key="hub_btn", disabled=not link.strip()):
+                try:
+                    st.success(f"Terhubung: {data.hubungkan_buku(bl_pilih, link)} → bulan {bl_pilih}. Data baru bulan itu disimpan di sana.")
+                except ValueError as e:
+                    st.error(str(e))
+    if data.pakai_google_sheet() and buku:
+        with st.expander("Rapikan Sheet utama (pindahkan data bulan ke file bulanannya)"):
+            st.caption("Alat ini AMAN: langkah Salin tidak menghapus apa pun; langkah Hapus hanya menghapus tab di Sheet utama yang "
+                       "datanya sudah lengkap di file bulan. Sebelum menghapus, buat salinan Sheet utama di Google Drive.")
+            bl_r = st.selectbox("Bulan", [b["bulan"] for b in buku], key="rp_bulan")
+            if st.button("1. Periksa", key="rp_cek"):
                 st.session_state["rp_hasil"] = (bl_r, data.rapikan("periksa", bl_r))
-                st.success(f"{n} tabel disalin. Klik Periksa lagi untuk memastikan.")
-                st.rerun()
-            if any(x["status"] == "aman" for x in hs[1]):
-                oke = st.checkbox("Saya sudah membuat salinan Sheet utama di Google Drive", key="rp_oke")
-                if st.button("3. Hapus salinan lama di master", key="rp_hapus", disabled=not oke):
-                    with st.spinner("Menghapus…"):
-                        dihapus = data.rapikan("hapus", bl_r)
-                    st.session_state.pop("rp_hasil", None)
-                    st.success("Dihapus dari master: " + (", ".join(dihapus) or "tidak ada"))
-if data.pakai_google_sheet():
-    with st.expander("Uji jejak Google Sheet"):
-        st.caption("Menulis satu baris uji ke tab ALASAN TIDAK TARGET bulan ini untuk memastikan jejak email bisa tersimpan.")
-        if st.button("Tulis baris uji", key="tes_jejak"):
-            ok_, pesan_ = data.tes_jejak()
-            (st.success if ok_ else st.error)(pesan_)
+            hs = st.session_state.get("rp_hasil")
+            if hs and hs[0] == bl_r:
+                ket = {"aman": "✅ lengkap di file bulan (boleh dihapus dari master)", "salin": "⚠ belum lengkap di file bulan → klik Salin",
+                       "kosong": "— tidak ada di master"}
+                st.table(pd.DataFrame([{"Tabel": x["tabel"], "Baris di master": x["master"], "Baris di file bulan": x["buku"], "Status": ket[x["status"]]}
+                                       for x in hs[1]]))
+                if any(x["status"] == "salin" for x in hs[1]) and st.button("2. Salin yang belum ada ke file bulan", key="rp_salin"):
+                    with st.spinner("Menyalin…"):
+                        n = data.rapikan("salin", bl_r)
+                    st.session_state["rp_hasil"] = (bl_r, data.rapikan("periksa", bl_r))
+                    st.success(f"{n} tabel disalin. Klik Periksa lagi untuk memastikan.")
+                    st.rerun()
+                if any(x["status"] == "aman" for x in hs[1]):
+                    oke = st.checkbox("Saya sudah membuat salinan Sheet utama di Google Drive", key="rp_oke")
+                    if st.button("3. Hapus salinan lama di master", key="rp_hapus", disabled=not oke):
+                        with st.spinner("Menghapus…"):
+                            dihapus = data.rapikan("hapus", bl_r)
+                        st.session_state.pop("rp_hasil", None)
+                        st.success("Dihapus dari master: " + (", ".join(dihapus) or "tidak ada"))
+    if data.pakai_google_sheet():
+        with st.expander("Uji jejak Google Sheet"):
+            st.caption("Menulis satu baris uji ke tab ALASAN TIDAK TARGET bulan ini untuk memastikan jejak email bisa tersimpan.")
+            if st.button("Tulis baris uji", key="tes_jejak"):
+                ok_, pesan_ = data.tes_jejak()
+                (st.success if ok_ else st.error)(pesan_)
+
+
+# ---------------------------------------------------------------- navigasi menurut peran
+akses.gerbang()
+_p = akses.peran()
+PG_ADMIN = st.Page(halaman_admin, title="Upload Admin", url_path="upload-admin", icon=":material/upload_file:",
+                   default=_p == akses.ADMIN)
+PG_FOREMAN = st.Page(lambda: halaman_foreman.tampil(PG_ADMIN if _p == akses.ADMIN else None), title="Upload Foreman",
+                     url_path="upload-foreman", icon=":material/fact_check:", default=_p == akses.FOREMAN)
+# foreman hanya diberi halaman Foreman: halaman admin tidak terdaftar sama sekali untuk sesi itu
+st.navigation([PG_ADMIN, PG_FOREMAN] if _p == akses.ADMIN else [PG_FOREMAN], position="hidden").run()
