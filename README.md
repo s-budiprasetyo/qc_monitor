@@ -30,3 +30,12 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 ## Tahap 5
 - Kotak kosong di tabel bisa diklik (setelah login) untuk mencatat kegiatan lain; muncul kotak biru K.
 - Google Sheet bulanan otomatis: lihat PANDUAN_SHEET_BULANAN.md.
+
+## Tahap 8b: Monitoring Label (halaman Upload Foreman)
+- Tombol **MONITORING LABEL**: pilih tanggal kerja, shift (Pagi/Sore), operator, pabrik (Pabrik 1: 21 meja, Pabrik 2: 19, QC SK: 5) dan meja;
+  klik **+ Type** (kategori, lalu type dari file target) untuk menambah kolom type; isi Lengket / Garis / Kotor; SIMPAN.
+- Satu baris tersimpan per (operator, meja, type). Meja yang sama boleh diisi operator berbeda. Type yang sama untuk operator+meja+tanggal+shift
+  ditolak (ubah lewat tabel). Tanggal posting dihitung otomatis: Pagi = tanggal kerja, Sore = hari kerja berikutnya menurut jadwal operator.
+- Data masuk ke Google Sheet bulan tanggal kerja (tab `label_afkir` dan `meja_abaikan`); bila Sheet bulannya belum ada, simpan ditolak seperti upload hasil kerja.
+- Notifikasi **Meja yang belum dicek** per pabrik; tombol Abaikan mencatat "Diabaikan oleh <nama>" (bisa dibatalkan).
+- Daftar operator sementara = karyawan jenis PERIKSA (atau jenis kosong) yang tidak disilang di Verifikasi; Tahap 3 menambah Daftar Operator.

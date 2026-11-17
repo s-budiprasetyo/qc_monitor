@@ -23,6 +23,10 @@ KOLOM = {
     "pengajuan": ["prn", "tgl", "menit", "status", "waktu", "email"],  # status: menunggu | V | X
     "pindah_hasil": ["prn", "tgl"],  # hasil kerja yang oleh admin dihitung di tanggal kerja (Transaction Date)
     "masalah_abaikan": ["prn", "tgl"],  # ketidaksesuaian jadwal yang diputuskan admin: abaikan
+    # Monitoring Label (foreman): satu baris = satu type di satu meja oleh satu operator pada satu shift
+    "label_afkir": ["tgl", "shift", "tgl_posting", "waktu", "prn", "nama", "pabrik", "meja", "kategori", "type",
+                    "lengket", "garis", "kotor", "total", "oleh"],
+    "meja_abaikan": ["tgl", "shift", "pabrik", "meja", "oleh", "waktu"],  # meja yang tidak perlu dicek (diabaikan foreman)
 }
 TAB_LAPORAN = ("HASIL KERJA KARYAWAN", "ALASAN TIDAK TARGET")
 KOLOM_HASIL = ["tgl", "nama_sap", "type", "lokasi", "grup", "op", "periksa", "trx"]  # trx = Transaction Date (hari kerja sebenarnya)
@@ -286,7 +290,8 @@ class _Buku:
 
 _POLA_BULAN = re.compile(r"^(?:hasil|jadwal)_(\d{4}-\d{2})$")
 # tabel yang tumbuh tiap bulan: disimpan di Google Sheet bulan masing-masing (dipilah menurut kolom tgl)
-TABEL_BULANAN = ("lembur", "absensi", "alasan", "pengajuan", "kegiatan", "pindah_hasil", "masalah_abaikan")
+TABEL_BULANAN = ("lembur", "absensi", "alasan", "pengajuan", "kegiatan", "pindah_hasil", "masalah_abaikan",
+                 "label_afkir", "meja_abaikan")
 JUDUL_BUKU = ("TOTOQC {b}", "QCTOTO {b}")  # nama kedua hanya toleransi salah ketik
 
 
