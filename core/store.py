@@ -25,8 +25,14 @@ KOLOM = {
     "masalah_abaikan": ["prn", "tgl"],  # ketidaksesuaian jadwal yang diputuskan admin: abaikan
     # Monitoring Label (foreman): satu baris = satu type di satu meja oleh satu operator pada satu shift
     "label_afkir": ["tgl", "shift", "tgl_posting", "waktu", "prn", "nama", "pabrik", "meja", "kategori", "type",
-                    "lengket", "garis", "kotor", "total", "oleh"],
+                    "lengket", "garis", "kotor", "proses", "total", "oleh", "induk"],
+    # pemetaan type SAP (+warna) -> jenis label. jenis: utama | sni (label kedua, induk = label utamanya) | tanpa (tidak ada label)
+    "label_type": ["kategori", "label", "jenis", "type_sap", "warna", "induk"],
+    "label_warna": ["kode", "nama"],
     "meja_abaikan": ["tgl", "shift", "pabrik", "meja", "oleh", "waktu"],  # meja yang tidak perlu dicek (diabaikan foreman)
+    # Pemetaan jenis label (master): type SAP + warna -> label. label kosong = type itu tidak punya label (diabaikan).
+    # warna kosong = berlaku untuk semua warna; sni = "ya" bila label itu punya label pendamping SNI.
+    "jenis_label": ["kategori", "label", "type_sap", "warna", "sni", "ket"],
 }
 TAB_LAPORAN = ("HASIL KERJA KARYAWAN", "ALASAN TIDAK TARGET")
 KOLOM_HASIL = ["tgl", "nama_sap", "type", "lokasi", "grup", "op", "periksa", "trx"]  # trx = Transaction Date (hari kerja sebenarnya)
@@ -299,6 +305,14 @@ class BukuBulananBelumAda(Exception):
     """Upload ditolak: Google Sheet bulan itu belum ada / belum dibagikan / belum dihubungkan."""
 
 
+def _lengkapi(df, nama):
+    """Tab lama yang kolomnya kurang (tabel diberi kolom baru di versi berikutnya): kolom baru diisi kosong."""
+    for c in kolom_tabel(nama):
+        if c not in df.columns:
+            df[c] = ""
+    return df
+
+
 def _urut(df):
     return sorted(map(tuple, df.fillna("").astype(str).values.tolist()))
 
@@ -417,13 +431,13 @@ class SheetsStore:
 
     # --- tabel bulanan (lembur, absensi, ...): dipilah menurut bulan dari kolom tgl
     def _baca_bulanan(self, nama):
-        master = self.utama.read(nama)
+        master = _lengkapi(self.utama.read(nama), nama)
         bagian, di_buku = [], set()
         for bulan in sorted(self._registri()):
             try:
                 b = self._buka(bulan)
                 if b is not None and b.punya_tab(nama):
-                    bagian.append(b.read(nama))
+                    bagian.append(_lengkapi(b.read(nama), nama))
                     di_buku.add(bulan)
             except Exception as e:
                 self.peringatan.append(f"Gagal membaca {nama} bulan {bulan}: {type(e).__name__}: {e}")
@@ -449,11 +463,11 @@ class SheetsStore:
             ada = b.punya_tab(nama)
             if not ada and bag.empty:
                 continue
-            if ada and _urut(b.read(nama)[kol]) == _urut(bag):
+            if ada and _urut(_lengkapi(b.read(nama), nama)[kol]) == _urut(bag):
                 continue
             b.write(nama, bag)  # buku bulan ditulis LEBIH DULU; bila gagal, Sheet utama belum disentuh
         sisa = df[~bln.isin(punya_buku)].reset_index(drop=True)
-        if _urut(self.utama.read(nama)[kol]) != _urut(sisa):
+        if _urut(_lengkapi(self.utama.read(nama), nama)[kol]) != _urut(sisa):
             self.utama.write(nama, sisa)
 
     # --- foto alasan: satu tab per bulan (dipilih dari tanggal di id foto "prn|tgl|no")

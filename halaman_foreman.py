@@ -46,6 +46,8 @@ CSS_JENDELA = """
 .st-key-lbm [data-testid="stColumn"]{min-width:116px !important;flex:0 0 116px !important;width:116px !important}
 .st-key-lbm [data-testid="stColumn"]:first-child{min-width:82px !important;flex:0 0 82px !important;width:82px !important}
 .lb-th{background:#eef4fe;border:1.5px solid #1a73e8;border-radius:10px;text-align:center;padding:4px 2px;line-height:1.15}
+.lb-th.lb-sni{background:#fff4e5;border-color:#f59e0b}
+.lb-th.lb-sni b{color:#b45309}
 .lb-th small{display:block;font-size:10px;color:#5b7399;font-weight:700;letter-spacing:.5px}
 .lb-th b{font-size:13px;color:#0b3d91}
 .lb-jenis{font-weight:700;font-size:13px;color:#0b3d91}
@@ -56,6 +58,14 @@ CSS_JENDELA = """
 .st-key-lbsimpan button[kind="primary"]{background:#1e9e50;border-color:#1e9e50}
 </style>
 """
+
+
+# isian angka: seluruh isi terblok saat diklik, jadi langsung tertimpa angka yang diketik
+JS_PILIH = """<script>
+(function(){const d=window.parent.document; if(d.__lbPilih) return; d.__lbPilih=1;
+d.addEventListener('focusin',function(e){const t=e.target;
+ if(t&&t.tagName==='INPUT'&&t.type==='number'&&t.closest('.st-key-lbm')){setTimeout(function(){try{t.select()}catch(x){}},0)}});})();
+</script>"""
 
 
 def _nama_peta():
@@ -87,6 +97,7 @@ def _bersih_form(jaga_meja=False):
 @st.dialog("MONITORING LABEL", width="large", on_dismiss="rerun")
 def dlg_label():
     st.markdown(CSS_JENDELA, unsafe_allow_html=True)
+    st.html(JS_PILIH, unsafe_allow_javascript=True)
     st.markdown("<div class='lb-kepala'><b>MONITORING LABEL</b><div>Input label afkir</div></div>", unsafe_allow_html=True)
     oleh = st.session_state.get("nama_masuk", "")
     tipe_kat = label.type_per_kategori()
@@ -104,14 +115,17 @@ def dlg_label():
             st.session_state["w_op"] = nm
         st.session_state["w_pabrik"] = muat["pabrik"]
         st.session_state[f"w_meja_{muat['pabrik']}"] = muat["meja"]
-        st.session_state["w_cols"] = list(muat["kolom"])
+        st.session_state["w_cols"] = [t for t in muat["kolom"] if not t.startswith(label.SNI + " ")]
         for t, v in muat["kolom"].items():
             for j, _ in label.JENIS:
-                st.session_state[f"w_n_{t}_{j}"] = int(v[j])
+                n = label._int(v.get(j))
+                st.session_state[f"w_n_{t}_{j}"] = n or None  # 0 ditampilkan kosong (tampil placeholder 0)
         st.session_state["w_edit"] = (muat["prn"], muat["pabrik"], muat["meja"])
     cols = st.session_state.setdefault("w_cols", [])
     if isinstance(cols, dict):
         cols = st.session_state["w_cols"] = list(cols)
+    induk = list(cols)  # label yang dipilih; kolom SNI pendamping ditambahkan otomatis
+    cols = label.kolom_lengkap(induk)
 
     a, b = st.columns([3, 2], vertical_alignment="center")
     tgl = a.date_input("Tanggal kerja", key="w_tgl", format="DD/MM/YYYY", label_visibility="collapsed")
@@ -128,20 +142,26 @@ def dlg_label():
     meja = c2.selectbox("MEJA", label.meja_daftar(pabrik), index=None, key=f"w_meja_{pabrik}",
                         format_func=lambda m: f"Meja {m}", placeholder="Pilih meja…")
 
-    st.markdown("<div class='kt' style='margin:.4rem 0 .2rem'>JUMLAH LABEL AFKIR PER TYPE</div>", unsafe_allow_html=True)
+    st.markdown("<div class='kt' style='margin:.4rem 0 .2rem'>JUMLAH LABEL AFKIR PER JENIS LABEL</div>", unsafe_allow_html=True)
     with st.container(key="lbm"):
         k = st.columns([1] + [1] * len(cols) + [1], vertical_alignment="center")
         k[0].markdown("<div class='lb-jenis'>JENIS AFKIR</div>", unsafe_allow_html=True)
         for i, t in enumerate(cols):
             with k[i + 1]:
-                st.markdown(f"<div class='lb-th'><small>{label.kategori_dari_type(t).upper()}</small><b>{t}</b></div>",
+                sni = t.startswith(label.SNI + " ")
+                if sni:
+                    kecil, besar = "SNI · PENDAMPING", t[len(label.SNI) + 1:]
+                else:
+                    kecil, besar = (label.ket_label(t) or label.kategori_label(t)).upper(), t
+                st.markdown(f"<div class='lb-th{' lb-sni' if sni else ''}'><small>{kecil}</small><b>{besar}</b></div>",
                             unsafe_allow_html=True)
-                with st.container(key=f"lbx_{i}"):
-                    if st.button("✕ hapus", key=f"lbrm_{i}"):
-                        st.session_state["w_cols"] = [x for x in cols if x != t]
-                        st.rerun(scope="fragment")
+                if not sni:
+                    with st.container(key=f"lbx_{i}"):
+                        if st.button("✕ hapus", key=f"lbrm_{i}"):
+                            st.session_state["w_cols"] = [x for x in induk if x != t]
+                            st.rerun(scope="fragment")
         with k[len(cols) + 1], st.container(key="lbplus"):
-            if st.button("+ Type", key="lb_tambah", width="stretch"):
+            if st.button("+ Label", key="lb_tambah", width="stretch"):
                 st.session_state["w_tambah"] = not st.session_state.get("w_tambah", False)
                 st.rerun(scope="fragment")
         total = {t: 0 for t in cols}
@@ -150,30 +170,30 @@ def dlg_label():
             r = st.columns([1] + [1] * len(cols), vertical_alignment="center")
             r[0].markdown(f"<div class='lb-jenis'>{nm}</div>", unsafe_allow_html=True)
             for i, t in enumerate(cols):
-                v = r[i + 1].number_input(f"{nm} {t}", min_value=0, max_value=9999, step=1, key=f"w_n_{t}_{j}",
-                                          label_visibility="collapsed")
-                nilai[t][j] = int(v)
-                total[t] += int(v)
+                v = r[i + 1].number_input(f"{nm} {t}", min_value=0, max_value=9999, step=1, value=None, placeholder="0",
+                                          key=f"w_n_{t}_{j}", label_visibility="collapsed")
+                nilai[t][j] = int(v or 0)
+                total[t] += int(v or 0)
         if cols:
             r = st.columns([1] + [1] * len(cols), vertical_alignment="center")
             r[0].markdown("<div class='lb-jenis' style='color:#b71c1c'>TOTAL</div>", unsafe_allow_html=True)
             for i, t in enumerate(cols):
                 r[i + 1].markdown(f"<div class='lb-total'>{total[t]}</div>", unsafe_allow_html=True)
         else:
-            st.caption("Klik **+ Type** untuk memilih type yang dicek.")
+            st.caption("Klik **+ Label** untuk memilih jenis label yang dicek.")
 
     if st.session_state.get("w_tambah"):
         n = st.session_state.setdefault("w_pk", 0)
         with st.container(border=True):
             kat = st.pills("PILIH KATEGORI", label.KATEGORI, key=f"w_kat_{n}")
             if kat:
-                pilihan = [t for t in tipe_kat.get(kat, []) if t not in cols]
+                pilihan = [t for t in tipe_kat.get(kat, []) if t not in induk]
                 if not pilihan:
                     st.caption("Tidak ada type untuk kategori ini (atau semuanya sudah dipilih).")
                 else:
-                    tp = st.pills(f"{kat.upper()} → PILIH TYPE", pilihan, key=f"w_typ_{n}_{kat}")
+                    tp = st.pills(f"{kat.upper()} → PILIH LABEL", pilihan, key=f"w_typ_{n}_{kat}")
                     if tp:
-                        st.session_state["w_cols"] = cols + [tp]
+                        st.session_state["w_cols"] = induk + [tp]
                         st.session_state["w_tambah"] = False
                         st.session_state["w_pk"] = n + 1
                         st.rerun(scope="fragment")
@@ -188,8 +208,8 @@ def dlg_label():
             st.error("Pilih nama operator.")
         elif not meja:
             st.error("Pilih meja.")
-        elif not cols:
-            st.error("Pilih minimal satu type (klik + Type).")
+        elif not induk:
+            st.error("Pilih minimal satu label (klik + Label).")
         else:
             try:
                 with st.spinner("Menyimpan…"):
@@ -262,10 +282,10 @@ def _tabel(tgl_s, shift):
     pk = {"Pabrik 1": "P1", "Pabrik 2": "P2", "QC SK": "SK"}
     baris = "".join(
         f"<tr><td>{r.waktu}</td><td>{pk.get(r.pabrik, r.pabrik)}-{r.meja}</td><td>{r.nama}</td><td>{r.type}</td>"
-        f"<td class='n'>{r.lengket}</td><td class='n'>{r.garis}</td><td class='n'>{r.kotor}</td><td class='n'><b>{r.total}</b></td>"
+        f"<td class='n'>{r.lengket}</td><td class='n'>{r.garis}</td><td class='n'>{r.kotor}</td><td class='n'>{label._int(r.proses)}</td><td class='n'><b>{r.total}</b></td>"
         f"<td>{r.tgl_posting[8:]}-{r.tgl_posting[5:7]}</td></tr>" for r in d.itertuples())
-    st.markdown("<div class='sx2'><table class='lb'><tr><th>Jam</th><th>Meja</th><th>Operator</th><th>Type</th>"
-                "<th class='n'>Lengket</th><th class='n'>Garis</th><th class='n'>Kotor</th><th class='n'>Total</th>"
+    st.markdown("<div class='sx2'><table class='lb'><tr><th>Jam</th><th>Meja</th><th>Operator</th><th>Label</th>"
+                "<th class='n'>Lengket</th><th class='n'>Garis</th><th class='n'>Kotor</th><th class='n'>Proses</th><th class='n'>Total</th>"
                 f"<th>Posting</th></tr>{baris}</table></div>", unsafe_allow_html=True)
     nama = [f"{r.waktu} · {pk.get(r.pabrik, r.pabrik)}-{r.meja} · {r.nama} · {r.type}" for r in d.itertuples()]
     with st.expander("Ubah atau hapus input"):
@@ -274,7 +294,7 @@ def _tabel(tgl_s, shift):
         c = st.columns(2)
         if c[0].button("✎ Ubah operator & meja ini", key="pg_ubah", width="stretch"):
             grup = d[(d["prn"] == r["prn"]) & (d["pabrik"] == r["pabrik"]) & (d["meja"] == r["meja"])]
-            kolom = {x["type"]: {"lengket": x["lengket"], "garis": x["garis"], "kotor": x["kotor"]} for _, x in grup.iterrows()}
+            kolom = {x["type"]: {j: x[j] for j, _ in label.JENIS} for _, x in grup.iterrows()}
             _buka_jendela({"prn": r["prn"], "pabrik": r["pabrik"], "meja": r["meja"], "kolom": kolom})
         with c[1].popover("🗑 Hapus input ini", use_container_width=True):
             st.write(f"Hapus {nama[i]}? (Tidak bisa dibatalkan.)")

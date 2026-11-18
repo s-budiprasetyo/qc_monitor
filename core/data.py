@@ -84,6 +84,9 @@ def upsert(nama, baru, kunci, hapus=None):
     """Gabungkan baris baru ke tabel: baris lama dengan kunci yang sama diganti.
     hapus (opsional): DataFrame berisi kolom kunci yang barisnya dihapus dari tabel."""
     lama = store().read(nama)
+    for c in baru.columns:  # tabel lama yang belum punya kolom baru: isi kosong (bukan NaN, agar angka tidak jadi "4.0")
+        if c not in lama.columns:
+            lama[c] = ""
     if hapus is not None and len(hapus):
         k = set(map(tuple, hapus[kunci].astype(str).values))
         lama = lama[[tuple(r) not in k for r in lama[kunci].astype(str).values]]

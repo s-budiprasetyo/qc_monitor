@@ -1,0 +1,80 @@
+kategori,label,jenis,type_sap,warna,induk
+Closet,CE6,utama,CE6,W,
+Closet,CE7,utama,CE7,W,
+Closet,CE9,utama,CE9,W,
+Closet,CW420J,utama,CW420J,W,
+Closet,CW420J,utama,CW420J (M),W,
+Closet,CW421J,utama,CW421J,W,
+Closet,CW422J,utama,CW422J,W,
+Closet,CW427J,utama,CW427J,W,
+Closet,CW427J,utama,CW427J (M),W,
+Closet,CW52J,utama,CW52J,W,
+Closet,CW53J,utama,CW53J,W,
+Closet,CW53J,utama,CW53J (HPC),W,
+Closet,CW53J,utama,CW53J P1#CASE BARU,W,
+Closet,CW53J,utama,CW53J P2#CASE BARU,W,
+Closet,CW53PJ,utama,CW53PJ,W,
+Closet,CW633J,utama,CW633J,W,
+Closet,CW637J,utama,CW637J,W,
+Closet,CW702J,utama,CW702J,W,
+Lavatory,L38,utama,L38,W,
+Lavatory,L38V1,utama,L38V1,W,
+Lavatory,L521V1A,utama,L521V1A,W,
+Lavatory,L521V3,utama,L521V3,W,
+Lavatory,L529V1,utama,L529V1,W,
+Lavatory,L568V3,utama,L568V3,W,
+Lavatory,LW211CJ,utama,LW211CJ,W,
+Lavatory,LW230J,utama,LW230J,W,
+Lavatory,LW236CJ,utama,LW236CJ,W,
+Lavatory,LW240CJ,utama,LW240CJ,W,
+Lavatory,LW246J,utama,LW246J,W,
+Lavatory,LW247CJ,utama,LW247CJ,W,
+Lavatory,LW248JT1,utama,LW248JT1,W,
+Lavatory,LW523NJ,utama,LW523NJ,W,
+Lavatory,LW540J,utama,LW540J,W,
+Lavatory,LW642CJ,utama,LW642CJ,W,
+Lavatory,LW647CJ,utama,LW647CJ,W,
+Tangki,S161N,utama,S161N,W,
+Tangki,S163N,utama,S163N,W,
+Tangki,S211N,utama,S211N,W,
+Tangki,SW420IJP,utama,SW420IJP,W,
+Tangki,SW422IJP,utama,SW422IJP,W,
+Tangki,SW427IJP,utama,SW427IJP,W,
+Tangki,SW53IJP,utama,SW53IJP,W,
+Tangki,SW633IJP,utama,SW633IJP,W,
+Tangki,SW637IJP,utama,SW637IJP,W,
+Tangki,SW784IJP,utama,SW784IJP,W,
+Urinal,U104ST,utama,U104ST,W,
+Urinal,U57M,utama,U57M,W,
+Aksesoris,A100,utama,A100,W,
+Aksesoris,X003,utama,X003,W,
+Aksesoris,X004,utama,X004,W,
+Closet,B,utama,CE7,B,
+Closet,DR,utama,CE7,DR,
+Closet,HBE,utama,CE7,HBE,
+Closet,HF,utama,CE7,HF,
+Closet,MA,utama,CE7,MA,
+Closet,PB,utama,CE7,PB,
+Closet,PIV,utama,CE7,PIV,
+Closet,PP,utama,CE7,PP,
+Closet,SNI,sni,CW420J,W,CW420J
+Closet,SNI,sni,CW420J (M),W,CW420J
+Closet,SNI,sni,CW421J,W,CW421J
+Closet,SNI,sni,CW422J,W,CW422J
+Closet,SNI,sni,CW427J,W,CW427J
+Closet,SNI,sni,CW427J (M),W,CW427J
+Closet,SNI,sni,CW53J,W,CW53J
+Closet,SNI,sni,CW53J (HPC),W,CW53J
+Closet,SNI,sni,CW53J P1#CASE BARU,W,CW53J
+Closet,SNI,sni,CW53J P2#CASE BARU,W,CW53J
+Closet,SNI,sni,CW53PJ,W,CW53PJ
+Closet,SNI,sni,CW633J,W,CW633J
+Closet,SNI,sni,CW637J,W,CW637J
+Closet,SNI,sni,CW702J,W,CW702J
+Tangki,,tanpa,SW420CRJP,W,
+Tangki,,tanpa,SW422CRJP,W,
+Tangki,,tanpa,SW427CRJP,W,
+Tangki,,tanpa,SW53CRJP,W,
+Tangki,,tanpa,SW633CRJP,W,
+Tangki,,tanpa,SW637CRJP,W,
+Tangki,,tanpa,SW784CRJP,W,

@@ -8,7 +8,7 @@ import pandas as pd
 import streamlit as st
 
 import halaman_foreman
-from core import akses, calc, data, logic, parsers
+from core import akses, calc, data, label, logic, parsers
 from core.grid import jadwal_grid
 from core.bulan import pilih_bulan
 from core.hub import hub
@@ -400,8 +400,30 @@ def masalah_cache(versi_data):
     return cari_masalah()
 
 
+def cari_label_belum():
+    """Pasangan type SAP + warna di hasil kerja 3 bulan terakhir yang belum punya aturan jenis label."""
+    tabel, baris = label.jenis_tabel(), []
+    for b in data.daftar_bulan()[-3:]:
+        h = data.baca(f"hasil_{b}")
+        if h.empty:
+            continue
+        wr = h["SAP | Warna"] if "SAP | Warna" in h.columns else pd.Series([""] * len(h), index=h.index)
+        baris.append(pd.DataFrame({"type": h["type"], "warna": wr.astype(str)}))
+    if not baris:
+        return pd.DataFrame(columns=["type", "warna", "baris"])
+    d = pd.concat(baris).groupby(["type", "warna"]).size().reset_index(name="baris")
+    ok = [label.label_untuk_sap(t, w, tabel)[1] for t, w in zip(d["type"], d["warna"])]
+    return d[[not x for x in ok]].reset_index(drop=True)
+
+
+@st.cache_data(ttl=180, show_spinner=False, max_entries=2)
+def label_belum_cache(versi_data):
+    return cari_label_belum()
+
+
 def hitung_jumlah(baru, tanpa, bentrok):
-    return len(baru) + (1 if len(tanpa) else 0) + (1 if bentrok else 0) + (1 if logic.belum_diverifikasi() else 0)
+    return (len(baru) + (1 if len(tanpa) else 0) + (1 if bentrok else 0) + (1 if logic.belum_diverifikasi() else 0)
+            + (1 if len(label_belum_cache(data.versi())) else 0))
 
 
 @st.dialog("PUSAT NOTIFIKASI", width="large")
@@ -467,6 +489,32 @@ def dlg_lonceng(baru, tanpa, bentrok):
                     keep = [(g, t, o) not in kh for g, t, o in zip(h["grup"], h["type"], h["op"])]
                     if not all(keep):
                         data.tulis(f"hasil_{b}", h[keep])
+            st.rerun()
+        st.divider()
+    belum_label = label_belum_cache(data.versi())
+    if len(belum_label):
+        st.markdown(f"**Type / warna belum punya jenis label ({len(belum_label)}).** Pilih label yang sesuai atau "
+                    "\"TANPA LABEL\", lalu TERAPKAN. Type baru yang labelnya belum ada: tambahkan dulu di "
+                    "*Jenis label* (bagian bawah halaman admin).")
+        TANPA = "— TANPA LABEL —"
+        opsi = [TANPA] + [x for v in label.type_per_kategori().values() for x in v]
+        tb = pd.DataFrame({"TYPE": belum_label["type"], "WARNA": belum_label["warna"], "BARIS": belum_label["baris"],
+                           "LABEL": [None] * len(belum_label)})
+        ed = st.data_editor(tb, hide_index=True, width="stretch", key="lbl_ed", disabled=["TYPE", "WARNA", "BARIS"],
+                            column_config={"LABEL": st.column_config.SelectboxColumn("LABEL", options=opsi)})
+        if st.button("TERAPKAN", type="primary", key="lbl_ok"):
+            jt, baru_baris = label.jenis_tabel(), []
+            for _, r in ed.iterrows():
+                if not r["LABEL"]:
+                    continue
+                lb = "" if r["LABEL"] == TANPA else r["LABEL"]
+                ada = jt[jt["label"] == lb] if lb else jt.iloc[0:0]
+                baru_baris.append({"kategori": ada.iloc[0]["kategori"] if len(ada) else "", "label": lb, "type_sap": r["TYPE"],
+                                   "warna": r["WARNA"], "sni": "ya" if (len(ada) and (ada["sni"].str.lower() == "ya").any()) else "",
+                                   "ket": ""})
+            if baru_baris:
+                data.tulis("jenis_label", pd.concat([jt, pd.DataFrame(baru_baris)], ignore_index=True))
+            st.session_state["bel_buka"] = True
             st.rerun()
         st.divider()
     if bentrok:
@@ -606,6 +654,58 @@ def dlg_eval():
 
 
 
+# ---------------------------------------------------------------- jenis label
+_KOL_JL = {"kategori": "Kategori", "label": "Label", "type_sap": "Type SAP", "warna": "Warna SAP", "sni": "SNI", "ket": "Keterangan"}
+
+
+def _jl_ke_tabel(df):
+    """Tabel editor/Excel -> bentuk simpanan. Baris tanpa Type SAP dibuang; SNI jadi 'ya' atau kosong."""
+    d = df.rename(columns={v: k for k, v in _KOL_JL.items()}).copy()
+    for c in _KOL_JL:
+        if c not in d.columns:
+            d[c] = ""
+    d = d[list(_KOL_JL)].fillna("")
+    d["sni"] = d["sni"].map(lambda x: "ya" if str(x).strip().lower() in ("ya", "true", "1", "y", "sni") else "")
+    d = d.astype(str).apply(lambda c: c.str.strip())
+    d["type_sap"] = d["type_sap"].str.upper().str.replace(r"\s+", " ", regex=True)
+    d["warna"] = d["warna"].str.upper()
+    return d[d["type_sap"] != ""].reset_index(drop=True)
+
+
+def kelola_jenis_label():
+    st.caption("Pemetaan **Type SAP + Warna → Label**. Label ini yang muncul di jendela Monitoring Label dan dipakai mencocokkan "
+               "hasil SAP. *Warna SAP* kosong = berlaku untuk semua warna. *Label* kosong = type itu tidak punya label. "
+               "*SNI* dicentang = label itu punya label SNI pendamping. Klik baris kosong paling bawah untuk menambah.")
+    t = label.jenis_tabel()
+    tampil = t.assign(sni=t["sni"].str.lower() == "ya").rename(columns=_KOL_JL)
+    ed = st.data_editor(tampil, num_rows="dynamic", hide_index=True, width="stretch", key="jl_ed", height=380,
+                        column_config={"Kategori": st.column_config.SelectboxColumn("Kategori", options=label.KATEGORI),
+                                       "SNI": st.column_config.CheckboxColumn("SNI")})
+    c1, c2 = st.columns(2)
+    if c1.button("SIMPAN JENIS LABEL", type="primary", key="jl_simpan", width="stretch"):
+        hasil = _jl_ke_tabel(ed)
+        data.tulis("jenis_label", hasil)
+        st.success(f"Tersimpan: {len(hasil)} baris, {len({x for x in hasil['label'] if x})} jenis label.")
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as w:
+        t.rename(columns=_KOL_JL).to_excel(w, index=False, sheet_name="Jenis label")
+    c2.download_button("Unduh Excel jenis label", buf.getvalue(), "jenis_label.xlsx", key="jl_unduh", width="stretch",
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    f = st.file_uploader("Atau unggah Excel jenis label (kolom: Kategori, Label, Type SAP, Warna SAP, SNI, Keterangan)",
+                         type=["xlsx"], key="jl_file")
+    if f is not None:
+        try:
+            baru = _jl_ke_tabel(pd.read_excel(f, dtype=str))
+        except Exception as e:
+            st.error(f"File tidak bisa dibaca: {e}")
+            return
+        st.write(f"Terbaca **{len(baru)} baris**, {len({x for x in baru['label'] if x})} jenis label. Ini akan **menggantikan** tabel sekarang.")
+        if st.button("GANTI TABEL DENGAN FILE INI", key="jl_ganti"):
+            data.tulis("jenis_label", baru)
+            st.success("Tabel jenis label diganti.")
+            st.rerun()
+
+
 # ---------------------------------------------------------------- halaman
 def halaman_admin():
     akses.butuh(akses.ADMIN)
@@ -696,6 +796,8 @@ def halaman_admin():
                     st.success(f"Terhubung: {data.hubungkan_buku(bl_pilih, link)} → bulan {bl_pilih}. Data baru bulan itu disimpan di sana.")
                 except ValueError as e:
                     st.error(str(e))
+    with st.expander("Jenis label (tambah / ubah / unggah Excel)"):
+        kelola_jenis_label()
     if data.pakai_google_sheet() and buku:
         with st.expander("Rapikan Sheet utama (pindahkan data bulan ke file bulanannya)"):
             st.caption("Alat ini AMAN: langkah Salin tidak menghapus apa pun; langkah Hapus hanya menghapus tab di Sheet utama yang "

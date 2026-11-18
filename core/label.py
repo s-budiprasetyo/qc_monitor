@@ -2,6 +2,8 @@
 import re
 from datetime import date, datetime, timedelta
 
+from pathlib import Path
+
 import pandas as pd
 
 from core import data, logic
@@ -9,9 +11,9 @@ from core import data, logic
 PABRIK = {"Pabrik 1": 21, "Pabrik 2": 19, "QC SK": 5}  # jumlah meja per pabrik (total 45)
 SHIFT = ["Pagi", "Sore"]  # SAP: Shift B = Pagi, C = Sore
 KATEGORI = ["Closet", "Lavatory", "Tangki", "Urinal", "Aksesoris"]
-JENIS = [("lengket", "Lengket"), ("garis", "Garis"), ("kotor", "Kotor")]
+JENIS = [("lengket", "Lengket"), ("garis", "Garis"), ("kotor", "Kotor"), ("proses", "Proses")]
 KOLOM = ["tgl", "shift", "tgl_posting", "waktu", "prn", "nama", "pabrik", "meja", "kategori", "type",
-         "lengket", "garis", "kotor", "total", "oleh"]
+         "lengket", "garis", "kotor", "proses", "total", "oleh", "induk"]
 KUNCI = ["tgl", "shift", "prn", "pabrik", "meja", "type"]
 BATAS_KOTOR = 0.5  # persen dari jumlah periksa (dipakai laporan tahap berikutnya)
 
@@ -29,8 +31,10 @@ def nama_meja(pabrik, meja):
 
 
 def kategori_dari_type(t):
-    """Aturan awalan type: CW/CE = Closet, L/LW = Lavatory, SW/S+angka = Tangki, U = Urinal, selain itu Aksesoris."""
+    """Cadangan bila type tidak ada di tabel jenis label: CW/CE = Closet, L/LW = Lavatory, SW/S+angka = Tangki, U = Urinal."""
     t = str(t).strip().upper()
+    if t.startswith("SNI"):
+        return "SNI"
     if re.match(r"^(CW|CE)", t):
         return "Closet"
     if re.match(r"^L", t):
@@ -42,12 +46,78 @@ def kategori_dari_type(t):
     return "Aksesoris"
 
 
+SNI = "SNI"
+_SEED = Path(__file__).resolve().parent.parent / "assets" / "jenis_label_awal.csv"
+
+
+def jenis_tabel():
+    """Tabel pemetaan jenis label. Bila belum pernah disimpan di master, dipakai data awal dari assets/."""
+    t = data.baca("jenis_label")
+    if t.empty and _SEED.exists():
+        t = pd.read_csv(_SEED, dtype=str, keep_default_na=False)
+    for c in ("kategori", "label", "type_sap", "warna", "sni", "ket"):
+        if c not in t.columns:
+            t[c] = ""
+    return t.fillna("").astype(str)
+
+
+def _norm(x):
+    return re.sub(r"\s+", " ", str(x)).strip().upper()
+
+
+def label_untuk_sap(tipe, warna, tabel=None):
+    """Jenis label untuk satu baris SAP. Return (label, ada_aturan): label '' = type itu memang tanpa label,
+    ada_aturan False = type+warna belum terpetakan (masuk notifikasi admin)."""
+    t = jenis_tabel() if tabel is None else tabel
+    tp, wr = _norm(tipe), _norm(warna)
+    cocok = t[t["type_sap"].map(_norm) == tp]
+    for w in (wr, ""):
+        c = cocok[cocok["warna"].map(_norm) == w]
+        if len(c):
+            return str(c.iloc[0]["label"]), True
+    return "", False
+
+
 def type_per_kategori():
-    """{kategori: [type,...]} dari data target (PENCAPAIAN KERJA QC); jadi daftar pilihan type."""
-    t = data.baca("target")
+    """{kategori: [label,...]} untuk pilihan di jendela input (berurutan seperti di tabel, tanpa duplikat, tanpa 'tanpa label')."""
+    t = jenis_tabel()
     hasil = {k: [] for k in KATEGORI}
-    for x in sorted({str(v).strip() for v in t["type"] if str(v).strip()}):
-        hasil[kategori_dari_type(x)].append(x)
+    for r in t.itertuples():
+        if r.label and r.kategori in hasil and r.label not in hasil[r.kategori]:
+            hasil[r.kategori].append(r.label)
+    return hasil
+
+
+def ket_label(lb):
+    t = jenis_tabel()
+    c = t[(t["label"] == lb) & (t["ket"] != "")]
+    return str(c.iloc[0]["ket"]) if len(c) else ""
+
+
+def punya_sni(lb):
+    t = jenis_tabel()
+    return bool(len(t[(t["label"] == lb) & (t["sni"].str.lower() == "ya")]))
+
+
+def nama_sni(lb):
+    return f"{SNI} {lb}"
+
+
+def kategori_label(lb):
+    if str(lb).startswith(SNI + " "):
+        return SNI
+    t = jenis_tabel()
+    c = t[t["label"] == lb]
+    return str(c.iloc[0]["kategori"]) if len(c) else kategori_dari_type(lb)
+
+
+def kolom_lengkap(daftar):
+    """Label terpilih -> kolom matriks: tiap label yang punya SNI diikuti kolom pendamping 'SNI <label>'."""
+    hasil = []
+    for lb in daftar:
+        hasil.append(lb)
+        if punya_sni(lb):
+            hasil.append(nama_sni(lb))
     return hasil
 
 
@@ -94,12 +164,14 @@ def tanggal_posting(prn, tgl, shift):
 
 def baca_hari(tgl, shift):
     d = data.baca("label_afkir")
+    if "proses" not in d.columns:  # data sebelum baris Proses ada
+        d["proses"] = ""
     return d[(d["tgl"] == tgl) & (d["shift"] == shift)].reset_index(drop=True)
 
 
 def _int(x):
     try:
-        return max(0, int(x or 0))
+        return max(0, int(float(x or 0)))
     except (TypeError, ValueError):
         return 0
 
@@ -123,10 +195,11 @@ def simpan(tgl, shift, prn, nama, pabrik, meja, kolom, oleh, ganti_lama=None):
     posting = tanggal_posting(prn, tgl, shift)
     baris = []
     for t, v in kolom.items():
-        l, g, k = _int(v.get("lengket")), _int(v.get("garis")), _int(v.get("kotor"))
+        l, g, k, pr = (_int(v.get(j)) for j in ("lengket", "garis", "kotor", "proses"))
         baris.append({"tgl": tgl, "shift": shift, "tgl_posting": posting, "waktu": waktu, "prn": prn, "nama": nama,
-                      "pabrik": pabrik, "meja": str(meja), "kategori": kategori_dari_type(t), "type": t,
-                      "lengket": l, "garis": g, "kotor": k, "total": l + g + k, "oleh": oleh})
+                      "pabrik": pabrik, "meja": str(meja), "kategori": kategori_label(t), "type": t,
+                      "lengket": l, "garis": g, "kotor": k, "proses": pr, "total": l + g + k + pr, "oleh": oleh,
+                      "induk": t[len(SNI) + 1:] if t.startswith(SNI + " ") else ""})
     hapus = None
     if ganti_lama is not None:
         lp, lpab, lm = ganti_lama

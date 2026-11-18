@@ -39,3 +39,15 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Data masuk ke Google Sheet bulan tanggal kerja (tab `label_afkir` dan `meja_abaikan`); bila Sheet bulannya belum ada, simpan ditolak seperti upload hasil kerja.
 - Notifikasi **Meja yang belum dicek** per pabrik; tombol Abaikan mencatat "Diabaikan oleh <nama>" (bisa dibatalkan).
 - Daftar operator sementara = karyawan jenis PERIKSA (atau jenis kosong) yang tidak disilang di Verifikasi; Tahap 3 menambah Daftar Operator.
+
+- Revisi 8c: isian angka label default kosong (placeholder 0) dan terblok saat diklik; baris jenis afkir **Proses** ditambahkan (total = Lengket+Garis+Kotor+Proses). Tab Google Sheet lama tanpa kolom `proses` tetap terbaca (kolom diisi kosong).
+
+## Tahap 8d: jenis label, SNI, kelola jenis label
+- Tabel master `jenis_label` (Type SAP + Warna SAP -> Label; kolom Kategori, SNI, Keterangan). Data awal dari `assets/jenis_label_awal.csv`
+  (dibuat dari Excel type_warna_SAP.xlsx) dipakai sampai tabel pertama kali disimpan dari halaman admin.
+- Warna putih (W) memakai nama type sebagai label; warna lain memakai kode warna (mis. CE7 + DR -> label DR). Type CRJP tanpa label.
+- Label SNI = label kedua untuk tiap type CW kecuali CW52J: kolom `SNI <label>` muncul otomatis di samping label induknya
+  (disimpan sebagai baris tersendiri, kategori `SNI`, kolom `induk` = label induk). % afkir SNI = afkir SNI / pcs bagus SAP type induknya.
+- Admin: bagian **Jenis label (tambah / ubah / unggah Excel)** di bawah halaman Upload Admin; lonceng memberi tahu type+warna dari hasil SAP
+  yang belum terpetakan (pasangkan ke label atau TANPA LABEL).
+- `label.label_untuk_sap(type, warna)` = fungsi pencocok untuk laporan % label afkir (Tahap 4).
