@@ -65,7 +65,7 @@ def halaman():
     akses.butuh(akses.ADMIN, akses.FOREMAN)
     st.markdown(CSS, unsafe_allow_html=True)
     gaya_global()
-    akses.bilah()
+    akses.bilah(tautan=akses.tautan_luar("laporan"))
     st.markdown("<h1 class='judul-l'>LAPORAN % LABEL AFKIR</h1>"
                 "<div class='sub-l'>Afkir label (input foreman) ÷ pcs bagus SAP, per karyawan dan label. Hanya lihat dan unduh Excel.</div>",
                 unsafe_allow_html=True)

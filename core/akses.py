@@ -14,10 +14,10 @@ MAKS_GAGAL = 5
 
 CSS_BAR = """
 <style>
-.st-key-sw a{border:1.5px solid #1a73e8;border-radius:999px;background:#fff;color:#1a73e8 !important;font-weight:700;
+.st-key-sw a,.st-key-sw2 a{border:1.5px solid #1a73e8;border-radius:999px;background:#fff;color:#1a73e8 !important;font-weight:700;
   padding:.3rem .9rem;font-size:13px;text-decoration:none;display:inline-flex;gap:.4rem;align-items:center;white-space:nowrap}
-.st-key-sw a:hover{background:#e8f0fe}
-.st-key-sw a p{font-size:13px;margin:0}
+.st-key-sw a:hover,.st-key-sw2 a:hover{background:#e8f0fe}
+.st-key-sw a p,.st-key-sw2 a p{font-size:13px;margin:0}
 .kip{background:#fff;border:1px solid #d4e1f5;border-radius:999px;padding:.38rem .9rem;font-size:13px;color:#44628f;
   font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .kip b{color:#0b3d91}
@@ -26,7 +26,7 @@ CSS_BAR = """
   .st-key-bar [data-testid="stHorizontalBlock"]{flex-wrap:nowrap !important;gap:.35rem !important}
   .st-key-bar [data-testid="stColumn"]{min-width:0 !important;width:auto !important;flex:0 0 auto !important}
   .st-key-bar [data-testid="stColumn"]:first-child{flex:1 1 auto !important}
-  .st-key-sw a p{display:none}
+  .st-key-sw a p,.st-key-sw2 a p{display:none}
   .kip{display:none}
 }
 </style>
@@ -119,12 +119,34 @@ def gerbang():
     st.stop()
 
 
-def bilah(halaman_lain=None, label_lain=""):
+def _rahasia(kunci):
+    try:
+        return str(st.secrets.get(kunci, "") or "").strip().rstrip("/")
+    except Exception:
+        return ""
+
+
+def tautan_luar(app):
+    """Tombol pindah antar aplikasi menurut peran. app = 'admin' | 'laporan'.
+    Alamat app lain dibaca dari Secrets: url_admin, url_laporan (kosong = tombol tidak muncul)."""
+    if app == "laporan":
+        u = _rahasia("url_admin")
+        if not u:
+            return []
+        return [("Ke Upload Admin", u + "/upload-admin")] if peran() == ADMIN else [("Ke Upload Foreman", u + "/upload-foreman")]
+    u = _rahasia("url_laporan")
+    return [("Laporan", u)] if u else []
+
+
+def bilah(halaman_lain=None, label_lain="", tautan=None):
     """Baris kecil di kanan atas: [pindah halaman (hanya admin)] [nama · peran] [Keluar]."""
     st.markdown(CSS_BAR, unsafe_allow_html=True)
     nama = st.session_state.get("nama_masuk", "")
     with st.container(key="bar"):
         c = st.columns([4, 2.7, 4.2, 1.3], vertical_alignment="center")
+        with c[0], st.container(key="sw2"):
+            for i, (lb, url) in enumerate(tautan if tautan is not None else tautan_luar("admin")):
+                st.link_button(lb, url, icon=":material/bar_chart:" if lb == "Laporan" else ":material/swap_horiz:", key=f"lk_{i}")
         with c[1], st.container(key="sw"):
             if halaman_lain is not None and peran() == ADMIN:
                 st.page_link(halaman_lain, label=label_lain, icon=":material/swap_horiz:")

@@ -72,3 +72,7 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Excel: Harian (satu tanggal) dan Bulanan (sheet Ringkasan bulan + Per hari); kolom % memakai rumus.
 - Pasang sebagai app ke-3 di Streamlit Cloud: repo qc_monitor, Main file `app_laporan.py`, Secrets disalin dari app admin.
 - 9b: keterangan label warna HBE (Harvest Beige), HF (Harvest Green), PP (Pastel Pink) ditambahkan ke data awal jenis label.
+
+## Tahap 9c: tombol pindah antar aplikasi
+- Secrets (letakkan SEBELUM baris `[admin]`, di baris paling atas): `url_laporan = "https://…"` di app admin; `url_admin = "https://…"` di app laporan.
+- App admin/foreman: tombol "Laporan" (admin dan foreman). App laporan: admin melihat "Ke Upload Admin", foreman melihat "Ke Upload Foreman". Tombol tidak muncul bila alamat belum diisi. Tiap app punya login sendiri.
