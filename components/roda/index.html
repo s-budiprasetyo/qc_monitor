@@ -4,7 +4,7 @@
 :root{--b1:#2a8fe8;--b2:#6ec6ff;--navy:#0b3d91;--mut:#5b7399;--line:#cfe0f7}
 html,body{margin:0;padding:0;background:transparent;font-family:"Source Sans Pro",system-ui,sans-serif;overflow:hidden;color:var(--navy)}
 #app{display:flex;gap:24px;align-items:center;padding:4px 2px 10px}
-#wheel{position:relative;flex:0 0 auto;width:min(52%,500px);aspect-ratio:1/1;user-select:none;touch-action:pan-y;margin:0}
+#wheel{position:relative;flex:0 0 auto;width:min(52%,500px);aspect-ratio:1/.9;user-select:none;touch-action:pan-y;margin:0}
 #wheel svg.ring{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 #gear{position:absolute;pointer-events:none}
 #gear svg{width:100%;height:100%;display:block}
@@ -68,10 +68,10 @@ function gearSvg(){
 }
 function build(){
   wheel.innerHTML="";S=wheel.clientWidth;
-  var ring=document.createElementNS("http://www.w3.org/2000/svg","svg");ring.setAttribute("class","ring");ring.setAttribute("viewBox","0 0 100 100");
-  var sm0=S<420,rx=sm0?40:46,rr=sm0?31:34;ring.innerHTML='<circle cx="'+rx+'" cy="50" r="'+rr+'" fill="none" stroke="#bcd3f2" stroke-width=".35" stroke-dasharray="0.6 1.6" stroke-linecap="round"/><circle cx="'+rx+'" cy="50" r="'+(rr-10)+'" fill="none" stroke="#e1ecfa" stroke-width=".3"/>';
+  var ring=document.createElementNS("http://www.w3.org/2000/svg","svg");ring.setAttribute("class","ring");ring.setAttribute("viewBox","0 0 100 90");
+  var sm0=S<420,rx=sm0?40:46,rr=sm0?31:34;ring.innerHTML='<circle cx="'+rx+'" cy="45" r="'+rr+'" fill="none" stroke="#bcd3f2" stroke-width=".35" stroke-dasharray="0.6 1.6" stroke-linecap="round"/><circle cx="'+rx+'" cy="45" r="'+(rr-10)+'" fill="none" stroke="#e1ecfa" stroke-width=".3"/>';
   wheel.appendChild(ring);
-  var g=document.createElement("div");g.id="gear";var gs=S*(sm0?0.37:0.40);g.style.cssText="width:"+gs+"px;height:"+gs+"px;left:"+(S*(sm0?.40:.46)-gs/2)+"px;top:"+(S*.5-gs/2)+"px";
+  var g=document.createElement("div");g.id="gear";var gs=S*(sm0?0.37:0.40);g.style.cssText="width:"+gs+"px;height:"+gs+"px;left:"+(S*(sm0?.40:.46)-gs/2)+"px;top:"+(S*.45-gs/2)+"px";
   g.innerHTML=gearSvg()+'<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;border-radius:50%;width:62%;height:62%;margin:auto;box-shadow:inset 0 0 0 2px #e6f0fc" id="gtx"></div>';
   wheel.appendChild(g);
   var tx=g.querySelector("#gtx");tx.style.transform="none";
@@ -88,7 +88,7 @@ function build(){
 }
 function norm(d,n){d=((d%n)+n)%n;return d>n/2?d-n:d;}
 function frame(snap){
-  var n=items.length,step=2*Math.PI/n,sm=S<420,R=S*(sm?.31:.34),cx=S*(sm?.40:.46),cy=S*.5;
+  var n=items.length,step=2*Math.PI/n,sm=S<420,R=S*(sm?.31:.34),cx=S*(sm?.40:.46),cy=S*.45;
   document.getElementById("gear").style.transform="rotate("+(pos*step*180/Math.PI*0.5)+"deg)";
   var tx=document.getElementById("gtx");if(tx)tx.style.transform="rotate("+(-pos*step*180/Math.PI*0.5)+"deg)";
   items.forEach(function(it,i){

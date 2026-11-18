@@ -3,7 +3,11 @@
 Admin  : user dan password di Secrets [admin] (dan akun Google terdaftar bila [auth] aktif).
 Foreman: user dan password karyawan (tabel karyawan) yang jenisnya FOREMAN.
 Daftar halaman dibuat menurut peran (lihat app_admin.py): foreman tidak punya halaman admin sama sekali."""
+import base64
+import hashlib
 import hmac
+import json
+import time
 
 import streamlit as st
 
@@ -14,20 +18,33 @@ MAKS_GAGAL = 5
 
 CSS_BAR = """
 <style>
-.st-key-sw a,.st-key-sw2 a{border:1.5px solid #1a73e8;border-radius:999px;background:#fff;color:#1a73e8 !important;font-weight:700;
-  padding:.3rem .9rem;font-size:13px;text-decoration:none;display:inline-flex;gap:.4rem;align-items:center;white-space:nowrap}
-.st-key-sw a:hover,.st-key-sw2 a:hover{background:#e8f0fe}
-.st-key-sw a p,.st-key-sw2 a p{font-size:13px;margin:0}
-.kip{background:#fff;border:1px solid #d4e1f5;border-radius:999px;padding:.38rem .9rem;font-size:13px;color:#44628f;
-  font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.kip b{color:#0b3d91}
-.st-key-kl button{border-radius:999px;padding:.2rem .8rem;min-height:0;height:auto;font-size:13px;border-color:#c9d1dd;color:#5b6678}
+.st-key-bar{background:#fff;border:1px solid #d6e4f8;border-radius:16px;padding:.5rem .8rem;box-shadow:0 2px 12px #2a5db014;margin-bottom:.4rem}
+.st-key-bar [data-testid="stColumn"]{min-width:0}
+.st-key-bar a{display:flex !important;align-items:center;justify-content:center;gap:.45rem;border:1px solid #cfe0f7 !important;
+  border-radius:12px !important;background:#eef5ff !important;color:#1a5fc8 !important;font-weight:700;padding:.5rem .6rem !important;
+  font-size:13px;text-decoration:none;white-space:nowrap;min-height:0 !important;transition:background .15s,box-shadow .15s}
+.st-key-bar a:hover{background:#dcebff !important;box-shadow:0 2px 8px #2a8fe833}
+.st-key-bar a p,.st-key-bar a span{font-size:13px;margin:0;font-weight:700;color:inherit !important}
+.st-key-bar a[aria-current="page"]{background:linear-gradient(135deg,#4da3f5,#1f6fd8) !important;color:#fff !important;border-color:#1f6fd8 !important}
+.st-key-bar a[aria-current="page"] p{color:#fff}
+.kip{display:flex;align-items:center;gap:.6rem;justify-content:flex-end;min-width:0}
+.kip .av{flex:0 0 auto;width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#6ec6ff,#2a8fe8);color:#fff;
+  font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center}
+.kip .tx{min-width:0;line-height:1.15}
+.kip .nm{font-weight:800;color:#0b3d91;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
+.kip .rl{font-size:11px;font-weight:700;color:#1d9a54;letter-spacing:.5px;text-transform:uppercase}
+.st-key-kl button{border-radius:12px;padding:.45rem .6rem;min-height:0;height:auto;font-size:13px;font-weight:700;border:1px solid #f0c9c9;color:#b3261e;background:#fff}
+.st-key-kl button:hover{background:#fdeceb;border-color:#e8a9a5;color:#b3261e}
 @media (max-width:640px){
   .st-key-bar [data-testid="stHorizontalBlock"]{flex-wrap:nowrap !important;gap:.35rem !important}
-  .st-key-bar [data-testid="stColumn"]{min-width:0 !important;width:auto !important;flex:0 0 auto !important}
-  .st-key-bar [data-testid="stColumn"]:first-child{flex:1 1 auto !important}
-  .st-key-sw a p,.st-key-sw2 a p{display:none}
-  .kip{display:none}
+  .st-key-bar [data-testid="stColumn"]{min-width:0 !important;width:auto !important;flex:1 1 0 !important}
+  .st-key-bar a p{display:none}
+  .kip .tx{display:none}
+  .st-key-bar>div>[data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:nth-child(2){display:none}
+  .st-key-bar>div>[data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:nth-child(3){flex:0 0 auto !important}
+  .st-key-bar>div>[data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:nth-child(4){flex:0 0 52px !important}
+  .st-key-kl button p{display:none}
+  .st-key-kl button{padding:.45rem .3rem}
 }
 </style>
 """
@@ -38,7 +55,7 @@ def peran():
 
 
 def keluar():
-    for k in ("peran", "admin_ok", "nama_masuk", "prn_masuk", "gagal_masuk"):
+    for k in ("peran", "admin_ok", "nama_masuk", "prn_masuk", "gagal_masuk", "via_token"):
         st.session_state.pop(k, None)
 
 
@@ -87,7 +104,12 @@ def gerbang():
     if not adm:
         st.error("Pengaturan [admin] belum ada di secrets. Aplikasi dikunci.")
         st.stop()
-    if peran() == ADMIN and not _google_ok(adm):
+    if not peran():
+        tk = terima_token()
+        if tk:  # sudah diverifikasi di aplikasi asal (termasuk Google untuk admin)
+            st.session_state.update({"peran": tk["p"], "nama_masuk": tk["n"], "prn_masuk": tk["x"], "gagal_masuk": 0,
+                                     "admin_ok": tk["p"] == ADMIN, "via_token": True})
+    if peran() == ADMIN and not st.session_state.get("via_token") and not _google_ok(adm):
         st.markdown("<h1 style='text-align:center'>WELCOME ADMIN QC TOTO</h1>", unsafe_allow_html=True)
         if not st.user.is_logged_in:
             st.info("Langkah 2: verifikasi akun Google admin.")
@@ -126,32 +148,93 @@ def _rahasia(kunci):
         return ""
 
 
+# ---- masuk antar aplikasi tanpa login ulang: token bertanda tangan (HMAC) berumur pendek, di-Secrets: kunci_masuk
+UMUR_TOKEN = 30 * 60
+
+
+def buat_token(peran_, nama, prn, kunci, sekarang=None):
+    isi = json.dumps({"p": peran_, "n": nama, "x": prn, "e": int((sekarang or time.time()) + UMUR_TOKEN)}, separators=(",", ":"))
+    b = base64.urlsafe_b64encode(isi.encode()).decode().rstrip("=")
+    return b + "." + hmac.new(kunci.encode(), b.encode(), hashlib.sha256).hexdigest()[:40]
+
+
+def baca_token(t, kunci, sekarang=None):
+    """Return dict {p,n,x} bila tanda tangan benar dan belum kedaluwarsa; selain itu None. Murni (tanpa st)."""
+    try:
+        b, sig = str(t).split(".", 1)
+        if not kunci or not hmac.compare_digest(sig, hmac.new(kunci.encode(), b.encode(), hashlib.sha256).hexdigest()[:40]):
+            return None
+        d = json.loads(base64.urlsafe_b64decode(b + "=" * (-len(b) % 4)))
+        return d if d.get("e", 0) >= (sekarang or time.time()) and d.get("p") in (ADMIN, FOREMAN) else None
+    except Exception:
+        return None
+
+
+def terima_token():
+    """Dipanggil di awal app: bila alamat membawa ?t= yang sah, jadikan pengguna masuk. Mengembalikan dict token atau None.
+    Parameter t selalu dibuang dari alamat."""
+    t = st.query_params.get("t")
+    if not t:
+        return None
+    try:
+        del st.query_params["t"]
+    except Exception:
+        pass
+    return baca_token(t, _rahasia("kunci_masuk"))
+
+
+def _tautan(url):
+    """Tambahkan token masuk ke alamat bila pengguna sudah masuk dan kunci_masuk ada."""
+    kunci = _rahasia("kunci_masuk")
+    if not kunci or not peran():
+        return url
+    t = buat_token(peran(), st.session_state.get("nama_masuk", ""), st.session_state.get("prn_masuk", ""), kunci)
+    return url + ("&" if "?" in url else "?") + "t=" + t
+
+
 def tautan_luar(app):
     """Tombol pindah antar aplikasi menurut peran. app = 'admin' | 'laporan'.
-    Alamat app lain dibaca dari Secrets: url_admin, url_laporan (kosong = tombol tidak muncul)."""
+    Alamat dibaca dari Secrets: url_admin, url_laporan, url_utama (kosong = tombol tidak muncul).
+    Admin dari app admin: Laporan + Halaman Utama. Foreman: Laporan. Dari app laporan: kembali ke halaman admin/foreman."""
     if app == "laporan":
         u = _rahasia("url_admin")
         if not u:
             return []
-        return [("Ke Upload Admin", u + "/upload-admin")] if peran() == ADMIN else [("Ke Upload Foreman", u + "/upload-foreman")]
-    u = _rahasia("url_laporan")
-    return [("Laporan", u)] if u else []
+        return [("Halaman Admin", _tautan(u + "/upload-admin"))] if peran() == ADMIN else [("Halaman Foreman", _tautan(u + "/upload-foreman"))]
+    hasil = []
+    if _rahasia("url_laporan"):
+        hasil.append(("Laporan", _tautan(_rahasia("url_laporan"))))
+    if peran() == ADMIN and _rahasia("url_utama"):
+        hasil.append(("Halaman Utama", _tautan(_rahasia("url_utama"))))
+    return hasil
+
+
+_IKON = {"Laporan": ":material/bar_chart:", "Halaman Utama": ":material/home:", "Halaman Admin": ":material/admin_panel_settings:",
+         "Halaman Foreman": ":material/engineering:"}
 
 
 def bilah(halaman_lain=None, label_lain="", tautan=None):
-    """Baris kecil di kanan atas: [pindah halaman (hanya admin)] [nama · peran] [Keluar]."""
+    """Bar atas bergaya kartu: [navigasi antar halaman/aplikasi] ........ [avatar · nama · peran] [Keluar]."""
     st.markdown(CSS_BAR, unsafe_allow_html=True)
     nama = st.session_state.get("nama_masuk", "")
+    item = []
+    if halaman_lain is not None and peran() == ADMIN:
+        item.append(("page", label_lain, halaman_lain))
+    for lb, url in (tautan if tautan is not None else tautan_luar("admin")):
+        item.append(("url", lb, url))
     with st.container(key="bar"):
-        c = st.columns([4, 2.7, 4.2, 1.3], vertical_alignment="center")
-        with c[0], st.container(key="sw2"):
-            for i, (lb, url) in enumerate(tautan if tautan is not None else tautan_luar("admin")):
-                st.link_button(lb, url, icon=":material/bar_chart:" if lb == "Laporan" else ":material/swap_horiz:", key=f"lk_{i}")
-        with c[1], st.container(key="sw"):
-            if halaman_lain is not None and peran() == ADMIN:
-                st.page_link(halaman_lain, label=label_lain, icon=":material/swap_horiz:")
-        c[2].markdown(f"<div class='kip'><b>{nama}</b> · {'Admin' if peran() == ADMIN else 'Foreman'}</div>", unsafe_allow_html=True)
+        c = st.columns([max(len(item), 1) * 2.1, 0.4, 3.2, 1.25], vertical_alignment="center")
+        if item:
+            for col, (jenis, lb, tujuan) in zip(c[0].columns(len(item)), item):
+                with col:
+                    if jenis == "page":
+                        st.page_link(tujuan, label=lb, icon=_IKON.get(lb, ":material/swap_horiz:"), width="stretch")
+                    else:
+                        st.link_button(lb, tujuan, icon=_IKON.get(lb, ":material/open_in_new:"), width="stretch")
+        awal = (nama.strip()[:1] or "?").upper()
+        c[2].markdown(f"<div class='kip'><div class='av'>{awal}</div><div class='tx'><div class='nm'>{nama}</div>"
+                      f"<div class='rl'>{'Admin' if peran() == ADMIN else 'Foreman'}</div></div></div>", unsafe_allow_html=True)
         with c[3], st.container(key="kl"):
-            if st.button("Keluar", key="btn_keluar"):
+            if st.button("Keluar", key="btn_keluar", icon=":material/logout:", width="stretch"):
                 keluar()
                 st.rerun()

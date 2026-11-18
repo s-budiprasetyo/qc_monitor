@@ -76,3 +76,9 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 ## Tahap 9c: tombol pindah antar aplikasi
 - Secrets (letakkan SEBELUM baris `[admin]`, di baris paling atas): `url_laporan = "https://…"` di app admin; `url_admin = "https://…"` di app laporan.
 - App admin/foreman: tombol "Laporan" (admin dan foreman). App laporan: admin melihat "Ke Upload Admin", foreman melihat "Ke Upload Foreman". Tombol tidak muncul bila alamat belum diisi. Tiap app punya login sendiri.
+
+## Tahap 9d: bar atas baru, masuk antar app tanpa login ulang, kartu Informasi
+- Bar atas bergaya kartu: tombol navigasi (Foreman/Admin, Laporan, Halaman Utama) + avatar, nama, peran + Keluar. Admin: Laporan + Halaman Utama; foreman: Laporan; app laporan: kembali ke Admin/Foreman; halaman utama tanpa tombol balik.
+- Masuk tanpa login ulang: token HMAC berumur 30 menit di alamat (?t=), dibuang setelah dipakai. Syarat Secrets (SAMA di semua app, taruh di baris paling atas, sebelum [admin]):
+  kunci_masuk = "teks acak panjang"; app admin: url_laporan, url_utama; app laporan: url_admin; app utama: kunci_masuk saja (hanya token admin yang diterima).
+- Informasi update: kartu per file (waktu relatif + warna hijau/kuning/merah).

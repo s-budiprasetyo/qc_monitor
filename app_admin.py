@@ -65,6 +65,70 @@ def nama_bulan(k):
     return f"{BULAN[int(k[5:]) - 1]} {k[:4]}"
 
 
+_IKON_INFO = {"FILE HASIL KERJA": '<path d="M4 20h16M7 20v-9M12 20V5M17 20v-12"/>',
+              "LEMBUR": '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>',
+              "EVALUASI KARYAWAN": '<circle cx="12" cy="12" r="8.5"/><path d="M8 12.3l3 3 5-6"/>',
+              "ABSENSI": '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4M9 15l2 2 4-4"/>',
+              "JADWAL KERJA": '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4M8 14h2M12 14h2M8 17h2"/>',
+              "RIWAYAT GOOGLE SHEET": '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M5 9h14M5 15h14M11 9v12"/>'}
+CSS_INFO = """
+<style>
+.inf{margin:1.4rem 0 .6rem}
+.inf-h{display:flex;align-items:center;gap:.6rem;margin-bottom:.8rem}
+.inf-h b{font-size:20px;font-weight:800;color:#0b3d91;letter-spacing:.4px}
+.inf-h span{font-size:12px;color:#7b8fb0}
+.inf-g{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.inf-k{background:#fff;border:1px solid #d6e4f8;border-radius:14px;padding:14px 16px;display:flex;gap:12px;align-items:center;box-shadow:0 2px 10px #2a5db00f}
+.inf-i{flex:0 0 auto;width:42px;height:42px;border-radius:12px;background:#eaf3ff;color:#1a5fc8;display:flex;align-items:center;justify-content:center}
+.inf-i svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.inf-t{min-width:0;flex:1}
+.inf-n{font-size:11.5px;font-weight:800;color:#5b7399;letter-spacing:.6px}
+.inf-r{font-size:16px;font-weight:800;color:#0b3d91;margin:1px 0}
+.inf-w{font-size:12px;color:#7b8fb0}
+.inf-d{flex:0 0 auto;width:10px;height:10px;border-radius:50%}
+.d-ok{background:#1d9a54;box-shadow:0 0 0 3px #1d9a5426}.d-mid{background:#e8a317;box-shadow:0 0 0 3px #e8a31726}
+.d-old{background:#d93025;box-shadow:0 0 0 3px #d9302526}.d-no{background:#b8c4d8;box-shadow:0 0 0 3px #b8c4d826}
+.inf-s{margin-top:.9rem;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12.5px;color:#5b7399}
+.inf-s a{background:#eef5ff;border:1px solid #cfe0f7;border-radius:999px;padding:3px 11px;color:#1a5fc8 !important;font-weight:700;text-decoration:none}
+.inf-s a:hover{background:#dcebff}
+.inf-l{display:flex;gap:14px;margin-top:.7rem;font-size:11.5px;color:#7b8fb0;flex-wrap:wrap}
+.inf-l i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
+@media (max-width:900px){.inf-g{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:560px){.inf-g{grid-template-columns:1fr}}
+</style>
+"""
+
+
+def _html_info(log, buku):
+    """Kartu 'terakhir update' per file: waktu relatif + penanda warna (hijau <=2 hari, kuning <=7, merah lebih lama)."""
+    sekarang = datetime.now(data.WIB).replace(tzinfo=None)
+    kartu = ""
+    for n in FILE_INFO:
+        w = str(log.get(n, "") or "").strip()
+        rel, abs_, kelas = "Belum pernah", "Belum ada data", "d-no"
+        try:
+            t = datetime.strptime(w, "%H:%M, %d-%m-%Y")
+            hari = (sekarang.date() - t.date()).days
+            rel = "Hari ini" if hari <= 0 else ("Kemarin" if hari == 1 else f"{hari} hari lalu")
+            abs_ = f"{t.strftime('%d-%m-%Y')} · pukul {t.strftime('%H:%M')}"
+            kelas = "d-ok" if hari <= 2 else ("d-mid" if hari <= 7 else "d-old")
+        except ValueError:
+            pass
+        ik = _IKON_INFO.get(n, _IKON_INFO["FILE HASIL KERJA"])
+        kartu += (f"<div class='inf-k'><div class='inf-i'><svg viewBox='0 0 24 24'>{ik}</svg></div>"
+                  f"<div class='inf-t'><div class='inf-n'>{n}</div><div class='inf-r'>{rel}</div><div class='inf-w'>{abs_}</div></div>"
+                  f"<div class='inf-d {kelas}'></div></div>")
+    sheet = ""
+    if buku:
+        sheet = ("<div class='inf-s'><b>Google Sheet bulanan:</b> "
+                 + "".join(f"<a href='{b['url']}' target='_blank'>{b['nama']}</a>" for b in buku) + "</div>")
+    legenda = ("<div class='inf-l'><span><i class='d-ok'></i>Terbaru (0–2 hari)</span><span><i class='d-mid'></i>3–7 hari</span>"
+               "<span><i class='d-old'></i>Lebih dari 7 hari</span><span><i class='d-no'></i>Belum pernah</span></div>")
+    return (CSS_INFO + "<div class='inf'><div class='inf-h'><b>Informasi Update</b><span>kapan tiap data terakhir diperbarui</span></div>"
+            f"<div class='inf-g'>{kartu}</div>{sheet}{legenda}</div>")
+
+
+
 # ---------------------------------------------------------------- jendela
 @st.dialog("INFORMASI")
 def dlg_sukses(pesan):
@@ -784,13 +848,8 @@ def halaman_admin():
 
     if belum_ada:
         st.warning("Data karyawan dan target belum ada. Klik **Data awal** dan upload dua file Excel-nya.")
-    baris = "".join(f"<tr><td>{n}</td><td class='w'>{log.get(n, '-')}</td></tr>" for n in FILE_INFO)
-    st.markdown("<h4 class='info'>► INFORMASI</h4><table class='info'><tr><th>NAMA FILE</th>"
-                f"<th>TERAKHIR UPDATE</th></tr>{baris}</table>", unsafe_allow_html=True)
     buku = data.info_buku()
-    if buku:
-        tautan = " &nbsp;·&nbsp; ".join(f"<a href='{b['url']}' target='_blank'>{b['nama']}</a>" for b in buku)
-        st.markdown(f"<p style='font-size:13px'>Google Sheet bulanan: {tautan}</p>", unsafe_allow_html=True)
+    st.markdown(_html_info(log, buku), unsafe_allow_html=True)
     if data.pakai_google_sheet():
         with st.expander("Hubungkan Google Sheet bulanan"):
             st.caption("Master (sheet_id di Secrets) tidak perlu diganti. Tiap bulan buat Google Sheet kosong, bagikan ke akun layanan "

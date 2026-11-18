@@ -8,7 +8,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from core import data, logic, parsers
+from core import akses, data, logic, parsers
 from core.bulan import pilih_bulan
 from core.tabel import tabel
 from core.grafik import KELAS, data_grafik, grafik, kelas_anggota
@@ -502,6 +502,12 @@ def dlg_kelas(g, k, bln, tgl):
 
 
 # ---------------------------------------------------------------- halaman
+if not st.session_state.get("me"):  # masuk dari halaman admin tanpa login ulang (token bertanda tangan, hanya admin)
+    _tk = akses.terima_token()
+    if _tk and _tk["p"] == akses.ADMIN and logic.prn_admin():
+        _k = data.baca("karyawan")
+        _c = _k[_k["prn"] == logic.prn_admin()]
+        st.session_state.update({"me": logic.prn_admin(), "me_nama": _c.iloc[0]["nama_web"] if len(_c) else "Admin", "adm": True, "gagal": 0})
 atas, kanan = st.columns([6, 1.6], vertical_alignment="center")
 kol, _ = atas.columns([1.6, 3])
 with kol:
