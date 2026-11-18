@@ -56,3 +56,7 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Halaman Upload Foreman: roda gigi biru muda (klik untuk buka/tutup menu, berputar). Menu: MONITORING LABEL, DAFTAR OPERATOR (item lain bisa ditambah nanti).
 - Daftar Operator: tabel master `operator` (prn, kode_opr). Sebelum pertama disimpan, daftar bawaan = karyawan jenis PERIKSA yang tidak disilang. Setelah disimpan, hanya nama di daftar itu yang muncul di NAMA OPERATOR.
 - Rencana Produksi ditunda sesuai keputusan.
+
+## Tahap 8f: roda gigi berputar di halaman Upload Admin
+- `components/roda/index.html` + `core.hub.roda()`: roda gigi biru muda dengan 8 pilihan melingkar (Hasil Kerja, Lembur, Absensi, Jadwal Kerja, Evaluasi, Data Awal, Daftar Operator, Rencana Produksi [Segera]), kartu detail + status + BUKA. Putar lewat panah, klik ikon, atau roda mouse. Menambah pilihan = menambah satu baris di `MENU` (app_admin.py); lingkaran menyesuaikan jumlahnya.
+- Tombol "Data awal" pindah ke roda; tombol Verifikasi dan lonceng tetap di atas.

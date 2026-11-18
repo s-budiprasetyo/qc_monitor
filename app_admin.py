@@ -11,7 +11,7 @@ import halaman_foreman
 from core import akses, calc, data, label, logic, parsers
 from core.grid import jadwal_grid
 from core.bulan import pilih_bulan
-from core.hub import hub
+from core.hub import hub, roda
 from core.store import BukuBulananBelumAda
 from core.ui import gaya_global, ikon, kepala, kontrol_jendela
 
@@ -731,19 +731,14 @@ def halaman_admin():
 
     st.markdown("<h1 class='judul'>WELCOME ADMIN QC TOTO</h1>", unsafe_allow_html=True)
 
-    atas1, atas2, atas3 = st.columns([1, 3, 3])
+    atas1, atas2 = st.columns([1, 6])
     with atas1, st.container(key="lonceng"):
         if st.button("🔔" + (f" :red-badge[{jumlah}]" if jumlah else ""), key="bel"):
             dlg_lonceng(baru, tanpa, bentrok)
-    atas2.markdown("<div class='judul-update'>UPDATE DATA</div>", unsafe_allow_html=True)
-    with atas3, st.container(key="awal"):
-        c0, c1 = st.columns([1.3, 1.2])
-        if c0.button("Verifikasi", icon=":material/how_to_reg:", width="stretch"):
+    with atas2, st.container(key="awal"):
+        if st.button("Verifikasi", icon=":material/how_to_reg:"):
             st.session_state["max_verif"] = False
             dlg_verif()
-        if c1.button("Data awal", icon=":material/settings:", width="stretch"):
-            st.session_state["max_awal"] = False
-            dlg_awal()
 
     @st.dialog("BERHASIL")
     def dlg_hapus_ok(kembali):
@@ -756,25 +751,38 @@ def halaman_admin():
     if st.session_state.get("hapus_ok"):
         dlg_hapus_ok(st.session_state.pop("hapus_ok"))
 
-    MENU = {"hasil": ("HASIL KERJA", dlg_hasil, "hasil", False),
-            "lembur": ("LEMBUR", dlg_lembur, "lembur", False),
-            "eval": ("EVALUASI KARYAWAN", dlg_eval, "evaluasi", False),
-            "absensi": ("ABSENSI", dlg_absensi, "absensi", False),
-            "jadwal": ("JADWAL KERJA", dlg_jadwal, "jadwal", False)}
-    klik = hub([{"id": k, "label": v[0], "icon": ikon(v[2]), "disabled": v[3]} for k, v in MENU.items()], key="hub")
+    log = data.baca("update_log")
+    log = dict(zip(log["nama_file"], log["waktu"]))
+
+    def _terakhir(n):
+        return "Terakhir: " + log[n] if log.get(n) else "Belum pernah"
+    kar = data.baca("karyawan")
+    jml_op = len(label.operator_daftar()) if not belum_ada else 0
+    MENU = {"hasil": ("HASIL KERJA", "Upload file SAP (Catatan Periksa)", "bars", dlg_hasil, "Terakhir update", _terakhir("FILE HASIL KERJA")),
+            "lembur": ("LEMBUR", "Input jam lembur karyawan", "clock", dlg_lembur, "Terakhir update", _terakhir("LEMBUR")),
+            "absensi": ("ABSENSI", "Input sakit, ijin, cuti, dispen, resign", "calc", dlg_absensi, "Terakhir update", _terakhir("ABSENSI")),
+            "jadwal": ("JADWAL KERJA", "Upload jadwal QC dan QC SK", "cal", dlg_jadwal, "Terakhir update", _terakhir("JADWAL KERJA")),
+            "eval": ("EVALUASI", "Verifikasi alasan tidak target", "check", dlg_eval, "Terakhir update", _terakhir("EVALUASI KARYAWAN")),
+            "awal": ("DATA AWAL", "Data karyawan dan target", "db", dlg_awal, "Status", f"{len(kar)} karyawan terdaftar"),
+            "operator": ("DAFTAR OPERATOR", "Daftarkan operator untuk Monitoring Label", "user", halaman_foreman.dlg_operator, "Status", f"{jml_op} operator"),
+            "rencana": ("RENCANA PRODUKSI", "Rencana produksi per type", "doc", None, "Status", "Segera")}
+    daftar = [{"id": k, "label": v[0], "sub": v[1], "icon": v[2], "status_label": v[4], "status": v[5], "disabled": v[3] is None}
+              for k, v in MENU.items()]
+    klik = roda(daftar, start=st.session_state.get("roda_id"), key="roda")
     klik = st.session_state.pop("buka_tes", None) or klik
     if klik and klik.get("n") != st.session_state.get("hub_n"):
         st.session_state["hub_n"] = klik.get("n")
-        _, fungsi, _, mati = MENU[klik["id"]]
-        if fungsi and not mati:
+        st.session_state["roda_id"] = klik["id"]
+        fungsi = MENU[klik["id"]][3]
+        if fungsi:
             st.session_state[f"max_{klik['id']}"] = False
             st.session_state["jd_manual"] = False
+            if klik["id"] == "operator":
+                st.session_state.pop("op_daftar", None)
             fungsi()
 
     if belum_ada:
         st.warning("Data karyawan dan target belum ada. Klik **Data awal** dan upload dua file Excel-nya.")
-    log = data.baca("update_log")
-    log = dict(zip(log["nama_file"], log["waktu"]))
     baris = "".join(f"<tr><td>{n}</td><td class='w'>{log.get(n, '-')}</td></tr>" for n in FILE_INFO)
     st.markdown("<h4 class='info'>► INFORMASI</h4><table class='info'><tr><th>NAMA FILE</th>"
                 f"<th>TERAKHIR UPDATE</th></tr>{baris}</table>", unsafe_allow_html=True)
