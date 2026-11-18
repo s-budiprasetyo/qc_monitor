@@ -46,16 +46,17 @@ def _css_jendela(besar):
 
 def kontrol_jendela(nama):
     """Tombol ikon perbesar/kecilkan di sebelah kiri tombol close (tanpa minimize; close bawaan dialog)."""
-    kunci = f"max_{nama}"
-    besar = st.session_state.get(kunci, False)
-    st.markdown(_css_jendela(besar), unsafe_allow_html=True)
-    st.button("x", key=f"{'tbres' if besar else 'tbmax'}_{nama}", help="Kecilkan jendela" if besar else "Perbesar jendela",
-              on_click=lambda: st.session_state.update({kunci: not besar}))
+    kontrol_jendela_pub(nama)
+
+
+_IKON_ADMIN = {  # nama ikon lama (halaman admin/foreman) -> ikon garis putih seragam dengan roda gigi
+    "hasil": "bars", "lembur": "clock", "absensi": "calc", "jadwal": "cal", "jadwal2": "cal", "evaluasi": "check",
+    "awal": "db", "lonceng": "bell", "operator": "user", "label": "tag"}
 
 
 def kepala(nama_ikon, judul):
-    """Spanduk kuning ala Excel dengan ikon; berfungsi sebagai kepala jendela."""
-    st.markdown(f"<div class='kp'><img src='{ikon(nama_ikon)}'><span>{judul}</span></div>", unsafe_allow_html=True)
+    """Kepala jendela biru gradasi + ikon garis putih (seragam dengan roda gigi dan halaman utama)."""
+    kepala_pub(_IKON_ADMIN.get(nama_ikon, nama_ikon), judul)
 
 
 def gaya_global():
@@ -105,6 +106,19 @@ _IKON_PUB = {  # ikon garis putih (24x24)
     "kegiatan": '<circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/>',
     "terima": '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
 }
+
+
+_IKON_PUB.update({
+    "bars": '<path d="M4 20h16M7 20v-9M12 20V5M17 20v-12"/>',
+    "clock": '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>',
+    "calc": '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4M9 15l2 2 4-4"/>',
+    "cal": '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4M8 14h2M12 14h2M8 17h2"/>',
+    "check": '<circle cx="12" cy="12" r="8.5"/><path d="M8 12.3l3 3 5-6"/>',
+    "db": '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>',
+    "bell": '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 21h4"/>',
+    "user": '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>',
+    "tag": '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="8" cy="8" r="1.4"/>',
+})
 
 
 def _svg_uri(isi, warna="#fff", lebar=2.4):

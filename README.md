@@ -60,3 +60,15 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 ## Tahap 8f: roda gigi berputar di halaman Upload Admin
 - `components/roda/index.html` + `core.hub.roda()`: roda gigi biru muda dengan 8 pilihan melingkar (Hasil Kerja, Lembur, Absensi, Jadwal Kerja, Evaluasi, Data Awal, Daftar Operator, Rencana Produksi [Segera]), kartu detail + status + BUKA. Putar lewat panah, klik ikon, atau roda mouse. Menambah pilihan = menambah satu baris di `MENU` (app_admin.py); lingkaran menyesuaikan jumlahnya.
 - Tombol "Data awal" pindah ke roda; tombol Verifikasi dan lonceng tetap di atas.
+
+## Tahap 8g: jendela admin/foreman serasi dengan tema biru
+- Semua jendela halaman admin (Hasil Kerja, Lembur, Absensi, Jadwal, Evaluasi, Data Awal, Verifikasi, Lonceng, Daftar Operator) memakai kepala biru gradasi + ikon garis putih + tombol perbesar/tutup putih, sama dengan halaman utama. Jendela di tengah layar (desktop) dan lebar penuh di HP.
+- Roda gigi: bagian bawah tidak lagi terpotong.
+
+## Tahap 9a: aplikasi laporan (app ke-3) — % label afkir
+- `app_laporan.py` + `core/laporan.py`. Hanya lihat dan unduh Excel; login admin atau foreman (user/password sama dengan app lain).
+- % = afkir ÷ pcs bagus SAP (kolom Total) per karyawan, per label, per hari (Tanggal Posting). SNI dibagi pcs bagus label induknya.
+  Label warna (mis. DR) dibagi pcs bagus baris SAP type+warna itu. QC dan QC SK terpisah. Kotor > 0,5% merah.
+- Excel: Harian (satu tanggal) dan Bulanan (sheet Ringkasan bulan + Per hari); kolom % memakai rumus.
+- Pasang sebagai app ke-3 di Streamlit Cloud: repo qc_monitor, Main file `app_laporan.py`, Secrets disalin dari app admin.
+- 9b: keterangan label warna HBE (Harvest Beige), HF (Harvest Green), PP (Pastel Pink) ditambahkan ke data awal jenis label.

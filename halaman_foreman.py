@@ -7,7 +7,7 @@ import streamlit as st
 
 from core import akses, data, label
 from core.store import BukuBulananBelumAda
-from core.ui import gaya_global
+from core.ui import gaya_global, gaya_responsif, kepala, kontrol_jendela
 
 CSS = """
 <style>
@@ -324,6 +324,8 @@ def _tabel(tgl_s, shift):
 @st.dialog("DAFTAR OPERATOR", width="large", on_dismiss="rerun")
 def dlg_operator():
     """Nama + kode operator yang bisa dipilih di Monitoring Label."""
+    kontrol_jendela("operator")
+    kepala("operator", "DAFTAR OPERATOR")
     k = label.logic.info_karyawan()
     nama = {p: (n if n else s) for p, n, s in zip(k["prn"], k["nama_web"], k["nama_sap"])}
     kode = dict(zip(k["prn"], k["kode_opr"]))
@@ -376,6 +378,7 @@ def tampil(halaman_admin=None):
     akses.butuh(akses.ADMIN, akses.FOREMAN)
     st.markdown(CSS, unsafe_allow_html=True)
     gaya_global()
+    gaya_responsif()
     akses.bilah(halaman_admin, "Ke halaman Admin")
     st.markdown("<h1 class='judul-f'>UPLOAD FOREMAN</h1>", unsafe_allow_html=True)
 

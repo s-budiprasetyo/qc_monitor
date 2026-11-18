@@ -13,7 +13,7 @@ from core.grid import jadwal_grid
 from core.bulan import pilih_bulan
 from core.hub import hub, roda
 from core.store import BukuBulananBelumAda
-from core.ui import gaya_global, ikon, kepala, kontrol_jendela
+from core.ui import gaya_global, gaya_responsif, ikon, kepala, kontrol_jendela
 
 BULAN = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS",
          "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"]
@@ -711,6 +711,7 @@ def halaman_admin():
     akses.butuh(akses.ADMIN)
     st.markdown(CSS, unsafe_allow_html=True)
     gaya_global()
+    gaya_responsif()
     akses.bilah(PG_FOREMAN, "Ke halaman Foreman")
     belum_ada = data.baca("karyawan").empty or data.baca("target").empty
     baru, tanpa, bentrok = ([], pd.DataFrame(), []) if belum_ada else masalah_cache(data.versi())
