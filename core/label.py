@@ -239,3 +239,28 @@ def batal_abaikan(tgl, shift, pabrik, meja):
     h = pd.DataFrame([{"tgl": tgl, "shift": shift, "pabrik": pabrik, "meja": str(meja)}])
     data.upsert("meja_abaikan", pd.DataFrame(columns=["tgl", "shift", "pabrik", "meja", "oleh", "waktu"]),
                 ["tgl", "shift", "pabrik", "meja"], hapus=h)
+
+
+def operator_default():
+    """Daftar bawaan (sebelum Daftar Operator pernah disimpan): [(prn, nama, kode)]."""
+    k = logic.info_karyawan()
+    ro = data.baca("roster")
+    silang = set(ro.loc[ro["status"] == "tidak", "prn"])
+    k = k[k["jenis"].isin(["PERIKSA", ""]) & ~k["prn"].isin(silang)]
+    k = k.assign(_n=k["nama_web"].where(k["nama_web"] != "", k["nama_sap"])).sort_values("_n")
+    return list(zip(k["prn"], k["_n"], k["kode_opr"]))
+
+
+def operator_tersimpan():
+    d = data.baca("operator")
+    return list(d["prn"]) if len(d) else None
+
+
+def operator_simpan(prn_list, oleh):
+    """Ganti seluruh Daftar Operator dengan prn_list (urut sesuai daftar)."""
+    from core.store import KOLOM
+    waktu = datetime.now().strftime("%Y-%m-%d %H:%M")
+    k = logic.info_karyawan().set_index("prn")
+    baris = [{"prn": p, "kode_opr": str(k["kode_opr"].get(p, "")), "oleh": oleh, "waktu": waktu} for p in prn_list]
+    df = pd.DataFrame(baris, columns=KOLOM["operator"])
+    data.tulis("operator", df)

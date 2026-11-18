@@ -17,6 +17,22 @@ h1.judul-f{font-weight:800;color:#0b3d91;letter-spacing:.5px;margin:.6rem 0 1rem
   padding:.9rem 1.6rem;border-radius:12px;font-size:15px;min-height:0;height:auto}
 .st-key-btn_label button:hover{filter:brightness(1.1);color:#fff}
 .st-key-btn_label button p{font-size:15px;font-weight:800}
+.st-key-hub_f{display:flex!important;flex-direction:row!important;align-items:center;gap:12px;flex-wrap:wrap}
+.st-key-hub_f>div{width:auto!important;flex:0 0 auto}
+.st-key-op_list [data-testid='stHorizontalBlock']{flex-wrap:nowrap!important;gap:6px}
+.st-key-op_list [data-testid='stColumn']{min-width:0!important}
+.st-key-op_list [data-testid='stColumn']:nth-child(1){flex:1 1 0!important}
+.st-key-op_list [data-testid='stColumn']:nth-child(2){flex:0 0 38%!important}
+.st-key-op_list [data-testid='stColumn']:nth-child(3){flex:0 0 44px!important;width:44px!important}
+.st-key-btn_operator button p{font-size:15px;font-weight:800}
+.st-key-hub_f [class*='st-key-hub_gear'] button{width:58px;height:58px;min-height:0;padding:0;border-radius:50%;border:0;color:#fff;
+  background:linear-gradient(135deg,#6ec6ff,#2a8fe8);box-shadow:0 3px 10px #2a8fe855;transition:transform .5s}
+.st-key-hub_f [class*='st-key-hub_gear'] button p{font-size:30px;line-height:1;margin:0}
+.st-key-hub_f [class*='st-key-hub_gear'] button:hover{transform:rotate(90deg);color:#fff;filter:brightness(1.05)}
+.st-key-hub_gear_buka button{transform:rotate(180deg)}
+.st-key-btn_operator button{background:#e8f3ff;border:1px solid #9fd0fb;color:#0b3d91;font-weight:800;
+  padding:.9rem 1.4rem;border-radius:12px;min-height:0;height:auto}
+@media (max-width:640px){.st-key-btn_label,.st-key-btn_operator{width:100%}}
 .nf-baris{display:flex;align-items:center;gap:10px;font-weight:700;color:#0b3d91}
 .nf-x{background:#e53935;color:#fff;border-radius:6px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
 [class*='st-key-nf_']{border:1px solid #f1b9b6;background:#fff7f6;border-radius:10px;padding:4px 10px;margin-bottom:6px}
@@ -305,6 +321,57 @@ def _tabel(tgl_s, shift):
                 st.rerun()
 
 
+@st.dialog("DAFTAR OPERATOR", width="large", on_dismiss="rerun")
+def dlg_operator():
+    """Nama + kode operator yang bisa dipilih di Monitoring Label."""
+    k = label.logic.info_karyawan()
+    nama = {p: (n if n else s) for p, n, s in zip(k["prn"], k["nama_web"], k["nama_sap"])}
+    kode = dict(zip(k["prn"], k["kode_opr"]))
+    if "op_daftar" not in st.session_state:
+        tersimpan = label.operator_tersimpan()
+        st.session_state["op_daftar"] = tersimpan if tersimpan is not None else [p for p, _, _ in label.operator_default()]
+    daftar = st.session_state["op_daftar"]
+    st.caption(f"{len(daftar)} operator. Hanya nama di daftar ini yang muncul di pilihan NAMA OPERATOR.")
+    tambah = st.selectbox("Tambah operator", [p for p in sorted(nama, key=lambda x: nama[x]) if p not in daftar],
+                          index=None, format_func=lambda p: f"{nama[p]} · {p}", placeholder="Cari nama…", key="op_tambah")
+    if st.button("+ Tambah", key="op_btn_tambah", disabled=tambah is None):
+        daftar.append(tambah)
+        st.session_state.pop("op_tambah", None)
+        st.rerun(scope="fragment")
+    with st.container(height=340, key="op_list"):
+        for i, p in enumerate(sorted(daftar, key=lambda x: nama.get(x, x))):
+            a, b, c = st.columns([5, 2, 1], vertical_alignment="center")
+            a.write(nama.get(p, p))
+            b.caption(f"PRN {p} · Kode {kode.get(p, '') or '-'}")
+            if c.button("✕", key=f"op_x_{p}"):
+                daftar.remove(p)
+                st.rerun(scope="fragment")
+    if st.button("SIMPAN DAFTAR", type="primary", width="stretch", key="op_simpan"):
+        with st.spinner("Menyimpan…"):
+            label.operator_simpan(sorted(daftar, key=lambda x: nama.get(x, x)), st.session_state.get("nama_masuk", ""))
+        st.session_state.pop("op_daftar", None)
+        st.session_state["pg_toast"] = "Daftar operator disimpan."
+        st.rerun()
+
+
+def _hub():
+    """Roda gigi biru muda: klik untuk membuka/menutup menu. Menu bisa ditambah item lain nanti."""
+    buka = st.session_state.get("hub_buka", True)
+    with st.container(key="hub_f"):
+        with st.container(key="hub_gear" + ("_buka" if buka else "")):
+            if st.button("⚙", key="hub_klik", help="Menu"):
+                st.session_state["hub_buka"] = not buka
+                st.rerun()
+        if buka:
+            with st.container(key="btn_label"):
+                if st.button("🏷  MONITORING LABEL"):
+                    _buka_jendela()
+            with st.container(key="btn_operator"):
+                if st.button("👥  DAFTAR OPERATOR"):
+                    st.session_state.pop("op_daftar", None)
+                    dlg_operator()
+
+
 def tampil(halaman_admin=None):
     akses.butuh(akses.ADMIN, akses.FOREMAN)
     st.markdown(CSS, unsafe_allow_html=True)
@@ -321,9 +388,7 @@ def tampil(halaman_admin=None):
     if st.session_state.get("pg_toast"):
         st.toast(st.session_state.pop("pg_toast"), icon="✅")
 
-    with st.container(key="btn_label"):
-        if st.button("🏷  MONITORING LABEL"):
-            _buka_jendela()
+    _hub()
     st.write("")
     a, b, c = st.columns([2, 2, 1], vertical_alignment="center")
     tgl = a.date_input("Tanggal", key="pg_tgl", format="DD/MM/YYYY")

@@ -29,6 +29,7 @@ KOLOM = {
     # pemetaan type SAP (+warna) -> jenis label. jenis: utama | sni (label kedua, induk = label utamanya) | tanpa (tidak ada label)
     "label_type": ["kategori", "label", "jenis", "type_sap", "warna", "induk"],
     "label_warna": ["kode", "nama"],
+    "operator": ["prn", "kode_opr", "oleh", "waktu"],  # Daftar Operator: siapa yang bisa dipilih di Monitoring Label
     "meja_abaikan": ["tgl", "shift", "pabrik", "meja", "oleh", "waktu"],  # meja yang tidak perlu dicek (diabaikan foreman)
     # Pemetaan jenis label (master): type SAP + warna -> label. label kosong = type itu tidak punya label (diabaikan).
     # warna kosong = berlaku untuk semua warna; sni = "ya" bila label itu punya label pendamping SNI.

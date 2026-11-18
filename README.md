@@ -51,3 +51,8 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Admin: bagian **Jenis label (tambah / ubah / unggah Excel)** di bawah halaman Upload Admin; lonceng memberi tahu type+warna dari hasil SAP
   yang belum terpetakan (pasangkan ke label atau TANPA LABEL).
 - `label.label_untuk_sap(type, warna)` = fungsi pencocok untuk laporan % label afkir (Tahap 4).
+
+## Tahap 8e: hub roda gigi + Daftar Operator
+- Halaman Upload Foreman: roda gigi biru muda (klik untuk buka/tutup menu, berputar). Menu: MONITORING LABEL, DAFTAR OPERATOR (item lain bisa ditambah nanti).
+- Daftar Operator: tabel master `operator` (prn, kode_opr). Sebelum pertama disimpan, daftar bawaan = karyawan jenis PERIKSA yang tidak disilang. Setelah disimpan, hanya nama di daftar itu yang muncul di NAMA OPERATOR.
+- Rencana Produksi ditunda sesuai keputusan.
