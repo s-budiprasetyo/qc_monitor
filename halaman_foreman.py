@@ -5,7 +5,7 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
-from core import akses, data, label, stok
+from core import akses, data, label, laporan, stok
 from core.store import BukuBulananBelumAda
 from core.ui import gaya_global, gaya_responsif, kepala, kontrol_jendela
 
@@ -186,10 +186,18 @@ def dlg_label():
                 st.rerun(scope="fragment")
         total = {t: 0 for t in cols}
         nilai = {t: {} for t in cols}
+        posting = label.tanggal_posting(prn, _tgl_iso(tgl), shift) if prn else ""
         for j, nm in label.JENIS:
             r = st.columns([1] + [1] * len(cols), vertical_alignment="center")
-            r[0].markdown(f"<div class='lb-jenis'>{nm}</div>", unsafe_allow_html=True)
+            r[0].markdown(f"<div class='lb-jenis'>{nm}{' · otomatis SAP' if j == 'proses' else ''}</div>", unsafe_allow_html=True)
             for i, t in enumerate(cols):
+                if j == "proses":  # otomatis dari SAP (M+LA+LB+F), tidak bisa diedit; hanya type closet CW
+                    otomatis = laporan.proses_sap(prn, posting, t)
+                    r[i + 1].number_input(f"Proses {t}", value=otomatis if laporan.proses_berlaku(t) else 0, disabled=True,
+                                          key=f"w_p_{t}_{prn}_{posting}", label_visibility="collapsed")
+                    nilai[t][j] = otomatis
+                    total[t] += otomatis
+                    continue
                 v = r[i + 1].number_input(f"{nm} {t}", min_value=0, max_value=9999, step=1, value=None, placeholder="0",
                                           key=f"w_n_{t}_{j}", label_visibility="collapsed")
                 nilai[t][j] = int(v or 0)

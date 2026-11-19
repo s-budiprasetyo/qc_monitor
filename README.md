@@ -97,3 +97,7 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 ## Tahap 9g
 - % Label Afkir hanya kategori **Kotor**: % = kotor ÷ pcs bagus (merah bila > 0,5%). Rincian hari dan Excel ikut. Stok Label tetap memakai semua kategori afkir.
 - Kotak persen yang mengambang saat rincian dibuka disembunyikan.
+
+## Tahap 9h
+- Total % rincian hari = total afkir kotor ÷ total pcs bagus semua baris label (SNI pendamping ikut dihitung di pembagi).
+- Afkir **Proses** otomatis dari SAP = M + LA + LB + F, hanya type closet CW (bukan CE6/CE7/CE9/warna/SNI). Di form input kolom Proses terkunci; laporan dan stok memakai angka SAP langsung. Stok: pemakaian = pcs bagus + semua kategori afkir.

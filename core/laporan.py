@@ -16,6 +16,14 @@ BATAS_KOTOR = 0.005
 KOLOM = ["tgl", "bagian", "prn", "nama", "label", "bagus", "lengket", "garis", "kotor", "proses", "induk", "catatan"]
 
 
+PROSES_SAP = ["SAP | Afkir (M) - Berubah", "SAP | Afkir (LA) - Bocor Udara", "SAP | Afkir (LB) - Bocor Air", "SAP | Afkir (F) - Kurang Lancar"]
+
+
+def proses_berlaku(lb):
+    """Afkir Proses (otomatis dari SAP: M + LA + LB + F) hanya untuk type closet CW. CE6, CE7 (termasuk warna), CE9, dan SNI tidak."""
+    return str(lb).upper().startswith("CW")
+
+
 def _angka(s):
     return pd.to_numeric(s, errors="coerce").fillna(0)
 
@@ -24,19 +32,30 @@ def pcs_bagus(bulan):
     """DataFrame[prn, tgl, label, bagus]: jumlah Total SAP per karyawan/hari/label (hasil efektif, tanggal posting)."""
     h = logic.hasil_bulan(bulan)
     if h.empty or "prn" not in h.columns:
-        return pd.DataFrame(columns=["prn", "tgl", "label", "bagus"])
+        return pd.DataFrame(columns=["prn", "tgl", "label", "bagus", "proses", "nama", "bagian"])
     h = h.copy()
+    h["_p"] = sum(_angka(h[c]) for c in PROSES_SAP if c in h.columns) if any(c in h.columns for c in PROSES_SAP) else 0
     h["_w"] = h["SAP | Warna"] if "SAP | Warna" in h.columns else ""
     h["_b"] = _angka(h["SAP | Total"]) if "SAP | Total" in h.columns else 0
     tabel = label.jenis_tabel()
     peta = {(t, w): label.label_untuk_sap(t, w, tabel)[0] for t, w in h[["type", "_w"]].drop_duplicates().itertuples(index=False)}
     h["label"] = [peta[(t, w)] for t, w in zip(h["type"], h["_w"])]
     h = h[(h["label"] != "") & h["prn"].notna()]
-    g = h.groupby(["prn", "tgl", "label"], as_index=False)["_b"].sum().rename(columns={"_b": "bagus"})
+    g = h.groupby(["prn", "tgl", "label"], as_index=False)[["_b", "_p"]].sum().rename(columns={"_b": "bagus", "_p": "proses"})
+    g["proses"] = [int(p) if proses_berlaku(lb) else 0 for p, lb in zip(g["proses"], g["label"])]
     info = h.groupby("prn").agg(nama=("nama_sap", "first"), bagian=("grup", lambda x: "QC SK" if (x == "SK").any() else "QC"))
     g["nama"] = g["prn"].map(info["nama"])
     g["bagian"] = g["prn"].map(info["bagian"])
     return g
+
+
+def proses_sap(prn, tgl_posting, lb):
+    """Afkir Proses otomatis (M + LA + LB + F dari SAP) untuk satu karyawan, tanggal posting, dan label. 0 bila tidak berlaku."""
+    if not prn or not tgl_posting or not proses_berlaku(lb):
+        return 0
+    b = pcs_bagus(str(tgl_posting)[:7])
+    m = b[(b["prn"] == prn) & (b["tgl"] == tgl_posting) & (b["label"] == lb)]
+    return int(m["proses"].sum()) if len(m) else 0
 
 
 def afkir(bulan):
@@ -83,6 +102,8 @@ def tabel(bulan):
     a["nama"] = [info["nama"].get(p, n) for p, n in zip(a["prn"], a["nama"])]
     a["bagian"] = [info["bagian"].get(p, g) for p, g in zip(a["prn"], a["bagian"])]
     peta = {(p, t, lb): v for p, t, lb, v in zip(b["prn"], b["tgl"], b["label"], b["bagus"])}
+    pro = {(p, t, lb): v for p, t, lb, v in zip(b["prn"], b["tgl"], b["label"], b["proses"])}
+    a["proses"] = [pro.get((p, t, lb), 0) if proses_berlaku(lb) else (0 if str(lb).startswith("SNI ") else v) for p, t, lb, v in zip(a["prn"], a["tgl"], a["label"], a["proses"])]
     a["bagus"] = [peta.get((p, t, (ind or lb)), 0) for p, t, lb, ind in zip(a["prn"], a["tgl"], a["label"], a["induk"])]
     a["bagus"] = a["bagus"].astype(int)
     return a.sort_values(["bagian", "nama", "tgl", "label"])[KOLOM].reset_index(drop=True)
@@ -95,7 +116,7 @@ def ringkas_harian(df):
         return pd.DataFrame(columns=["bagian", "prn", "nama", "tgl", "afkir", "bagus", "kotor", "pct", "pct_kotor"])
     d = df.copy()
     d["afkir"] = d["kotor"]  # % label afkir hanya kategori Kotor
-    d["bagus_utama"] = d["bagus"].where(~d["label"].astype(str).str.startswith("SNI "), 0)
+    d["bagus_utama"] = d["bagus"]  # pcs bagus semua baris label (SNI pendamping ikut dihitung)
     g = d.groupby(["bagian", "prn", "nama", "tgl"], as_index=False).agg(afkir=("afkir", "sum"), bagus=("bagus_utama", "sum"), kotor=("kotor", "sum"))
     b = g["bagus"].where(g["bagus"] > 0)
     g["pct"] = g["afkir"] / b

@@ -71,8 +71,7 @@ def _rincian_html(d):
         h += (f"<tr class='{'sni' if sni else ''}'><td class='t'>{html.escape(str(r.label))}{' (pendamping)' if sni else ''}</td><td>{_n(r.bagus)}</td>"
               f"<td class='{'m' if merah else ''}'>{_n(a)}</td><td class='{'m' if merah else ''}'>{_p(pct)}</td></tr>")
         tot_a += a
-        if not sni:
-            tot_b += r.bagus
+        tot_b += r.bagus
     pt = tot_a / tot_b if tot_b > 0 else float("nan")
     h += (f"<tr class='tot'><td class='t' colspan='2'>% TOTAL AFKIR LABEL = {_n(tot_a)} ÷ {_n(tot_b)} pcs bagus</td><td>{_n(tot_a)}</td><td>{_p(pt)}</td></tr></table></div>")
     return h
@@ -86,7 +85,7 @@ def dlg_hari(df, prn, nama, tgl):
     cat = [c for c in d["catatan"].unique() if str(c).strip()]
     for c in cat:
         st.markdown(f"<div class='cat'>📝 {html.escape(str(c))}</div>", unsafe_allow_html=True)
-    st.caption("% label afkir = afkir kotor ÷ pcs bagus. Pcs bagus total tidak menghitung label SNI dua kali (pcs bagus SNI = pcs bagus type induknya). Di atas 0,5% berwarna merah.")
+    st.caption("% label afkir = afkir kotor ÷ pcs bagus. Total pcs bagus = jumlah semua baris label, label SNI pendamping ikut dihitung (pcs bagus SNI = pcs bagus type induknya). Di atas 0,5% berwarna merah.")
 
 
 def _jenis_dominan(r):
