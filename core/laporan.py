@@ -6,6 +6,7 @@
 - Bagian: 'QC SK' bila meja di pabrik QC SK, selain itu 'QC'.
 - Kotor di atas 0,5% ditandai merah."""
 import io
+import re
 
 import pandas as pd
 
@@ -20,8 +21,10 @@ PROSES_SAP = ["SAP | Afkir (M) - Berubah", "SAP | Afkir (LA) - Bocor Udara", "SA
 
 
 def proses_berlaku(lb):
-    """Afkir Proses (otomatis dari SAP: M + LA + LB + F) hanya untuk type closet CW. CE6, CE7 (termasuk warna), CE9, dan SNI tidak."""
-    return str(lb).upper().startswith("CW")
+    """Afkir Proses (otomatis dari SAP: M + LA + LB + F) hanya untuk type closet CW. CE6, CE7 (termasuk warna) dan CE9 tidak.
+    Label SNI pendamping memakai nilai Proses type induknya."""
+    t = str(lb).upper()
+    return t[4:].startswith("CW") if t.startswith("SNI ") else t.startswith("CW")
 
 
 def _angka(s):
@@ -34,7 +37,8 @@ def pcs_bagus(bulan):
     if h.empty or "prn" not in h.columns:
         return pd.DataFrame(columns=["prn", "tgl", "label", "bagus", "proses", "nama", "bagian"])
     h = h.copy()
-    h["_p"] = sum(_angka(h[c]) for c in PROSES_SAP if c in h.columns) if any(c in h.columns for c in PROSES_SAP) else 0
+    kp = [c for c in h.columns if re.match(r"^SAP \| Afkir \((M|LA|LB|F)\)", str(c).strip())]
+    h["_p"] = sum(_angka(h[c]) for c in kp) if kp else 0
     h["_w"] = h["SAP | Warna"] if "SAP | Warna" in h.columns else ""
     h["_b"] = _angka(h["SAP | Total"]) if "SAP | Total" in h.columns else 0
     tabel = label.jenis_tabel()
@@ -54,7 +58,8 @@ def proses_sap(prn, tgl_posting, lb):
     if not prn or not tgl_posting or not proses_berlaku(lb):
         return 0
     b = pcs_bagus(str(tgl_posting)[:7])
-    m = b[(b["prn"] == prn) & (b["tgl"] == tgl_posting) & (b["label"] == lb)]
+    induk = str(lb)[4:] if str(lb).startswith("SNI ") else lb
+    m = b[(b["prn"] == prn) & (b["tgl"] == tgl_posting) & (b["label"] == induk)]
     return int(m["proses"].sum()) if len(m) else 0
 
 
@@ -103,7 +108,7 @@ def tabel(bulan):
     a["bagian"] = [info["bagian"].get(p, g) for p, g in zip(a["prn"], a["bagian"])]
     peta = {(p, t, lb): v for p, t, lb, v in zip(b["prn"], b["tgl"], b["label"], b["bagus"])}
     pro = {(p, t, lb): v for p, t, lb, v in zip(b["prn"], b["tgl"], b["label"], b["proses"])}
-    a["proses"] = [pro.get((p, t, lb), 0) if proses_berlaku(lb) else (0 if str(lb).startswith("SNI ") else v) for p, t, lb, v in zip(a["prn"], a["tgl"], a["label"], a["proses"])]
+    a["proses"] = [pro.get((p, t, (ind or lb)), 0) if proses_berlaku(lb) else v for p, t, lb, ind, v in zip(a["prn"], a["tgl"], a["label"], a["induk"], a["proses"])]
     a["bagus"] = [peta.get((p, t, (ind or lb)), 0) for p, t, lb, ind in zip(a["prn"], a["tgl"], a["label"], a["induk"])]
     a["bagus"] = a["bagus"].astype(int)
     return a.sort_values(["bagian", "nama", "tgl", "label"])[KOLOM].reset_index(drop=True)

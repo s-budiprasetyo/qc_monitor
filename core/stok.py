@@ -101,6 +101,8 @@ def _pergerakan(sampai):
     bagus = pd.concat(bag, ignore_index=True) if bag else pd.DataFrame(columns=["label", "tgl", "bagus"])
     pro = bagus.groupby(["label", "tgl"], as_index=False)["proses"].sum().rename(columns={"proses": "n"}) if "proses" in bagus.columns else None
     bagus = bagus.drop(columns=["proses"], errors="ignore")
+    if pro is not None and len(pro):  # label SNI pendamping: Proses sama dengan type induknya
+        pro = pd.concat([pro] + [pro[pro["label"] == lb].assign(label=label.nama_sni(lb)) for lb in set(pro["label"]) if label.punya_sni(lb)], ignore_index=True)
     # pcs bagus label SNI = pcs bagus type induknya
     sni = [(lb, label.nama_sni(lb)) for lb in set(bagus["label"]) if label.punya_sni(lb)]
     tambahan = [bagus[bagus["label"] == lb].assign(label=ns) for lb, ns in sni]
@@ -111,7 +113,7 @@ def _pergerakan(sampai):
         for c in ("lengket", "garis", "kotor", "proses"):
             a[c] = pd.to_numeric(a[c] if c in a.columns else 0, errors="coerce").fillna(0)
         # Proses type closet CW otomatis dari SAP (di bawah); input manual hanya dipakai untuk type lain
-        a["n"] = a["lengket"] + a["garis"] + a["kotor"] + a["proses"].where(~(a["type"].map(laporan.proses_berlaku) | a["type"].astype(str).str.startswith("SNI ")), 0)
+        a["n"] = a["lengket"] + a["garis"] + a["kotor"] + a["proses"].where(~a["type"].map(laporan.proses_berlaku), 0)
         afkir = a.groupby(["type", "tgl_posting"], as_index=False)["n"].sum().rename(columns={"type": "label", "tgl_posting": "tgl"})
     else:
         afkir = pd.DataFrame(columns=["label", "tgl", "n"])

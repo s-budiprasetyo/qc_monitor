@@ -101,3 +101,7 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 ## Tahap 9h
 - Total % rincian hari = total afkir kotor ÷ total pcs bagus semua baris label (SNI pendamping ikut dihitung di pembagi).
 - Afkir **Proses** otomatis dari SAP = M + LA + LB + F, hanya type closet CW (bukan CE6/CE7/CE9/warna/SNI). Di form input kolom Proses terkunci; laporan dan stok memakai angka SAP langsung. Stok: pemakaian = pcs bagus + semua kategori afkir.
+
+## Tahap 9i
+- Form Input Label Afkir: kartu type dan SNI sejajar (tinggi sama), tombol hapus jadi ✕ kecil di pojok kanan atas kartu; baris diberi nama "Proses".
+- Proses (M+LA+LB+F SAP) juga untuk label SNI pendamping (nilai sama dengan type induk), di form, laporan, dan stok.

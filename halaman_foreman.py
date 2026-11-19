@@ -63,15 +63,18 @@ CSS_JENDELA = """
 .st-key-lbm [data-testid="stHorizontalBlock"]{flex-wrap:nowrap !important;gap:.5rem !important;min-width:max-content}
 .st-key-lbm [data-testid="stColumn"]{min-width:116px !important;flex:0 0 116px !important;width:116px !important}
 .st-key-lbm [data-testid="stColumn"]:first-child{min-width:82px !important;flex:0 0 82px !important;width:82px !important}
-.lb-th{background:#eef4fe;border:1.5px solid #1a73e8;border-radius:10px;text-align:center;padding:4px 2px;line-height:1.15}
+.lb-th{background:#eef4fe;border:1.5px solid #1a73e8;border-radius:10px;text-align:center;padding:4px 2px;line-height:1.15;height:46px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center}
 .lb-th.lb-sni{background:#fff4e5;border-color:#f59e0b}
 .lb-th.lb-sni b{color:#b45309}
 .lb-th small{display:block;font-size:10px;color:#5b7399;font-weight:700;letter-spacing:.5px}
 .lb-th b{font-size:13px;color:#0b3d91}
 .lb-jenis{font-weight:700;font-size:13px;color:#0b3d91}
 .lb-total{background:#fdeaea;border-radius:10px;text-align:center;font-weight:800;color:#b71c1c;line-height:38px;height:38px}
-[class*='st-key-lbx_'] button{min-height:0;height:22px;padding:0 .5rem;font-size:11px;border-radius:999px;color:#b71c1c}
-.st-key-lbplus button{border:2px dashed #1a73e8;color:#1a73e8;font-weight:700;background:#fff}
+.st-key-lbm [data-testid="stColumn"]{position:relative}
+[class*='st-key-lbx_']{position:absolute !important;top:-9px;right:-5px;width:auto !important;z-index:5}
+[class*='st-key-lbx_'] button{min-height:0;height:20px;width:20px;padding:0;font-size:11px;line-height:1;border-radius:50%;color:#b71c1c;background:#fff;border:1px solid #e5a0a0;box-shadow:0 1px 3px #0002}
+[class*='st-key-lbx_'] button p{font-size:11px;margin:0}
+.st-key-lbplus button{height:46px;min-height:0;border:2px dashed #1a73e8;color:#1a73e8;font-weight:700;background:#fff}
 .st-key-lbsimpan button{font-weight:800}
 .st-key-lbsimpan button[kind="primary"]{background:#1e9e50;border-color:#1e9e50}
 </style>
@@ -177,7 +180,7 @@ def dlg_label():
                             unsafe_allow_html=True)
                 if not sni:
                     with st.container(key=f"lbx_{i}"):
-                        if st.button("✕ hapus", key=f"lbrm_{i}"):
+                        if st.button("✕", key=f"lbrm_{i}", help="Hapus label ini"):
                             st.session_state["w_cols"] = [x for x in induk if x != t]
                             st.rerun(scope="fragment")
         with k[len(cols) + 1], st.container(key="lbplus"):
@@ -189,7 +192,7 @@ def dlg_label():
         posting = label.tanggal_posting(prn, _tgl_iso(tgl), shift) if prn else ""
         for j, nm in label.JENIS:
             r = st.columns([1] + [1] * len(cols), vertical_alignment="center")
-            r[0].markdown(f"<div class='lb-jenis'>{nm}{' · otomatis SAP' if j == 'proses' else ''}</div>", unsafe_allow_html=True)
+            r[0].markdown(f"<div class='lb-jenis'>{nm}</div>", unsafe_allow_html=True)
             for i, t in enumerate(cols):
                 if j == "proses":  # otomatis dari SAP (M+LA+LB+F), tidak bisa diedit; hanya type closet CW
                     otomatis = laporan.proses_sap(prn, posting, t)
