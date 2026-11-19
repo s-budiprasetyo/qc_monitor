@@ -74,6 +74,7 @@ CSS_JENDELA = """
 .lb-jenis{font-weight:700;font-size:13px;color:#0b3d91}
 .lb-total{background:#fdeaea;border-radius:10px;text-align:center;font-weight:800;color:#b71c1c;line-height:38px;height:38px}
 .st-key-lbm [data-testid="stColumn"]{position:relative}
+[data-testid='stVerticalBlock']:has(>[data-testid='stElementContainer']>.lb-th){gap:0 !important}
 [class*='st-key-lbx_']{position:absolute !important;top:-9px;right:-5px;width:auto !important;z-index:5}
 [class*='st-key-lbx_'] button{min-height:0;height:20px;width:20px;padding:0;font-size:11px;line-height:1;border-radius:50%;color:#b71c1c;background:#fff;border:1px solid #e5a0a0;box-shadow:0 1px 3px #0002}
 [class*='st-key-lbx_'] button p{font-size:11px;margin:0}
@@ -128,7 +129,7 @@ def dlg_label():
     st.markdown(CSS_JENDELA, unsafe_allow_html=True)
     st.html(JS_PILIH, unsafe_allow_javascript=True)
     st.markdown("<div class='lb-kepala'><b>INPUT LABEL AFKIR</b><div>Input label afkir</div></div>", unsafe_allow_html=True)
-    oleh = st.session_state.get("nama_masuk", "")
+    oleh = akses.pelaku()
     tipe_kat = label.type_per_kategori()
     peta = _nama_peta()
 
@@ -189,8 +190,8 @@ def dlg_label():
 
     st.markdown("<div class='kt' style='margin:.4rem 0 .2rem'>JUMLAH LABEL AFKIR PER JENIS LABEL</div>", unsafe_allow_html=True)
     with st.container(key="lbm"):
-        k = st.columns([1] + [1] * len(cols) + [1], vertical_alignment="center")
-        k[0].markdown("<div class='lb-jenis'>JENIS AFKIR</div>", unsafe_allow_html=True)
+        k = st.columns([1] + [1] * len(cols) + [1], vertical_alignment="top")
+        k[0].markdown("<div class='lb-jenis' style='line-height:46px'>JENIS AFKIR</div>", unsafe_allow_html=True)
         for i, t in enumerate(cols):
             with k[i + 1]:
                 sni = t.startswith(label.SNI + " ")
@@ -329,7 +330,7 @@ def _buka_jendela(muat=None):
 def _notifikasi(tgl_s, shift):
     belum = label.meja_belum(tgl_s, shift)
     total = sum(len(v) for v in belum.values())
-    oleh = st.session_state.get("nama_masuk", "")
+    oleh = akses.pelaku()
     with st.container(border=True):
         st.markdown(f"**Meja yang belum dicek** — {total} meja" if total else "**Semua meja sudah dicek** ✅")
         if total:
@@ -419,7 +420,7 @@ def dlg_operator():
                 st.rerun(scope="fragment")
     if st.button("SIMPAN DAFTAR", type="primary", width="stretch", key="op_simpan"):
         with st.spinner("Menyimpan…"):
-            label.operator_simpan(sorted(daftar, key=lambda x: nama.get(x, x)), st.session_state.get("nama_masuk", ""))
+            label.operator_simpan(sorted(daftar, key=lambda x: nama.get(x, x)), akses.pelaku())
         st.session_state.pop("op_daftar", None)
         st.session_state["pg_toast"] = "Daftar operator disimpan."
         st.rerun()
@@ -561,7 +562,7 @@ def dlg_kosong():
     pab = st.segmented_control("Pabrik", list(label.PABRIK), key="ks_pab", label_visibility="collapsed")
     ya = st.checkbox("Saya yakin, stok semua meja di pabrik ini dijadikan 0", key="ks_ya", disabled=not pab)
     if st.button("KOSONGKAN", type="primary", width="stretch", key="ks_ok", disabled=not (pab and ya)):
-        galat = stok.kosongkan(_tgl_iso(tgl), pab, st.session_state.get("nama_masuk", ""))
+        galat = stok.kosongkan(_tgl_iso(tgl), pab, akses.pelaku())
         if galat:
             st.error(galat)
         else:
@@ -577,7 +578,7 @@ def dlg_label_bagus():
     kepala("label", "INPUT LABEL BAGUS")
     if st.session_state.get("il_toast"):
         st.toast(st.session_state.pop("il_toast"), icon="✅")
-    _tab_terima(st.session_state.get("nama_masuk", ""))
+    _tab_terima(akses.pelaku())
 
 
 @st.dialog("INPUT LABEL STOK", width="large", on_dismiss="rerun")
@@ -586,7 +587,7 @@ def dlg_label_stok():
     kepala("label", "INPUT LABEL STOK")
     if st.session_state.get("il_toast"):
         st.toast(st.session_state.pop("il_toast"), icon="✅")
-    _tab_hitung(st.session_state.get("nama_masuk", ""))
+    _tab_hitung(akses.pelaku())
 
 
 def _hub():

@@ -120,3 +120,7 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 
 ## Tahap 10c
 - Dialog hasil kerja: bila total ≥100% tampil keterangan "Target tercapai" (tombol alasan memang hanya muncul bila <100%).
+
+## Tahap 10d
+- Verifikasi Google WAJIB lagi di halaman publik (langkah 1) dan untuk Foreman di halaman admin; email dicatat di riwayat (akses.pelaku()).
+- Baris type di Input Label Afkir dirapikan (rata atas).

@@ -238,9 +238,10 @@ def dlg_login():
                 google_ok = str(st.user.email)
                 st.success(f"Langkah 1 selesai. Akun Google terverifikasi: {google_ok}")
             else:
-                st.caption("Opsional: verifikasi akun Google supaya email ikut tercatat di riwayat perubahan. "
-                           "Tanpa verifikasi, login dengan user dan password tetap bisa dan namamu tercatat.")
-                st.button("Verifikasi dengan Google (opsional)", on_click=st.login, width="stretch")
+                perlu = True
+                st.info("Langkah 1: verifikasi akun Google di perangkat ini. Emailmu dicatat sebagai tanda siapa yang melakukan "
+                        "setiap input dan perubahan. Setelah kembali ke halaman ini, lanjut ke langkah 2 (user dan password).")
+                st.button("Verifikasi dengan Google", on_click=st.login, width="stretch", type="primary")
         except Exception:
             pass
     with st.form("form_login"):

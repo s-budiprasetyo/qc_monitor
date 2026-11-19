@@ -98,6 +98,24 @@ def _google_ok(adm):
         return False
 
 
+def _google_foreman():
+    """Foreman wajib verifikasi Google bila login Google aktif (email apa pun yang sah; dicatat di riwayat)."""
+    try:
+        return "auth" not in st.secrets or bool(st.user.is_logged_in)
+    except Exception:
+        return False
+
+
+def pelaku():
+    """Nama pengguna yang masuk + email Google terverifikasi, untuk riwayat perubahan."""
+    n = st.session_state.get("nama_masuk", "")
+    try:
+        e = str(st.user.email) if "auth" in st.secrets and st.user.is_logged_in else ""
+    except Exception:
+        e = ""
+    return f"{n} ({e})" if e else n
+
+
 def gerbang():
     """Tampilkan login bila belum masuk, lalu st.stop(). Setelah lolos, peran() terisi."""
     adm = _rahasia_admin()
@@ -117,6 +135,12 @@ def gerbang():
         else:
             st.error("Akun Google ini tidak punya akses admin.")
             st.button("Keluar Google", on_click=st.logout)
+        st.stop()
+    if peran() == FOREMAN and not st.session_state.get("via_token") and not _google_foreman():
+        st.markdown("<h1 style='text-align:center'>WELCOME FOREMAN QC TOTO</h1>", unsafe_allow_html=True)
+        st.info("Langkah 2: verifikasi akun Google. Emailmu dicatat sebagai tanda siapa yang melakukan setiap perubahan.")
+        st.button("Masuk dengan Google", on_click=st.login, type="primary")
+        st.button("Batal", on_click=keluar)
         st.stop()
     if peran():
         return
