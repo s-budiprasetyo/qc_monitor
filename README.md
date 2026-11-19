@@ -89,3 +89,7 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Stok sistem = stok awal + diterima − (pcs bagus SAP + afkir). Stok awal = hitungan terakhir yang di-ADJUST, jika belum ada = 0 mulai 2026-11-01.
 - Monitoring Label punya kolom baru `catatan` (alasan afkir). Tab baru `label_terima` dan `label_hitung` dibuat otomatis di Sheet master; kolom `catatan` ditambah ke `label_afkir`.
 - Deploy: upload isi folder ke repo, reboot aplikasi admin dan laporan.
+
+## Tahap 9f
+- Laporan % Afkir Label: semua operator yang ada di SAP tampil; yang belum diinput afkirnya = 0,00%.
+- Foreman: tombol **INPUT LABEL AFKIR** (dulu Monitoring Label), **INPUT LABEL BAGUS** (label diterima dari packing), **INPUT LABEL STOK** (hitung → Simpan → Lihat selisih: Type, Stok aktual, Stok sistem, Selisih; tombol Simpan dan Adjust).

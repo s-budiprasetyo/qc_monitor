@@ -737,7 +737,7 @@ def _jl_ke_tabel(df):
 
 
 def kelola_jenis_label():
-    st.caption("Pemetaan **Type SAP + Warna → Label**. Label ini yang muncul di jendela Monitoring Label dan dipakai mencocokkan "
+    st.caption("Pemetaan **Type SAP + Warna → Label**. Label ini yang muncul di jendela Input Label Afkir dan dipakai mencocokkan "
                "hasil SAP. *Warna SAP* kosong = berlaku untuk semua warna. *Label* kosong = type itu tidak punya label. "
                "*SNI* dicentang = label itu punya label SNI pendamping. Klik baris kosong paling bawah untuk menambah.")
     t = label.jenis_tabel()
@@ -829,7 +829,7 @@ def halaman_admin():
             "jadwal": ("JADWAL KERJA", "Upload jadwal QC dan QC SK", "cal", dlg_jadwal, "Terakhir update", _terakhir("JADWAL KERJA")),
             "eval": ("EVALUASI", "Verifikasi alasan tidak target", "check", dlg_eval, "Terakhir update", _terakhir("EVALUASI KARYAWAN")),
             "awal": ("DATA AWAL", "Data karyawan dan target", "db", dlg_awal, "Status", f"{len(kar)} karyawan terdaftar"),
-            "operator": ("DAFTAR OPERATOR", "Daftarkan operator untuk Monitoring Label", "user", halaman_foreman.dlg_operator, "Status", f"{jml_op} operator"),
+            "operator": ("DAFTAR OPERATOR", "Daftarkan operator untuk Input Label Afkir", "user", halaman_foreman.dlg_operator, "Status", f"{jml_op} operator"),
             "rencana": ("RENCANA PRODUKSI", "Rencana produksi per type", "doc", None, "Status", "Segera")}
     daftar = [{"id": k, "label": v[0], "sub": v[1], "icon": v[2], "status_label": v[4], "status": v[5], "disabled": v[3] is None}
               for k, v in MENU.items()]

@@ -1,4 +1,4 @@
-"""Halaman Upload Foreman: jendela MONITORING LABEL (input label afkir), notifikasi meja yang belum dicek,
+"""Halaman Upload Foreman: jendela INPUT LABEL AFKIR (input label afkir), notifikasi meja yang belum dicek,
 tabel input hari ini (ubah/hapus)."""
 from datetime import date
 
@@ -30,11 +30,11 @@ h1.judul-f{font-weight:800;color:#0b3d91;letter-spacing:.5px;margin:.6rem 0 1rem
 .st-key-hub_f [class*='st-key-hub_gear'] button p{font-size:30px;line-height:1;margin:0}
 .st-key-hub_f [class*='st-key-hub_gear'] button:hover{transform:rotate(90deg);color:#fff;filter:brightness(1.05)}
 .st-key-hub_gear_buka button{transform:rotate(180deg)}
-.st-key-btn_inputlabel button{background:#e8f3ff;border:1px solid #9fd0fb;color:#0b3d91;font-weight:800;
+.st-key-btn_inputlabel button,.st-key-btn_inputstok button{background:#e8f3ff;border:1px solid #9fd0fb;color:#0b3d91;font-weight:800;
   padding:.9rem 1.4rem;border-radius:12px;min-height:0;height:auto}
 .st-key-btn_operator button{background:#e8f3ff;border:1px solid #9fd0fb;color:#0b3d91;font-weight:800;
   padding:.9rem 1.4rem;border-radius:12px;min-height:0;height:auto}
-@media (max-width:640px){.st-key-btn_label,.st-key-btn_operator,.st-key-btn_inputlabel{width:100%}}
+@media (max-width:640px){.st-key-btn_label,.st-key-btn_operator,.st-key-btn_inputlabel,.st-key-btn_inputstok{width:100%}}
 .nf-baris{display:flex;align-items:center;gap:10px;font-weight:700;color:#0b3d91}
 .nf-x{background:#e53935;color:#fff;border-radius:6px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
 [class*='st-key-nf_']{border:1px solid #f1b9b6;background:#fff7f6;border-radius:10px;padding:4px 10px;margin-bottom:6px}
@@ -113,11 +113,11 @@ def _bersih_form(jaga_meja=False):
             del st.session_state[k]
 
 
-@st.dialog("MONITORING LABEL", width="large", on_dismiss="rerun")
+@st.dialog("INPUT LABEL AFKIR", width="large", on_dismiss="rerun")
 def dlg_label():
     st.markdown(CSS_JENDELA, unsafe_allow_html=True)
     st.html(JS_PILIH, unsafe_allow_javascript=True)
-    st.markdown("<div class='lb-kepala'><b>MONITORING LABEL</b><div>Input label afkir</div></div>", unsafe_allow_html=True)
+    st.markdown("<div class='lb-kepala'><b>INPUT LABEL AFKIR</b><div>Input label afkir</div></div>", unsafe_allow_html=True)
     oleh = st.session_state.get("nama_masuk", "")
     tipe_kat = label.type_per_kategori()
     peta = _nama_peta()
@@ -330,7 +330,7 @@ def _tabel(tgl_s, shift):
 
 @st.dialog("DAFTAR OPERATOR", width="large", on_dismiss="rerun")
 def dlg_operator():
-    """Nama + kode operator yang bisa dipilih di Monitoring Label."""
+    """Nama + kode operator yang bisa dipilih di Input Label Afkir."""
     kontrol_jendela("operator")
     kepala("operator", "DAFTAR OPERATOR")
     k = label.logic.info_karyawan()
@@ -443,15 +443,15 @@ def _selisih(oleh):
     if not beda:
         st.success(f"Semua {len(h)} label yang dihitung sama dengan stok sistem.")
     else:
-        st.caption(f"{len(beda)} dari {len(h)} label yang dihitung tidak sama. Angka aktual boleh diubah.")
+        st.caption(f"{len(beda)} dari {len(h)} label yang dihitung tidak sama. Stok aktual boleh diubah, stok sistem tidak.")
         k = st.columns([1.6, 1.4, 1.6, 1.2], vertical_alignment="center")
-        for c, t in zip(k, ["LABEL", "SISTEM", "AKTUAL", "SELISIH"]):
+        for c, t in zip(k, ["TYPE", "STOK AKTUAL", "STOK SISTEM", "SELISIH"]):
             c.markdown(f"<div class='kt'>{t}</div>", unsafe_allow_html=True)
         for lb, sx, ak in beda:
             c = st.columns([1.6, 1.4, 1.6, 1.2], vertical_alignment="center")
             c[0].markdown(f"**{lb}**")
-            c[1].write(f"{sx:,}".replace(",", "."))
-            v = c[2].number_input(f"Aktual {lb}", min_value=0, max_value=9999999, step=1, value=int(ak), key=f"il_a_{tgl}_{lb}", label_visibility="collapsed")
+            c[2].write(f"{sx:,}".replace(",", "."))
+            v = c[1].number_input(f"Aktual {lb}", min_value=0, max_value=9999999, step=1, value=int(ak), key=f"il_a_{tgl}_{lb}", label_visibility="collapsed")
             d = int(v) - sx
             c[3].markdown(f"<b style='color:{'#b71c1c' if d < 0 else '#1d6f2f'}'>{d:+,}</b>".replace(",", "."), unsafe_allow_html=True)
     nilai = {r.label: int(st.session_state.get(f"il_a_{tgl}_{r.label}", r.aktual)) for r in h.itertuples()}
@@ -468,21 +468,25 @@ def _selisih(oleh):
             st.session_state.pop("il_lihat", None)
             st.session_state["il_toast"] = "Stok awal disesuaikan dengan stok aktual."
             st.rerun(scope="fragment")
-    st.caption("ADJUST: stok sistem label yang dihitung disamakan dengan angka aktual di atas, dan perhitungan berjalan dari angka itu.")
+    st.caption("SIMPAN: menyimpan perubahan stok aktual. ADJUST: stok aktual dijadikan stok awal (stok sistem disamakan dengan stok aktual).")
 
 
-@st.dialog("INPUT LABEL", width="large", on_dismiss="rerun")
-def dlg_input_label():
+@st.dialog("INPUT LABEL BAGUS", width="large", on_dismiss="rerun")
+def dlg_label_bagus():
     kontrol_jendela("inputlabel")
-    kepala("label", "INPUT LABEL")
-    oleh = st.session_state.get("nama_masuk", "")
+    kepala("label", "INPUT LABEL BAGUS")
     if st.session_state.get("il_toast"):
         st.toast(st.session_state.pop("il_toast"), icon="✅")
-    t1, t2 = st.tabs(["LABEL DITERIMA", "STOK LABEL"])
-    with t1:
-        _tab_terima(oleh)
-    with t2:
-        _tab_hitung(oleh)
+    _tab_terima(st.session_state.get("nama_masuk", ""))
+
+
+@st.dialog("INPUT LABEL STOK", width="large", on_dismiss="rerun")
+def dlg_label_stok():
+    kontrol_jendela("inputlabel")
+    kepala("label", "INPUT LABEL STOK")
+    if st.session_state.get("il_toast"):
+        st.toast(st.session_state.pop("il_toast"), icon="✅")
+    _tab_hitung(st.session_state.get("nama_masuk", ""))
 
 
 def _hub():
@@ -495,13 +499,16 @@ def _hub():
                 st.rerun()
         if buka:
             with st.container(key="btn_label"):
-                if st.button("🏷  MONITORING LABEL"):
+                if st.button("🏷  INPUT LABEL AFKIR"):
                     _buka_jendela()
             with st.container(key="btn_inputlabel"):
-                if st.button("📦  INPUT LABEL"):
+                if st.button("📦  INPUT LABEL BAGUS"):
+                    dlg_label_bagus()
+            with st.container(key="btn_inputstok"):
+                if st.button("🧮  INPUT LABEL STOK"):
                     for k_ in ("il_lihat", "il_hitung_tgl"):
                         st.session_state.pop(k_, None)
-                    dlg_input_label()
+                    dlg_label_stok()
             with st.container(key="btn_operator"):
                 if st.button("👥  DAFTAR OPERATOR"):
                     st.session_state.pop("op_daftar", None)

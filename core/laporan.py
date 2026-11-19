@@ -32,7 +32,11 @@ def pcs_bagus(bulan):
     peta = {(t, w): label.label_untuk_sap(t, w, tabel)[0] for t, w in h[["type", "_w"]].drop_duplicates().itertuples(index=False)}
     h["label"] = [peta[(t, w)] for t, w in zip(h["type"], h["_w"])]
     h = h[(h["label"] != "") & h["prn"].notna()]
-    return h.groupby(["prn", "tgl", "label"], as_index=False)["_b"].sum().rename(columns={"_b": "bagus"})
+    g = h.groupby(["prn", "tgl", "label"], as_index=False)["_b"].sum().rename(columns={"_b": "bagus"})
+    info = h.groupby("prn").agg(nama=("nama_sap", "first"), bagian=("grup", lambda x: "QC SK" if (x == "SK").any() else "QC"))
+    g["nama"] = g["prn"].map(info["nama"])
+    g["bagian"] = g["prn"].map(info["bagian"])
+    return g
 
 
 def afkir(bulan):
@@ -59,11 +63,25 @@ def afkir(bulan):
 
 
 def tabel(bulan):
-    """Satu baris per (hari, karyawan, label) dengan pcs bagus SAP. Label SNI memakai pcs bagus label induknya."""
+    """Satu baris per (hari, karyawan, label) dengan pcs bagus SAP. Label SNI memakai pcs bagus label induknya.
+    Karyawan/hari/label yang ada di SAP tetapi belum diinput afkirnya tetap muncul dengan afkir 0 (-> 0%)."""
     a = afkir(bulan)
-    if a.empty:
-        return pd.DataFrame(columns=KOLOM)
     b = pcs_bagus(bulan)
+    if a.empty and b.empty:
+        return pd.DataFrame(columns=KOLOM)
+    ada = {(p, t, lb) for p, t, lb in zip(a["prn"], a["tgl"], a["label"])}
+    baru = []
+    for p, t, lb, nm, bg in zip(b["prn"], b["tgl"], b["label"], b["nama"], b["bagian"]):
+        for nama_lb, induk in [(lb, "")] + ([(label.nama_sni(lb), lb)] if label.punya_sni(lb) else []):
+            if (p, t, nama_lb) not in ada:
+                baru.append({"tgl": t, "bagian": bg, "prn": p, "nama": nm, "label": nama_lb, "induk": induk, "catatan": "",
+                             **{j: 0 for j in JENIS}})
+    if baru:
+        a = pd.concat([a, pd.DataFrame(baru)], ignore_index=True)
+    # nama & bagian ikut data SAP agar satu karyawan = satu baris
+    info = b.drop_duplicates("prn").set_index("prn")
+    a["nama"] = [info["nama"].get(p, n) for p, n in zip(a["prn"], a["nama"])]
+    a["bagian"] = [info["bagian"].get(p, g) for p, g in zip(a["prn"], a["bagian"])]
     peta = {(p, t, lb): v for p, t, lb, v in zip(b["prn"], b["tgl"], b["label"], b["bagus"])}
     a["bagus"] = [peta.get((p, t, (ind or lb)), 0) for p, t, lb, ind in zip(a["prn"], a["tgl"], a["label"], a["induk"])]
     a["bagus"] = a["bagus"].astype(int)

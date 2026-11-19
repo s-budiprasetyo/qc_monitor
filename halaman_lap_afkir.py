@@ -186,7 +186,7 @@ def _warna(_):
 tampil = nilai.map(lambda v: "" if pd.isna(v) else _p(v))
 gaya = tampil.style.apply(lambda _: _warna(_).map(lambda x: x + ";text-align:right" if x else ""), axis=None)
 st.markdown(f"<div class='leg'><span><i style='background:{HIJAU}'></i>Kotor ≤ 0,5%</span><span><i style='background:{MERAH}'></i>Kotor &gt; 0,5%</span>"
-            "<span>Kosong = tidak ada input / pcs bagus SAP</span></div>", unsafe_allow_html=True)
+            "<span>Kosong = tidak ada pcs bagus SAP · 0,00% = belum ada afkir diinput</span></div>", unsafe_allow_html=True)
 ev = st.dataframe(gaya, on_select="rerun", selection_mode="single-cell", key="lp_grid", width="stretch",
                   height=min(45 + 35 * len(nilai), 640))
 sel = (ev.selection.cells if ev and ev.selection else None) or []
