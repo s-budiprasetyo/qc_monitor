@@ -25,10 +25,12 @@ KOLOM = {
     "masalah_abaikan": ["prn", "tgl"],  # ketidaksesuaian jadwal yang diputuskan admin: abaikan
     # Monitoring Label (foreman): satu baris = satu type di satu meja oleh satu operator pada satu shift
     "label_afkir": ["tgl", "shift", "tgl_posting", "waktu", "prn", "nama", "pabrik", "meja", "kategori", "type",
-                    "lengket", "garis", "kotor", "proses", "total", "oleh", "induk"],
+                    "lengket", "garis", "kotor", "proses", "total", "oleh", "induk", "catatan"],
     # pemetaan type SAP (+warna) -> jenis label. jenis: utama | sni (label kedua, induk = label utamanya) | tanpa (tidak ada label)
     "label_type": ["kategori", "label", "jenis", "type_sap", "warna", "induk"],
     "label_warna": ["kode", "nama"],
+    "label_terima": ["tgl", "waktu", "label", "jumlah", "oleh"],  # label diterima dari packing (masuk stok QC)
+    "label_hitung": ["tgl", "waktu", "label", "aktual", "sistem", "adjust", "oleh"],  # hitung stok aktual; adjust="ya" = jadi stok awal
     "operator": ["prn", "kode_opr", "oleh", "waktu"],  # Daftar Operator: siapa yang bisa dipilih di Monitoring Label
     "meja_abaikan": ["tgl", "shift", "pabrik", "meja", "oleh", "waktu"],  # meja yang tidak perlu dicek (diabaikan foreman)
     # Pemetaan jenis label (master): type SAP + warna -> label. label kosong = type itu tidak punya label (diabaikan).

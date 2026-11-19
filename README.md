@@ -82,3 +82,10 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Masuk tanpa login ulang: token HMAC berumur 30 menit di alamat (?t=), dibuang setelah dipakai. Syarat Secrets (SAMA di semua app, taruh di baris paling atas, sebelum [admin]):
   kunci_masuk = "teks acak panjang"; app admin: url_laporan, url_utama; app laporan: url_admin; app utama: kunci_masuk saja (hanya token admin yang diterima).
 - Informasi update: kartu per file (waktu relatif + warna hijau/kuning/merah).
+
+## Tahap 9e — Grup LABEL di aplikasi Laporan + Input Label
+- Aplikasi laporan: menu grup **LABEL** → % Afkir Label (klik persen = rincian hari; klik RATA RATA = grafik + hari tertinggi + catatan foreman), Stok Label, Kolaborasi (placeholder).
+- Foreman → gear → **INPUT LABEL**: tab *Label diterima* (stok masuk) dan *Stok label* (hitung → Simpan → Lihat selisih → Simpan / Adjust).
+- Stok sistem = stok awal + diterima − (pcs bagus SAP + afkir). Stok awal = hitungan terakhir yang di-ADJUST, jika belum ada = 0 mulai 2026-11-01.
+- Monitoring Label punya kolom baru `catatan` (alasan afkir). Tab baru `label_terima` dan `label_hitung` dibuat otomatis di Sheet master; kolom `catatan` ditambah ke `label_afkir`.
+- Deploy: upload isi folder ke repo, reboot aplikasi admin dan laporan.

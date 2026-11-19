@@ -5,7 +5,7 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
-from core import akses, data, label
+from core import akses, data, label, stok
 from core.store import BukuBulananBelumAda
 from core.ui import gaya_global, gaya_responsif, kepala, kontrol_jendela
 
@@ -30,9 +30,11 @@ h1.judul-f{font-weight:800;color:#0b3d91;letter-spacing:.5px;margin:.6rem 0 1rem
 .st-key-hub_f [class*='st-key-hub_gear'] button p{font-size:30px;line-height:1;margin:0}
 .st-key-hub_f [class*='st-key-hub_gear'] button:hover{transform:rotate(90deg);color:#fff;filter:brightness(1.05)}
 .st-key-hub_gear_buka button{transform:rotate(180deg)}
+.st-key-btn_inputlabel button{background:#e8f3ff;border:1px solid #9fd0fb;color:#0b3d91;font-weight:800;
+  padding:.9rem 1.4rem;border-radius:12px;min-height:0;height:auto}
 .st-key-btn_operator button{background:#e8f3ff;border:1px solid #9fd0fb;color:#0b3d91;font-weight:800;
   padding:.9rem 1.4rem;border-radius:12px;min-height:0;height:auto}
-@media (max-width:640px){.st-key-btn_label,.st-key-btn_operator{width:100%}}
+@media (max-width:640px){.st-key-btn_label,.st-key-btn_operator,.st-key-btn_inputlabel{width:100%}}
 .nf-baris{display:flex;align-items:center;gap:10px;font-weight:700;color:#0b3d91}
 .nf-x{background:#e53935;color:#fff;border-radius:6px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
 [class*='st-key-nf_']{border:1px solid #f1b9b6;background:#fff7f6;border-radius:10px;padding:4px 10px;margin-bottom:6px}
@@ -105,6 +107,7 @@ def _bersih_form(jaga_meja=False):
     st.session_state["w_tambah"] = False
     st.session_state["w_edit"] = None
     st.session_state.pop("w_op", None)
+    st.session_state.pop("w_catatan", None)
     if not jaga_meja:
         for k in [k for k in st.session_state if k.startswith("w_meja_")]:
             del st.session_state[k]
@@ -137,6 +140,7 @@ def dlg_label():
                 n = label._int(v.get(j))
                 st.session_state[f"w_n_{t}_{j}"] = n or None  # 0 ditampilkan kosong (tampil placeholder 0)
         st.session_state["w_edit"] = (muat["prn"], muat["pabrik"], muat["meja"])
+        st.session_state["w_catatan"] = muat.get("catatan", "")
     cols = st.session_state.setdefault("w_cols", [])
     if isinstance(cols, dict):
         cols = st.session_state["w_cols"] = list(cols)
@@ -214,6 +218,8 @@ def dlg_label():
                         st.session_state["w_pk"] = n + 1
                         st.rerun(scope="fragment")
 
+    catatan = st.text_input("CATATAN (opsional)", key="w_catatan", max_chars=200,
+                            placeholder="Alasan bila afkir tinggi, mis. 'label lengket karena kemasan basah'")
     st.write("")
     s1, s2 = st.columns([1, 1.4])
     with s1, st.container(key="lbsimpan"):
@@ -229,7 +235,7 @@ def dlg_label():
         else:
             try:
                 with st.spinner("Menyimpan…"):
-                    galat = label.simpan(_tgl_iso(tgl), shift, prn, nama_pilih, pabrik, meja, nilai, oleh, ganti_lama=edit)
+                    galat = label.simpan(_tgl_iso(tgl), shift, prn, nama_pilih, pabrik, meja, nilai, oleh, ganti_lama=edit, catatan=catatan)
             except BukuBulananBelumAda as e:
                 st.error(str(e))
                 return
@@ -311,7 +317,8 @@ def _tabel(tgl_s, shift):
         if c[0].button("✎ Ubah operator & meja ini", key="pg_ubah", width="stretch"):
             grup = d[(d["prn"] == r["prn"]) & (d["pabrik"] == r["pabrik"]) & (d["meja"] == r["meja"])]
             kolom = {x["type"]: {j: x[j] for j, _ in label.JENIS} for _, x in grup.iterrows()}
-            _buka_jendela({"prn": r["prn"], "pabrik": r["pabrik"], "meja": r["meja"], "kolom": kolom})
+            _buka_jendela({"prn": r["prn"], "pabrik": r["pabrik"], "meja": r["meja"], "kolom": kolom,
+                           "catatan": str(r.get("catatan", "") or "")})
         with c[1].popover("🗑 Hapus input ini", use_container_width=True):
             st.write(f"Hapus {nama[i]}? (Tidak bisa dibatalkan.)")
             if st.button("YA, HAPUS", type="primary", key="pg_hapus"):
@@ -356,6 +363,128 @@ def dlg_operator():
         st.rerun()
 
 
+def _num(x):
+    try:
+        return int(float(x))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _tab_terima(oleh):
+    """Label diterima dari packing = menambah stok QC."""
+    tgl = st.date_input("Tanggal diterima", value=label.hari_ini(), format="DD/MM/YYYY", key="il_tgl_t")
+    st.caption("Pilih label lalu isi jumlah (pcs). Contoh: CE7 7000. Tambah baris dengan klik baris kosong paling bawah.")
+    ed = st.data_editor(
+        pd.DataFrame({"Label": pd.Series([], dtype="object"), "Jumlah": pd.Series([], dtype="float")}),
+        num_rows="dynamic", hide_index=True, width="stretch", key="il_ed_t",
+        column_config={"Label": st.column_config.SelectboxColumn("Label", options=stok.semua_label(), required=True),
+                       "Jumlah": st.column_config.NumberColumn("Jumlah (pcs)", min_value=1, max_value=999999, step=1, format="%d")})
+    pilih = [(r["Label"], _num(r["Jumlah"])) for _, r in ed.iterrows() if r["Label"] and _num(r["Jumlah"]) > 0]
+    if st.button("SIMPAN LABEL DITERIMA", type="primary", width="stretch", key="il_simpan_t", disabled=not pilih):
+        with st.spinner("Menyimpan…"):
+            n = stok.terima_simpan(_tgl_iso(tgl), pilih, oleh)
+        st.session_state["il_toast"] = f"{n} penerimaan label tersimpan."
+        st.session_state.pop("il_ed_t", None)
+        st.rerun(scope="fragment")
+    riwayat = stok.terima_daftar(label.hari_ini().strftime("%Y-%m"))
+    st.markdown("**Penerimaan bulan ini**")
+    if riwayat.empty:
+        st.caption("Belum ada penerimaan.")
+    for i, r in riwayat.head(12).iterrows():
+        c = st.columns([2.2, 2, 2, 1], vertical_alignment="center")
+        c[0].caption(f"{r['tgl'][8:]}-{r['tgl'][5:7]}-{r['tgl'][:4]}")
+        c[1].write(f"**{r['label']}**")
+        c[2].write(f"{r['jumlah']:,} pcs".replace(",", "."))
+        if c[3].button("✕", key=f"il_x_{i}", help="Hapus penerimaan ini"):
+            stok.terima_hapus(r["tgl"], r["waktu"], r["label"])
+            st.session_state["il_toast"] = "Penerimaan dihapus."
+            st.rerun(scope="fragment")
+
+
+def _tab_hitung(oleh):
+    """Hitung stok aktual -> bandingkan dengan stok sistem -> simpan / adjust."""
+    if st.session_state.get("il_lihat"):
+        return _selisih(oleh)
+    tgl = st.date_input("Tanggal hitung (stok akhir hari)", value=label.hari_ini(), format="DD/MM/YYYY", key="il_tgl_h")
+    st.caption("Hitung label bagus yang ada, lalu isi per label. Label yang tidak dihitung tidak ikut dibandingkan.")
+    ed = st.data_editor(
+        pd.DataFrame({"Label": pd.Series([], dtype="object"), "Aktual": pd.Series([], dtype="float")}),
+        num_rows="dynamic", hide_index=True, width="stretch", key="il_ed_h",
+        column_config={"Label": st.column_config.SelectboxColumn("Label", options=stok.semua_label(), required=True),
+                       "Aktual": st.column_config.NumberColumn("Jumlah aktual (pcs)", min_value=0, max_value=9999999, step=1, format="%d")})
+    pilih = {r["Label"]: _num(r["Aktual"]) for _, r in ed.iterrows() if r["Label"] and r["Aktual"] == r["Aktual"]}
+    c1, c2 = st.columns(2)
+    if c1.button("SIMPAN", type="primary", width="stretch", key="il_simpan_h", disabled=not pilih):
+        with st.spinner("Menghitung stok sistem dan menyimpan…"):
+            sis = stok.stok_sistem(_tgl_iso(tgl)).set_index("label")["sistem"].to_dict()
+            stok.hitung_simpan(_tgl_iso(tgl), [(lb, a, sis.get(lb, 0)) for lb, a in pilih.items()], oleh)
+        st.session_state["il_hitung_tgl"] = _tgl_iso(tgl)
+        st.session_state["il_toast"] = f"Hasil hitung {len(pilih)} label tersimpan."
+        st.session_state.pop("il_ed_h", None)
+        st.rerun(scope="fragment")
+    ada = st.session_state.get("il_hitung_tgl") == _tgl_iso(tgl) or len(stok.hitung_terakhir(_tgl_iso(tgl))) > 0
+    if c2.button("LIHAT SELISIH", width="stretch", key="il_lihat_btn", disabled=not ada):
+        st.session_state["il_lihat"] = _tgl_iso(tgl)
+        st.rerun(scope="fragment")
+
+
+def _selisih(oleh):
+    tgl = st.session_state["il_lihat"]
+    if st.button("← Kembali", key="il_kembali"):
+        st.session_state.pop("il_lihat", None)
+        st.rerun(scope="fragment")
+    st.markdown(f"**Selisih stok sistem dan aktual — {tgl[8:]}-{tgl[5:7]}-{tgl[:4]}**")
+    h = stok.hitung_terakhir(tgl)
+    if h.empty:
+        st.info("Belum ada hasil hitung pada tanggal ini.")
+        return
+    sis = stok.stok_sistem(tgl).set_index("label")["sistem"].to_dict()
+    beda = [(r.label, sis.get(r.label, 0), r.aktual) for r in h.itertuples() if sis.get(r.label, 0) != r.aktual]
+    if not beda:
+        st.success(f"Semua {len(h)} label yang dihitung sama dengan stok sistem.")
+    else:
+        st.caption(f"{len(beda)} dari {len(h)} label yang dihitung tidak sama. Angka aktual boleh diubah.")
+        k = st.columns([1.6, 1.4, 1.6, 1.2], vertical_alignment="center")
+        for c, t in zip(k, ["LABEL", "SISTEM", "AKTUAL", "SELISIH"]):
+            c.markdown(f"<div class='kt'>{t}</div>", unsafe_allow_html=True)
+        for lb, sx, ak in beda:
+            c = st.columns([1.6, 1.4, 1.6, 1.2], vertical_alignment="center")
+            c[0].markdown(f"**{lb}**")
+            c[1].write(f"{sx:,}".replace(",", "."))
+            v = c[2].number_input(f"Aktual {lb}", min_value=0, max_value=9999999, step=1, value=int(ak), key=f"il_a_{tgl}_{lb}", label_visibility="collapsed")
+            d = int(v) - sx
+            c[3].markdown(f"<b style='color:{'#b71c1c' if d < 0 else '#1d6f2f'}'>{d:+,}</b>".replace(",", "."), unsafe_allow_html=True)
+    nilai = {r.label: int(st.session_state.get(f"il_a_{tgl}_{r.label}", r.aktual)) for r in h.itertuples()}
+    s1, s2 = st.columns(2)
+    if s1.button("SIMPAN", width="stretch", key="il_s_simpan"):
+        stok.hitung_simpan(tgl, [(lb, a, sis.get(lb, 0)) for lb, a in nilai.items()], oleh)
+        st.session_state["il_toast"] = "Perubahan hitung tersimpan."
+        st.rerun(scope="fragment")
+    with s2, st.container(key="il_adj"):
+        if st.button("ADJUST", type="primary", width="stretch", key="il_s_adjust",
+                     help="Stok awal setiap label yang dihitung mengikuti stok aktual (bukan sistem)"):
+            with st.spinner("Menyesuaikan stok awal…"):
+                stok.hitung_simpan(tgl, [(lb, a, sis.get(lb, 0)) for lb, a in nilai.items()], oleh, adjust=True)
+            st.session_state.pop("il_lihat", None)
+            st.session_state["il_toast"] = "Stok awal disesuaikan dengan stok aktual."
+            st.rerun(scope="fragment")
+    st.caption("ADJUST: stok sistem label yang dihitung disamakan dengan angka aktual di atas, dan perhitungan berjalan dari angka itu.")
+
+
+@st.dialog("INPUT LABEL", width="large", on_dismiss="rerun")
+def dlg_input_label():
+    kontrol_jendela("inputlabel")
+    kepala("label", "INPUT LABEL")
+    oleh = st.session_state.get("nama_masuk", "")
+    if st.session_state.get("il_toast"):
+        st.toast(st.session_state.pop("il_toast"), icon="✅")
+    t1, t2 = st.tabs(["LABEL DITERIMA", "STOK LABEL"])
+    with t1:
+        _tab_terima(oleh)
+    with t2:
+        _tab_hitung(oleh)
+
+
 def _hub():
     """Roda gigi biru muda: klik untuk membuka/menutup menu. Menu bisa ditambah item lain nanti."""
     buka = st.session_state.get("hub_buka", True)
@@ -368,6 +497,11 @@ def _hub():
             with st.container(key="btn_label"):
                 if st.button("🏷  MONITORING LABEL"):
                     _buka_jendela()
+            with st.container(key="btn_inputlabel"):
+                if st.button("📦  INPUT LABEL"):
+                    for k_ in ("il_lihat", "il_hitung_tgl"):
+                        st.session_state.pop(k_, None)
+                    dlg_input_label()
             with st.container(key="btn_operator"):
                 if st.button("👥  DAFTAR OPERATOR"):
                     st.session_state.pop("op_daftar", None)

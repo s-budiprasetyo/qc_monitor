@@ -13,7 +13,7 @@ from core import calc, data, label, logic
 
 JENIS = [j[0] if isinstance(j, (tuple, list)) else j for j in label.JENIS]  # lengket, garis, kotor, proses
 BATAS_KOTOR = 0.005
-KOLOM = ["tgl", "bagian", "prn", "nama", "label", "bagus", "lengket", "garis", "kotor", "proses"]
+KOLOM = ["tgl", "bagian", "prn", "nama", "label", "bagus", "lengket", "garis", "kotor", "proses", "induk", "catatan"]
 
 
 def _angka(s):
@@ -48,9 +48,13 @@ def afkir(bulan):
     for j in JENIS:
         d[j] = _angka(d[j]).astype(int)
     d["bagian"] = d["pabrik"].map(lambda p: "QC SK" if p == "QC SK" else "QC")
+    if "catatan" not in d.columns:
+        d["catatan"] = ""
+    d["catatan"] = d["catatan"].fillna("")
     d = d.drop(columns=["tgl"]).rename(columns={"tgl_posting": "tgl", "type": "label"})
     g = d.groupby(["tgl", "prn", "nama", "label", "induk"], as_index=False).agg(
-        {**{j: "sum" for j in JENIS}, "bagian": lambda s: "QC SK" if (s == "QC SK").any() else "QC"})
+        {**{j: "sum" for j in JENIS}, "bagian": lambda s: "QC SK" if (s == "QC SK").any() else "QC",
+         "catatan": lambda s: "; ".join(dict.fromkeys(x.strip() for x in s if str(x).strip()))})
     return g
 
 
@@ -64,6 +68,32 @@ def tabel(bulan):
     a["bagus"] = [peta.get((p, t, (ind or lb)), 0) for p, t, lb, ind in zip(a["prn"], a["tgl"], a["label"], a["induk"])]
     a["bagus"] = a["bagus"].astype(int)
     return a.sort_values(["bagian", "nama", "tgl", "label"])[KOLOM].reset_index(drop=True)
+
+
+def ringkas_harian(df):
+    """Satu baris per (bagian, prn, nama, tgl): total afkir, pcs bagus total (label SNI tidak dihitung dobel), kotor, %.
+    % total = jumlah afkir total / jumlah pcs bagus total hari itu."""
+    if df.empty:
+        return pd.DataFrame(columns=["bagian", "prn", "nama", "tgl", "afkir", "bagus", "kotor", "pct", "pct_kotor"])
+    d = df.copy()
+    d["afkir"] = d[JENIS].sum(axis=1)
+    d["bagus_utama"] = d["bagus"].where(~d["label"].astype(str).str.startswith("SNI "), 0)
+    g = d.groupby(["bagian", "prn", "nama", "tgl"], as_index=False).agg(afkir=("afkir", "sum"), bagus=("bagus_utama", "sum"), kotor=("kotor", "sum"))
+    b = g["bagus"].where(g["bagus"] > 0)
+    g["pct"] = g["afkir"] / b
+    g["pct_kotor"] = g["kotor"] / b
+    return g
+
+
+def ringkas_bulan(rh):
+    """Satu baris per operator untuk sebulan (rata-rata tertimbang: total afkir / total pcs bagus)."""
+    if rh.empty:
+        return rh
+    g = rh.groupby(["bagian", "prn", "nama"], as_index=False)[["afkir", "bagus", "kotor"]].sum()
+    b = g["bagus"].where(g["bagus"] > 0)
+    g["pct"] = g["afkir"] / b
+    g["pct_kotor"] = g["kotor"] / b
+    return g
 
 
 def tambah_persen(df):

@@ -13,7 +13,7 @@ SHIFT = ["Pagi", "Sore"]  # SAP: Shift B = Pagi, C = Sore
 KATEGORI = ["Closet", "Lavatory", "Tangki", "Urinal", "Aksesoris"]
 JENIS = [("lengket", "Lengket"), ("garis", "Garis"), ("kotor", "Kotor"), ("proses", "Proses")]
 KOLOM = ["tgl", "shift", "tgl_posting", "waktu", "prn", "nama", "pabrik", "meja", "kategori", "type",
-         "lengket", "garis", "kotor", "proses", "total", "oleh", "induk"]
+         "lengket", "garis", "kotor", "proses", "total", "oleh", "induk", "catatan"]
 KUNCI = ["tgl", "shift", "prn", "pabrik", "meja", "type"]
 BATAS_KOTOR = 0.5  # persen dari jumlah periksa (dipakai laporan tahap berikutnya)
 
@@ -176,7 +176,7 @@ def _int(x):
         return 0
 
 
-def simpan(tgl, shift, prn, nama, pabrik, meja, kolom, oleh, ganti_lama=None):
+def simpan(tgl, shift, prn, nama, pabrik, meja, kolom, oleh, ganti_lama=None, catatan=""):
     """kolom = {type: {'lengket':n,'garis':n,'kotor':n}}. Satu baris per type.
     ganti_lama (opsional): (prn, pabrik, meja) kelompok lama yang diganti saat mengubah.
     Return pesan galat (str) bila ditolak, atau None bila tersimpan."""
@@ -199,7 +199,7 @@ def simpan(tgl, shift, prn, nama, pabrik, meja, kolom, oleh, ganti_lama=None):
         baris.append({"tgl": tgl, "shift": shift, "tgl_posting": posting, "waktu": waktu, "prn": prn, "nama": nama,
                       "pabrik": pabrik, "meja": str(meja), "kategori": kategori_label(t), "type": t,
                       "lengket": l, "garis": g, "kotor": k, "proses": pr, "total": l + g + k + pr, "oleh": oleh,
-                      "induk": t[len(SNI) + 1:] if t.startswith(SNI + " ") else ""})
+                      "induk": t[len(SNI) + 1:] if t.startswith(SNI + " ") else "", "catatan": (catatan or "").strip()})
     hapus = None
     if ganti_lama is not None:
         lp, lpab, lm = ganti_lama
