@@ -201,16 +201,58 @@ def simpan(tgl, shift, prn, nama, pabrik, meja, kolom, oleh, ganti_lama=None, ca
                       "lengket": l, "garis": g, "kotor": k, "proses": pr, "total": l + g + k + pr, "oleh": oleh,
                       "induk": t[len(SNI) + 1:] if t.startswith(SNI + " ") else "", "catatan": (catatan or "").strip()})
     hapus = None
+    lama = None
     if ganti_lama is not None:
         lp, lpab, lm = ganti_lama
         lama = ada[(ada["prn"] == lp) & (ada["pabrik"] == lpab) & (ada["meja"] == str(lm))]
         hapus = lama[KUNCI] if len(lama) else None
+    try:  # riwayat perubahan (siapa, kapan, dari berapa ke berapa); gagal mencatat tidak boleh menggagalkan simpan
+        _catat(tgl, shift, prn, pabrik, meja, baris, lama, oleh)
+    except Exception:
+        pass
     data.upsert("label_afkir", pd.DataFrame(baris, columns=KOLOM), KUNCI, hapus=hapus)
     data.catat_update("MONITORING LABEL")
     return None
 
 
-def hapus_baris(tgl, shift, prn, pabrik, meja, tipe):
+def _ringkas(r):
+    return f"Lengket {_int(r['lengket'])} · Garis {_int(r['garis'])} · Kotor {_int(r['kotor'])} · Proses {_int(r['proses'])}"
+
+
+def _catat(tgl, shift, prn, pabrik, meja, baru, lama, oleh):
+    from core import stok
+    lama_map = {}
+    if lama is not None and len(lama):
+        lama_map = {r["type"]: r for _, r in lama.iterrows()}
+    else:  # tambah type baru pada nama+meja+tanggal yang sama tidak menimpa; cek baris yang sudah ada
+        pass
+    for b in baru:
+        kunci = f"{tgl}|{shift}|{prn}|{pabrik}|{meja}|{b['type']}"
+        if b["type"] in lama_map:
+            o = lama_map[b["type"]]
+            if _ringkas(o) != _ringkas(b):
+                stok.catat_riwayat("ubah label afkir", kunci, _ringkas(o), _ringkas(b), oleh, tgl)
+        else:
+            stok.catat_riwayat("input label afkir", kunci, "", _ringkas(b), oleh, tgl)
+    for t, o in lama_map.items():
+        if t not in {b["type"] for b in baru}:
+            stok.catat_riwayat("hapus label afkir", f"{tgl}|{shift}|{prn}|{pabrik}|{meja}|{t}", _ringkas(o), "dihapus", oleh, tgl)
+
+
+def riwayat_kelompok(tgl, shift, prn, pabrik, meja):
+    from core import stok
+    return stok.riwayat_daftar(f"{tgl}|{shift}|{prn}|{pabrik}|{meja}|", 20)
+
+
+def hapus_baris(tgl, shift, prn, pabrik, meja, tipe, oleh=""):
+    try:
+        from core import stok
+        ada = baca_hari(tgl, shift)
+        x = ada[(ada["prn"] == prn) & (ada["pabrik"] == pabrik) & (ada["meja"] == str(meja)) & (ada["type"] == tipe)]
+        if len(x):
+            stok.catat_riwayat("hapus label afkir", f"{tgl}|{shift}|{prn}|{pabrik}|{meja}|{tipe}", _ringkas(x.iloc[0]), "dihapus", oleh, tgl)
+    except Exception:
+        pass
     h = pd.DataFrame([{"tgl": tgl, "shift": shift, "prn": prn, "pabrik": pabrik, "meja": str(meja), "type": tipe}])
     data.upsert("label_afkir", pd.DataFrame(columns=KOLOM), KUNCI, hapus=h)
 

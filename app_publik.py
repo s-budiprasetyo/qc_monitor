@@ -8,7 +8,9 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from core import akses, data, logic, parsers
+from datetime import datetime
+
+from core import akses, data, label_ui, logic, parsers, stok
 from core.bulan import pilih_bulan
 from core.tabel import tabel
 from core.grafik import KELAS, data_grafik, grafik, kelas_anggota
@@ -52,8 +54,12 @@ table.t td.ab{background:#ffff00}
 .v{display:inline-block;border:2px solid #000;border-radius:6px;padding:1px 3px;font-weight:600;background:#fff}
 .v.kd{background:#ffff00;min-width:20px;font-size:14px;font-weight:800}
 .v.kg{box-sizing:border-box;position:relative;background:#fff;width:22px;height:22px;padding:0;vertical-align:middle}
-.v.kg:after{content:'';position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#1a73e8}
-.v.kg.ada:after{width:14px;height:14px;margin:-7px 0 0 -7px}
+.v.kg{border:1.5px dashed #6b8bbd;background:#f6f8fb}
+.v.kg:after{content:'🏷';position:absolute;left:0;right:0;top:0;bottom:0;font-size:12px;line-height:19px;text-align:center}
+.v.kg.ada:before{content:'';position:absolute;right:-5px;top:-5px;width:9px;height:9px;border-radius:50%;background:#1a73e8;border:1.5px solid #fff;z-index:2}
+.v.lg{position:relative}
+.v.lg:before,.v.kg.lg:before{content:'';position:absolute;right:-5px;top:-6px;width:9px;height:9px;border-radius:50%;background:#14a44d;border:1.5px solid #fff;z-index:2}
+.v.kg.lg{border:2px solid #14a44d;background:#eaf7ee}
 .m{color:#e00000}
 .ket{font-size:12px;margin-top:6px}
 table.d{border-collapse:collapse;width:100%;font-size:14px;text-align:center}
@@ -69,29 +75,31 @@ def nama_bulan(kode):
     return f"{BULAN[int(kode[5:]) - 1]} {kode[:4]}"
 
 
-def kotak(v, desimal=0, klik=""):
-    # merah bila angka yang tampil masih di bawah 100%
+def kotak(v, desimal=0, klik="", lg=False):
+    # merah bila angka yang tampil masih di bawah 100%; titik hijau = label diterima hari itu sudah diinput
     teks = f"{v:.{desimal}f}".replace(".", ",") + "%"
-    return f"<span class='v k{' m' if round(v, desimal) < 100 else ''}' {klik}>{teks}</span>" if klik else \
+    g = " lg" if lg else ""
+    return f"<span class='v k{' m' if round(v, desimal) < 100 else ''}{g}' {klik}>{teks}</span>" if klik else \
         f"<span class='v{' m' if round(v, desimal) < 100 else ''}'>{teks}</span>"
 
 
-def sel(jenis, nilai, prn, d):
+def sel(jenis, nilai, prn, d, lg=False):
     if jenis == "pct":
         attr = f"data-k='h' data-p='{html.escape(prn)}' data-d='{bulan}-{d:02d}'"
-        return f"<td>{kotak(nilai, 0, klik=attr)}</td>"
+        return f"<td>{kotak(nilai, 0, klik=attr, lg=lg)}</td>"
     if jenis == "abs":
         return f"<td class='ab'><span class='v kd'>{html.escape(nilai)}</span></td>"
     if jenis == "libur":
         return "<td class='lb'></td>"
     attr = f"data-k='k' data-p='{html.escape(prn)}' data-d='{bulan}-{d:02d}'"
-    ada = " ada" if jenis == "keg" else ""  # ada catatan = lingkaran biru gelap di dalam tombol; kosong = tombol kosong
+    ada = (" ada" if jenis == "keg" else "") + (" lg" if lg else "")  # ada catatan = titik biru; label sudah diinput = hijau
     return f"<td><span class='v kg k{ada}' {attr}></span></td>"  # kosong: bisa diklik untuk mencatat kegiatan lain
 
 
 def tabel_html(baris, tahun, bln):
     # tanggal sesudah data SAP terakhir yang diposting disembunyikan (belum ada nilainya)
     n_hari = hari_akhir(baris, tahun, bln)
+    lbl = _label_ada(bulan)
     h = "<table class='t'><tr><th class='n'>NAMA</th>"
     for d in range(1, n_hari + 1):
         h += f"<th class='{'we' if calendar.weekday(tahun, bln, d) >= 5 else ''}'>{d}</th>"
@@ -100,20 +108,34 @@ def tabel_html(baris, tahun, bln):
         h += f"<tr data-b='{html.escape(b.get('bagian', 'QC'))}'><td class='n'>{html.escape(b['nama'])}</td>"
         for d in range(1, n_hari + 1):
             jenis, nilai = b["hari"].get(d, (None, None))
-            h += sel(jenis, nilai, str(i), d)
+            h += sel(jenis, nilai, str(i), d, (b["prn"], d) in lbl)
         rata = kotak(b["rata"], 1, klik=f"data-k='r' data-p='{i}'") if b["rata"] is not None else ""
         h += f"<td>{rata}</td></tr>"
     return h + "</table>"
 
 
 def hari_akhir(baris, tahun, bln):
+    """Kolom tanggal berhenti di hari ini (bulan berjalan), walau SAP baru diupdate sampai tanggal sebelumnya."""
     ada = [d for b in baris for d, (j, v) in b["hari"].items() if j == "pct" or (j == "abs" and v != "R")]
-    return max(ada) if ada else calendar.monthrange(tahun, bln)[1]
+    akhir = max(ada) if ada else 0
+    hi = datetime.now(data.WIB).date()
+    if (hi.year, hi.month) == (tahun, bln):
+        akhir = max(akhir, hi.day)
+    return akhir or calendar.monthrange(tahun, bln)[1]
+
+
+def _label_ada(bln):
+    """{(prn, hari)}: karyawan yang label diterimanya sudah diinput pada tanggal itu."""
+    d = stok.meja_terima_daftar()
+    if d.empty:
+        return set()
+    d = d[d["tgl"].astype(str).str[:7] == bln]
+    return {(r.prn, int(r.tgl[8:])) for r in d.itertuples()}
 
 
 def kalender_data(baris, tahun, bln, boleh_idx):
     """Kalender bulanan per orang (tampilan smartphone). Hanya untuk baris yang boleh dilihat si pengguna."""
-    n_hari, hasil = hari_akhir(baris, tahun, bln), []
+    n_hari, hasil, lbl = hari_akhir(baris, tahun, bln), [], _label_ada(f"{tahun}-{bln:02d}")
     for i in boleh_idx:
         b = baris[i]
         c = "<div class='c off'></div>" * calendar.weekday(tahun, bln, 1)
@@ -126,14 +148,14 @@ def kalender_data(baris, tahun, bln, boleh_idx):
             jenis, nilai = b["hari"].get(d, (None, None))
             if jenis == "pct":
                 m = " m" if round(nilai) < 100 else ""
-                c += (f"<div class='c'>{dt}<span class='b k{m}' data-k='h' data-p='{i}' data-d='{tg}'>"
+                c += (f"<div class='c'>{dt}<span class='b k{m}{' lg' if (b['prn'], d) in lbl else ''}' data-k='h' data-p='{i}' data-d='{tg}'>"
                       f"{angka(nilai)}%</span></div>")
             elif jenis == "abs":
                 c += f"<div class='c ab'>{dt}<span class='b y'>{html.escape(nilai)}</span></div>"
             elif jenis == "libur":
                 c += f"<div class='c lb'>{dt}</div>"
             else:
-                ada = " ada" if jenis == "keg" else ""
+                ada = (" ada" if jenis == "keg" else "") + (" lg" if (b["prn"], d) in lbl else "")
                 c += f"<div class='c'>{dt}<span class='b kg k{ada}' data-k='k' data-p='{i}' data-d='{tg}'></span></div>"
         rata = b["rata"]
         hasil.append({"i": i, "nama": b["nama"], "rata": f"{angka(rata, 1)}%" if rata is not None else "",
@@ -240,6 +262,10 @@ def dlg_login():
         st.error("User atau password salah.")
 
 
+def _oleh():
+    return st.session_state.get("me_nama") or st.session_state.get("me") or "karyawan"
+
+
 @st.dialog("HASIL KERJA", width="large")
 def dlg_hari(bln, prn, tgl):
     kontrol_jendela_pub("hari")
@@ -247,6 +273,23 @@ def dlg_hari(bln, prn, tgl):
     tombol_kembali()
     nama = logic.peta_nama_prn().get(prn, prn)
     st.markdown(f"<div class='id'><b>TANGGAL</b>: {tgl_id(tgl)} &nbsp;&nbsp; <b>NAMA</b>: {html.escape(nama)}</div>", unsafe_allow_html=True)
+    tab1, tab2, tab3 = st.tabs(["HASIL KERJA", "INPUT LABEL", "PINDAH LABEL"])
+    with tab1:
+        _isi_hasil(bln, prn, tgl)
+    adm = bool(st.session_state.get("adm"))
+    with tab2:
+        if boleh(prn):
+            label_ui.form_terima(prn, nama, tgl, _oleh(), adm, kp="hlt")
+        else:
+            st.info("Label hanya bisa diinput oleh pemilik nama ini (login) atau admin.")
+    with tab3:
+        if boleh(prn):
+            label_ui.form_pindah(prn, nama, tgl, _oleh(), adm, kp="hlp")
+        else:
+            st.info("Label hanya bisa dipindah oleh pemilik nama ini (login) atau admin.")
+
+
+def _isi_hasil(bln, prn, tgl):
     rinci, total = logic.detail_hari(bln, prn, tgl)
     h = "<div style='overflow-x:auto'><table class='d'><tr><th>TYPE</th><th>WARNA</th><th>PABRIK</th><th>FORMING</th><th>OPERATION</th><th>PERIKSA</th><th>TARGET</th><th>% HASIL KERJA</th></tr>"
     for r in rinci:
@@ -330,6 +373,23 @@ def dlg_kegiatan(bln, prn, tgl):
     nama = logic.peta_nama_prn().get(prn, prn)
     st.markdown(f"<div class='id'><b>TANGGAL</b>: {tgl_id(tgl)} &nbsp;&nbsp; <b>NAMA</b>: {html.escape(nama)}</div>",
                 unsafe_allow_html=True)
+    tab1, tab2, tab3 = st.tabs(["KEGIATAN", "INPUT LABEL", "PINDAH LABEL"])
+    adm = bool(st.session_state.get("adm"))
+    with tab2:
+        if boleh(prn):
+            label_ui.form_terima(prn, nama, tgl, _oleh(), adm, kp="klt")
+        else:
+            st.info("Label hanya bisa diinput oleh pemilik nama ini (login) atau admin.")
+    with tab3:
+        if boleh(prn):
+            label_ui.form_pindah(prn, nama, tgl, _oleh(), adm, kp="klp")
+        else:
+            st.info("Label hanya bisa dipindah oleh pemilik nama ini (login) atau admin.")
+    with tab1:
+        _isi_kegiatan(bln, prn, tgl, nama)
+
+
+def _isi_kegiatan(bln, prn, tgl, nama):
     lama = data.kegiatan_hari(prn, tgl)
     st.caption("Tidak ada hasil pcs di hari ini. Tulis kegiatan yang kamu kerjakan (mis. membersihkan area, membantu "
                "angkat body). Kosongkan lalu SUBMIT untuk menghapus catatan." if lama else

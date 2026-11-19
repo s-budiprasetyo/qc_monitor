@@ -20,8 +20,12 @@ table.t td.ab{background:#ffff00}
 .m{color:#e00000}
 .kos{display:block;width:100%;height:22px;border-radius:6px}
 .v.kg{box-sizing:border-box;position:relative;background:#fff;width:22px;height:22px;padding:0;vertical-align:middle}
-.v.kg:after{content:'';position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#1a73e8}
-.v.kg.ada:after{width:14px;height:14px;margin:-7px 0 0 -7px}
+.v.kg{border:1.5px dashed #6b8bbd;background:#f6f8fb}
+.v.kg:after{content:'\1F3F7';position:absolute;left:0;right:0;top:0;bottom:0;font-size:12px;line-height:19px;text-align:center}
+.v.kg.ada:before{content:'';position:absolute;right:-5px;top:-5px;width:9px;height:9px;border-radius:50%;background:#1a73e8;border:1.5px solid #fff;z-index:2}
+.v.lg{position:relative}
+.v.lg:before{content:'';position:absolute;right:-5px;top:-6px;width:9px;height:9px;border-radius:50%;background:#14a44d;border:1.5px solid #fff;z-index:2}
+.v.kg.lg{border:2px solid #14a44d;background:#eaf7ee}
 .k{cursor:pointer}.k:hover{outline:2px solid #1ba1e2;outline-offset:1px;background:#e8f6fd}
 
 /* ---- smartphone: tabel ringkas + kalender per orang ---- */
@@ -45,9 +49,11 @@ table.t td.ab{background:#ffff00}
   box-sizing:border-box;border:2px solid #000;border-radius:6px;background:#fff;font:800 14px "Source Sans Pro",system-ui,sans-serif;color:#000;padding:0}
 .c .b.m{color:#e00000}.c .b.y{background:#ffff00;font-size:15px}
 .c .b.kg{width:auto;height:auto;position:absolute}
-.c .b.kg:after{content:'';width:8px;height:8px;border-radius:50%;background:#1a73e8;position:static;margin:0}
-.c .b.kg.ada:after{width:14px;height:14px}
-.c .b.kg:after{display:block}
+.c .b.kg{border:1.5px dashed #6b8bbd;background:#f6f8fb}
+.c .b.kg:after{content:'\1F3F7';font-size:13px;position:static;margin:0;display:block;width:auto;height:auto;background:none;border-radius:0}
+.c .b.kg.ada:before{content:'';position:absolute;right:-4px;top:-4px;width:9px;height:9px;border-radius:50%;background:#1a73e8;border:1.5px solid #fff}
+.c .b.lg:before{content:'';position:absolute;right:-4px;top:-4px;width:9px;height:9px;border-radius:50%;background:#14a44d;border:1.5px solid #fff}
+.c .b.kg.lg{border:2px solid #14a44d;background:#eaf7ee}
 @media (max-width:640px){
   .bar{margin:0 0 4px 0}.bar button{font-size:12px;padding:4px 10px}
   table.t{font-size:10px}

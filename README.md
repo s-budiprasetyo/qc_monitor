@@ -105,3 +105,9 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 ## Tahap 9i
 - Form Input Label Afkir: kartu type dan SNI sejajar (tinggi sama), tombol hapus jadi ✕ kecil di pojok kanan atas kartu; baris diberi nama "Proses".
 - Proses (M+LA+LB+F SAP) juga untuk label SNI pendamping (nilai sama dengan type induk), di form, laporan, dan stok.
+
+## Tahap 10a — Stok label per meja
+- Stok label = stok Foreman + stok tiap meja. Dimulai dari 0 pada 19-11-2026 (`QC_MULAI_STOK`); catatan sebelum tanggal itu tidak dihitung. Stok boleh minus.
+- Halaman utama: matriks sampai hari ini; klik sel → tab HASIL KERJA / INPUT LABEL / PINDAH LABEL (karyawan hanya untuk namanya sendiri, admin semua).
+- Foreman: Input Label Afkir menampilkan stok meja (klik angka untuk memindahkan), Input Label Stok per lokasi (Simpan / Adjust), Kosongkan Label Meja per pabrik.
+- Laporan Stok Label: total per label dan per meja. Setelah upload: Reboot ketiga aplikasi.
