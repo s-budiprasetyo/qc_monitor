@@ -315,6 +315,8 @@ def _isi_hasil(bln, prn, tgl):
         if st.button("EDIT ALASAN" if ada else "Alasan tidak target", type="primary", width="stretch"):
             st.session_state["buka"] = ("notes", bln, prn, tgl)
             st.rerun()
+    elif total is not None:
+        st.caption("✅ Target tercapai (100% atau lebih) — tombol alasan tidak target hanya muncul bila hasil di bawah 100%.")
 
 
 @st.dialog("NOTES", width="large")

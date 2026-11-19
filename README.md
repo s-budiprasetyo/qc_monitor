@@ -117,3 +117,6 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Data SAP per bulan disimpan sementara 60 detik supaya dialog tidak lag.
 - Login halaman utama: verifikasi Google bersifat opsional; user + password cukup, email (bila terverifikasi) ikut tercatat di riwayat.
 - Tombol tutup (✕) jendela Foreman dibuat lebih jelas.
+
+## Tahap 10c
+- Dialog hasil kerja: bila total ≥100% tampil keterangan "Target tercapai" (tombol alasan memang hanya muncul bila <100%).
