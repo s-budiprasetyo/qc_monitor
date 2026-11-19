@@ -94,7 +94,7 @@ def ringkas_harian(df):
     if df.empty:
         return pd.DataFrame(columns=["bagian", "prn", "nama", "tgl", "afkir", "bagus", "kotor", "pct", "pct_kotor"])
     d = df.copy()
-    d["afkir"] = d[JENIS].sum(axis=1)
+    d["afkir"] = d["kotor"]  # % label afkir hanya kategori Kotor
     d["bagus_utama"] = d["bagus"].where(~d["label"].astype(str).str.startswith("SNI "), 0)
     g = d.groupby(["bagian", "prn", "nama", "tgl"], as_index=False).agg(afkir=("afkir", "sum"), bagus=("bagus_utama", "sum"), kotor=("kotor", "sum"))
     b = g["bagus"].where(g["bagus"] > 0)
@@ -104,7 +104,7 @@ def ringkas_harian(df):
 
 
 def ringkas_bulan(rh):
-    """Satu baris per operator untuk sebulan (rata-rata tertimbang: total afkir / total pcs bagus)."""
+    """Satu baris per operator untuk sebulan (rata-rata tertimbang: total kotor / total pcs bagus)."""
     if rh.empty:
         return rh
     g = rh.groupby(["bagian", "prn", "nama"], as_index=False)[["afkir", "bagus", "kotor"]].sum()
@@ -142,13 +142,13 @@ def _tulis_sheet(ws, df, judul, kolom_awal=("bagian", "nama", "label"), dengan_t
     kol = awal + ["bagus"] + JENIS
     ws["A1"] = judul
     ws["A1"].font = Font(name="Arial", bold=True, size=13, color="0B3D91")
-    ws["A2"] = ("% = jumlah afkir ÷ pcs bagus SAP (kolom Total). Label SNI dibagi pcs bagus label induknya. "
-                "Kotor di atas 0,5% diberi warna merah.")
+    ws["A2"] = ("% label afkir = afkir Kotor ÷ pcs bagus SAP (kolom Total). Label SNI dibagi pcs bagus label induknya. "
+                "Di atas 0,5% diberi warna merah. Lengket, Garis, Proses hanya informasi.")
     ws["A2"].font = Font(name="Arial", italic=True, size=9, color="5B7399")
     h = 4
     tebal = Side(style="thin", color="B8C7DD")
     garis = Border(left=tebal, right=tebal, top=tebal, bottom=tebal)
-    judul_kol = [nama[c] for c in kol] + ["TOTAL AFKIR"] + ["% " + nama[j] for j in JENIS] + ["% TOTAL AFKIR"]
+    judul_kol = [nama[c] for c in kol] + ["% LABEL AFKIR (KOTOR)"]
     for i, t in enumerate(judul_kol, 1):
         c = ws.cell(h, i, t)
         c.font = Font(name="Arial", bold=True, color="FFFFFF", size=10)
@@ -158,7 +158,8 @@ def _tulis_sheet(ws, df, judul, kolom_awal=("bagian", "nama", "label"), dengan_t
     n = len(kol)
     ib = kol.index("bagus") + 1
     ij = [kol.index(j) + 1 for j in JENIS]
-    itot = n + 1
+    ik = ij[JENIS.index("kotor")]
+    ip = n + 1
     for r, row in enumerate(df[kol].itertuples(index=False), h + 1):
         for i, v in enumerate(row, 1):
             c = ws.cell(r, i, v)
@@ -166,24 +167,20 @@ def _tulis_sheet(ws, df, judul, kolom_awal=("bagian", "nama", "label"), dengan_t
             c.border = garis
             if kol[i - 1] in ["bagus"] + JENIS:
                 c.number_format = "#,##0"
-        ws.cell(r, itot, f"=SUM({L(ij[0])}{r}:{L(ij[-1])}{r})")
-        for k, j in enumerate(ij + [itot]):
-            c = ws.cell(r, itot + 1 + k, f'=IF(${L(ib)}{r}>0,{L(j)}{r}/${L(ib)}{r},"")')
-            c.number_format = "0.00%"
-        for i in range(itot, itot + 6):
-            c = ws.cell(r, i)
-            c.font = Font(name="Arial", size=10)
-            c.border = garis
+        c = ws.cell(r, ip, f'=IF(${L(ib)}{r}>0,{L(ik)}{r}/${L(ib)}{r},"")')
+        c.number_format = "0.00%"
+        c.font = Font(name="Arial", size=10, bold=True)
+        c.border = garis
     akhir = h + len(df)
     if len(df):
         from openpyxl.formatting.rule import FormulaRule
-        kot = L(itot + 3)
+        kot = L(ip)
         ws.conditional_formatting.add(f"{kot}{h + 1}:{kot}{akhir}", FormulaRule(
             formula=[f'AND(ISNUMBER({kot}{h + 1}),{kot}{h + 1}>{BATAS_KOTOR})'],
             font=Font(name="Arial", color="C00000", bold=True), fill=PatternFill("solid", bgColor="FDE2E2")))
     ws.freeze_panes = ws.cell(h + 1, len(awal) + 1)
-    for i in range(1, itot + 6):
-        ws.column_dimensions[L(i)].width = 32 if kol[i - 1:i] == ["nama"] else (14 if i <= n else 12)
+    for i in range(1, ip + 1):
+        ws.column_dimensions[L(i)].width = 32 if kol[i - 1:i] == ["nama"] else (14 if i <= n else 20)
     ws.row_dimensions[h].height = 32
 
 

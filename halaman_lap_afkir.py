@@ -37,6 +37,7 @@ table.rin tr.tot td{background:#eaf3ff;font-weight:800;color:#0b3d91}
 table.rin td.m{background:#fde2e2;color:#c00000;font-weight:800}
 .cat{background:#f4f8ff;border-left:4px solid #2a8fe8;border-radius:8px;padding:8px 12px;font-size:13px;color:#33507a;margin:.4rem 0}
 @media (max-width:700px){.kpi{grid-template-columns:1fr}.lp-judul{font-size:1.5rem}}
+div#portal{display:none!important}
 </style>
 """, unsafe_allow_html=True)
 
@@ -59,21 +60,21 @@ def _muat(bulan, versi):
 
 
 def _rincian_html(d):
-    h = ("<div style='overflow-x:auto'><table class='rin'><tr><th>LABEL</th><th>PCS BAGUS</th><th>LENGKET</th><th>GARIS</th><th>KOTOR</th>"
-         "<th>PROSES</th><th>LABEL AFKIR</th><th>% LABEL AFKIR</th></tr>")
+    h = ("<div style='overflow-x:auto'><table class='rin'><tr><th>LABEL</th><th>PCS BAGUS</th><th>LABEL AFKIR (KOTOR)</th>"
+         "<th>% LABEL AFKIR</th></tr>")
     tot_a = tot_b = 0
     for r in d.itertuples():
-        a = int(r.lengket + r.garis + r.kotor + r.proses)
+        a = int(r.kotor)
         sni = str(r.label).startswith("SNI ")
         pct = a / r.bagus if r.bagus > 0 else float("nan")
-        merah = (r.kotor / r.bagus > laporan.BATAS_KOTOR) if r.bagus > 0 else False
+        merah = pct > laporan.BATAS_KOTOR if r.bagus > 0 else False
         h += (f"<tr class='{'sni' if sni else ''}'><td class='t'>{html.escape(str(r.label))}{' (pendamping)' if sni else ''}</td><td>{_n(r.bagus)}</td>"
-              f"<td>{_n(r.lengket)}</td><td>{_n(r.garis)}</td><td class='{'m' if merah else ''}'>{_n(r.kotor)}</td><td>{_n(r.proses)}</td><td>{_n(a)}</td><td>{_p(pct)}</td></tr>")
+              f"<td class='{'m' if merah else ''}'>{_n(a)}</td><td class='{'m' if merah else ''}'>{_p(pct)}</td></tr>")
         tot_a += a
         if not sni:
             tot_b += r.bagus
     pt = tot_a / tot_b if tot_b > 0 else float("nan")
-    h += (f"<tr class='tot'><td class='t' colspan='6'>% TOTAL AFKIR LABEL = {_n(tot_a)} ÷ {_n(tot_b)} pcs bagus</td><td>{_n(tot_a)}</td><td>{_p(pt)}</td></tr></table></div>")
+    h += (f"<tr class='tot'><td class='t' colspan='2'>% TOTAL AFKIR LABEL = {_n(tot_a)} ÷ {_n(tot_b)} pcs bagus</td><td>{_n(tot_a)}</td><td>{_p(pt)}</td></tr></table></div>")
     return h
 
 
@@ -85,7 +86,7 @@ def dlg_hari(df, prn, nama, tgl):
     cat = [c for c in d["catatan"].unique() if str(c).strip()]
     for c in cat:
         st.markdown(f"<div class='cat'>📝 {html.escape(str(c))}</div>", unsafe_allow_html=True)
-    st.caption("Pcs bagus total tidak menghitung label SNI dua kali (pcs bagus SNI = pcs bagus type induknya). Kotor di atas 0,5% berwarna merah.")
+    st.caption("% label afkir = afkir kotor ÷ pcs bagus. Pcs bagus total tidak menghitung label SNI dua kali (pcs bagus SNI = pcs bagus type induknya). Di atas 0,5% berwarna merah.")
 
 
 def _jenis_dominan(r):
@@ -122,12 +123,12 @@ def dlg_rata(df, rh, prn, nama, bulan):
         d = df[(df["prn"] == prn) & (df["tgl"] == r.tgl)]
         cat = "; ".join(c for c in d["catatan"].unique() if str(c).strip()) or "— belum ada catatan foreman"
         jenis = _jenis_dominan({"lengket": d["lengket"].sum(), "garis": d["garis"].sum(), "kotor": d["kotor"].sum(), "proses": d["proses"].sum()})
-        st.markdown(f"<div class='cat'><b>{r.tgl[8:]}-{r.tgl[5:7]}</b> · <b>{_p(r.pct)}</b> ({_n(r.afkir)} ÷ {_n(r.bagus)}) · terbanyak: {jenis}<br>"
+        st.markdown(f"<div class='cat'><b>{r.tgl[8:]}-{r.tgl[5:7]}</b> · <b>{_p(r.pct)}</b> ({_n(r.afkir)} ÷ {_n(r.bagus)})<br>"
                     f"<span style='color:#5b7399'>Alasan:</span> {html.escape(cat)}</div>", unsafe_allow_html=True)
 
 
 # ------------------------------------------------------------------ halaman
-st.markdown("<div class='lp-judul'>% AFKIR LABEL</div><div class='lp-sub'>Label afkir (input foreman) ÷ pcs bagus SAP per operator per hari. "
+st.markdown("<div class='lp-judul'>% AFKIR LABEL</div><div class='lp-sub'>% label afkir = label afkir kotor (input foreman) ÷ pcs bagus SAP per operator per hari. "
             "Klik kotak persen untuk rincian hari itu, klik RATA RATA untuk grafik dan hari tertinggi.</div>", unsafe_allow_html=True)
 ada = sorted(set(data.daftar_bulan()), reverse=True)
 if not ada:
@@ -151,7 +152,7 @@ pt = tot_a / tot_b if tot_b else float("nan")
 hari = rh.groupby("tgl")[["afkir", "bagus"]].sum()
 hari["pct"] = hari["afkir"] / hari["bagus"].where(hari["bagus"] > 0)
 ht = hari["pct"].idxmax() if hari["pct"].notna().any() else None
-lab = df.groupby("label")[laporan.JENIS].sum().sum(axis=1).sort_values(ascending=False)
+lab = df.groupby("label")["kotor"].sum().sort_values(ascending=False)
 st.markdown(f"<div class='kpi'><div class='k'><small>% AFKIR LABEL {bagian}</small><b>{_p(pt)}</b><span>{_n(tot_a)} afkir ÷ {_n(tot_b)} pcs bagus</span></div>"
             f"<div class='k'><small>HARI TERTINGGI</small><b>{_p(hari.loc[ht, 'pct']) if ht else '-'}</b><span>{(ht[8:] + ' ' + NAMA_BULAN[int(bulan[5:])]) if ht else '-'}</span></div>"
             f"<div class='k'><small>LABEL PALING BANYAK AFKIR</small><b>{html.escape(str(lab.index[0])) if len(lab) else '-'}</b><span>{_n(lab.iloc[0]) if len(lab) else 0} label afkir</span></div></div>",
@@ -185,8 +186,8 @@ def _warna(_):
 
 tampil = nilai.map(lambda v: "" if pd.isna(v) else _p(v))
 gaya = tampil.style.apply(lambda _: _warna(_).map(lambda x: x + ";text-align:right" if x else ""), axis=None)
-st.markdown(f"<div class='leg'><span><i style='background:{HIJAU}'></i>Kotor ≤ 0,5%</span><span><i style='background:{MERAH}'></i>Kotor &gt; 0,5%</span>"
-            "<span>Kosong = tidak ada pcs bagus SAP · 0,00% = belum ada afkir diinput</span></div>", unsafe_allow_html=True)
+st.markdown(f"<div class='leg'><span><i style='background:{HIJAU}'></i>≤ 0,5%</span><span><i style='background:{MERAH}'></i>&gt; 0,5%</span>"
+            "<span>Kosong = tidak ada pcs bagus SAP · 0,00% = belum ada afkir kotor diinput</span></div>", unsafe_allow_html=True)
 ev = st.dataframe(gaya, on_select="rerun", selection_mode="single-cell", key="lp_grid", width="stretch",
                   height=min(45 + 35 * len(nilai), 640))
 sel = (ev.selection.cells if ev and ev.selection else None) or []
