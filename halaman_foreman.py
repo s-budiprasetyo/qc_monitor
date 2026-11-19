@@ -54,7 +54,10 @@ CSS_JENDELA = """
 <style>
 [data-testid='stDialog'] [role='dialog'] h2{display:none !important}
 [data-testid='stDialog'] [role='dialog']{position:relative}
-[data-testid='stDialog'] [role='dialog'] > button[aria-label='Close']{position:absolute !important;top:16px;right:22px;z-index:30;color:#fff !important;background:transparent !important}
+[data-testid='stDialog'] [role='dialog'] > button[aria-label='Close']{position:absolute !important;top:40px;right:24px;z-index:30;width:34px;height:34px;border-radius:50%;
+  color:#fff !important;background:rgba(255,255,255,.28) !important;border:2px solid #fff !important;display:flex;align-items:center;justify-content:center;padding:0}
+[data-testid='stDialog'] [role='dialog'] > button[aria-label='Close']:hover{background:#d93025 !important;border-color:#fff !important}
+[data-testid='stDialog'] [role='dialog'] > button[aria-label='Close'] svg{width:20px;height:20px;stroke:#fff;stroke-width:2.5px;fill:#fff;color:#fff !important}
 .lb-kepala{background:linear-gradient(135deg,#1a73e8,#0b3d91);color:#fff;margin:-1.4rem -1.6rem 1rem -1.6rem;padding:14px 64px 14px 20px;
   border-radius:14px 14px 0 0}
 .lb-kepala b{font-size:1.15rem;letter-spacing:.5px}.lb-kepala div{font-size:12px;opacity:.85}
@@ -108,8 +111,8 @@ def _tgl_iso(d):
 
 
 def _bersih_form(jaga_meja=False):
-    for k in [k for k in st.session_state if k.startswith(("w_n_", "w_kat_", "w_typ_"))]:
-        del st.session_state[k]
+    for k in [k for k in st.session_state if k.startswith(("w_n_", "w_kat_", "w_typ_", "w_pinit_"))] + ["w_auto"]:
+        st.session_state.pop(k, None)
     st.session_state["w_cols"] = []
     st.session_state["w_tambah"] = False
     st.session_state["w_edit"] = None
@@ -168,22 +171,21 @@ def dlg_label():
     pabrik = st.segmented_control("PABRIK", list(label.PABRIK), key="w_pabrik") or "Pabrik 1"
     meja = st.selectbox("MEJA", label.meja_daftar(pabrik), index=None, key=f"w_meja_{pabrik}",
                         format_func=lambda m: f"Meja {m}", placeholder="Pilih meja…")
-    stok_m = {}
-    if meja:
-        stok_m = stok.stok_meja(pabrik, meja, _tgl_iso(tgl))
-        aktif = (pabrik, str(meja))
-        if st.session_state.get("w_meja_aktif") != aktif:  # meja baru dipilih: kolom type muncul otomatis dari stok meja
-            st.session_state["w_meja_aktif"] = aktif
-            induk_baru = list(induk)
-            for lb in stok_m:
-                p = lb[len(label.SNI) + 1:] if lb.startswith(label.SNI + " ") else lb
-                if p not in induk_baru and label.kategori_label(p):
-                    induk_baru.append(p)
-            if induk_baru != induk:
-                st.session_state["w_cols"] = induk_baru
-                st.rerun(scope="fragment")
-    else:
-        st.session_state.pop("w_meja_aktif", None)
+    stok_m = stok.stok_meja(pabrik, meja, _tgl_iso(tgl)) if meja else {}
+    posting = label.tanggal_posting(prn, _tgl_iso(tgl), shift) if prn else ""
+    sap = laporan.sap_hari(prn, posting) if prn else {}
+    kunci_auto = (prn, posting)
+    if prn and not edit and st.session_state.get("w_auto") != kunci_auto:
+        # type yang dikerjakan operator pada hari itu terisi otomatis dari SAP (satu kali per operator/tanggal/shift)
+        st.session_state["w_auto"] = kunci_auto
+        baru_ = [lb for lb in sap if label.kategori_label(lb)]
+        if baru_ != induk:
+            st.session_state["w_cols"] = baru_
+            st.rerun(scope="fragment")
+    elif not prn:
+        st.session_state.pop("w_auto", None)
+    if prn and not sap and not edit and not induk:
+        st.caption("Belum ada data SAP operator ini pada tanggal tersebut. Klik **+ Label** untuk memilih type sendiri.")
 
     st.markdown("<div class='kt' style='margin:.4rem 0 .2rem'>JUMLAH LABEL AFKIR PER JENIS LABEL</div>", unsafe_allow_html=True)
     with st.container(key="lbm"):
@@ -209,18 +211,16 @@ def dlg_label():
                 st.rerun(scope="fragment")
         total = {t: 0 for t in cols}
         nilai = {t: {} for t in cols}
-        posting = label.tanggal_posting(prn, _tgl_iso(tgl), shift) if prn else ""
         for j, nm in label.JENIS:
             r = st.columns([1] + [1] * len(cols), vertical_alignment="center")
             r[0].markdown(f"<div class='lb-jenis'>{nm}</div>", unsafe_allow_html=True)
             for i, t in enumerate(cols):
-                if j == "proses":  # otomatis dari SAP (M+LA+LB+F), tidak bisa diedit; hanya type closet CW
-                    otomatis = laporan.proses_sap(prn, posting, t)
-                    r[i + 1].number_input(f"Proses {t}", value=otomatis if laporan.proses_berlaku(t) else 0, disabled=True,
-                                          key=f"w_p_{t}_{prn}_{posting}", label_visibility="collapsed")
-                    nilai[t][j] = otomatis
-                    total[t] += otomatis
-                    continue
+                if j == "proses" and st.session_state.get(f"w_pinit_{t}") != (prn, posting):
+                    # Proses terisi otomatis dari SAP (M+LA+LB+F) untuk type closet CW; tetap bisa ditambah/dikurangi
+                    st.session_state[f"w_pinit_{t}"] = (prn, posting)
+                    if not edit:
+                        induk_t = t[len(label.SNI) + 1:] if t.startswith(label.SNI + " ") else t
+                        st.session_state[f"w_n_{t}_proses"] = (sap.get(induk_t, 0) if laporan.proses_berlaku(t) else 0) or None
                 v = r[i + 1].number_input(f"{nm} {t}", min_value=0, max_value=9999, step=1, value=None, placeholder="0",
                                           key=f"w_n_{t}_{j}", label_visibility="collapsed")
                 nilai[t][j] = int(v or 0)

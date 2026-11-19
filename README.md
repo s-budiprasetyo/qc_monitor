@@ -111,3 +111,9 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Halaman utama: matriks sampai hari ini; klik sel → tab HASIL KERJA / INPUT LABEL / PINDAH LABEL (karyawan hanya untuk namanya sendiri, admin semua).
 - Foreman: Input Label Afkir menampilkan stok meja (klik angka untuk memindahkan), Input Label Stok per lokasi (Simpan / Adjust), Kosongkan Label Meja per pabrik.
 - Laporan Stok Label: total per label dan per meja. Setelah upload: Reboot ketiga aplikasi.
+
+## Tahap 10b
+- Input Label Afkir: setelah operator + tanggal + shift dipilih, kolom type terisi otomatis dari SAP (tetap bisa + Label). Afkir Proses terisi dari SAP (M+LA+LB+F) tetapi bisa diubah; nilai yang disimpan dipakai apa adanya di laporan.
+- Data SAP per bulan disimpan sementara 60 detik supaya dialog tidak lag.
+- Login halaman utama: verifikasi Google bersifat opsional; user + password cukup, email (bila terverifikasi) ikut tercatat di riwayat.
+- Tombol tutup (✕) jendela Foreman dibuat lebih jelas.

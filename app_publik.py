@@ -238,10 +238,9 @@ def dlg_login():
                 google_ok = str(st.user.email)
                 st.success(f"Langkah 1 selesai. Akun Google terverifikasi: {google_ok}")
             else:
-                perlu = True
-                st.info("Langkah 1: verifikasi akun Google di perangkat ini (cukup sekali; emailnya otomatis tercatat "
-                        "saat kamu memposting). Setelah kembali ke halaman ini, tekan LOGIN lagi untuk langkah 2.")
-                st.button("Verifikasi dengan Google", on_click=st.login, width="stretch", type="primary")
+                st.caption("Opsional: verifikasi akun Google supaya email ikut tercatat di riwayat perubahan. "
+                           "Tanpa verifikasi, login dengan user dan password tetap bisa dan namamu tercatat.")
+                st.button("Verifikasi dengan Google (opsional)", on_click=st.login, width="stretch")
         except Exception:
             pass
     with st.form("form_login"):
@@ -263,7 +262,9 @@ def dlg_login():
 
 
 def _oleh():
-    return st.session_state.get("me_nama") or st.session_state.get("me") or "karyawan"
+    n = st.session_state.get("me_nama") or st.session_state.get("me") or "karyawan"
+    e = email_google()
+    return f"{n} ({e})" if e else n
 
 
 @st.dialog("HASIL KERJA", width="large")

@@ -31,7 +31,30 @@ def _angka(s):
     return pd.to_numeric(s, errors="coerce").fillna(0)
 
 
+_memo = {}
+
+
 def pcs_bagus(bulan):
+    """Versi cepat (disimpan 60 detik) dari _pcs_bagus: dipakai dialog input yang sering memanggilnya."""
+    import time
+    t = _memo.get(bulan)
+    if t and time.time() - t[0] < 60:
+        return t[1]
+    d = _pcs_bagus(bulan)
+    _memo[bulan] = (time.time(), d)
+    return d
+
+
+def sap_hari(prn, tgl_posting):
+    """{label: proses_sap} untuk semua type yang dikerjakan karyawan itu pada tanggal posting (dari SAP)."""
+    if not prn or not tgl_posting:
+        return {}
+    b = pcs_bagus(str(tgl_posting)[:7])
+    m = b[(b["prn"] == prn) & (b["tgl"] == tgl_posting)]
+    return {lb: int(p) for lb, p in zip(m["label"], m["proses"])}
+
+
+def _pcs_bagus(bulan):
     """DataFrame[prn, tgl, label, bagus]: jumlah Total SAP per karyawan/hari/label (hasil efektif, tanggal posting)."""
     h = logic.hasil_bulan(bulan)
     if h.empty or "prn" not in h.columns:
@@ -94,6 +117,7 @@ def tabel(bulan):
     if a.empty and b.empty:
         return pd.DataFrame(columns=KOLOM)
     ada = {(p, t, lb) for p, t, lb in zip(a["prn"], a["tgl"], a["label"])}
+    n_input = len(a)
     baru = []
     for p, t, lb, nm, bg in zip(b["prn"], b["tgl"], b["label"], b["nama"], b["bagian"]):
         for nama_lb, induk in [(lb, "")] + ([(label.nama_sni(lb), lb)] if label.punya_sni(lb) else []):
@@ -108,7 +132,10 @@ def tabel(bulan):
     a["bagian"] = [info["bagian"].get(p, g) for p, g in zip(a["prn"], a["bagian"])]
     peta = {(p, t, lb): v for p, t, lb, v in zip(b["prn"], b["tgl"], b["label"], b["bagus"])}
     pro = {(p, t, lb): v for p, t, lb, v in zip(b["prn"], b["tgl"], b["label"], b["proses"])}
-    a["proses"] = [pro.get((p, t, (ind or lb)), 0) if proses_berlaku(lb) else v for p, t, lb, ind, v in zip(a["prn"], a["tgl"], a["label"], a["induk"], a["proses"])]
+    # Proses: nilai hasil input foreman dipakai apa adanya (terisi otomatis dari SAP, boleh diubah); baris tanpa input memakai SAP
+    sudah = [i < n_input for i in range(len(a))]
+    a["proses"] = [v if ok else (pro.get((p, t, (ind or lb)), 0) if proses_berlaku(lb) else 0)
+                   for ok, p, t, lb, ind, v in zip(sudah, a["prn"], a["tgl"], a["label"], a["induk"], a["proses"])]
     a["bagus"] = [peta.get((p, t, (ind or lb)), 0) for p, t, lb, ind in zip(a["prn"], a["tgl"], a["label"], a["induk"])]
     a["bagus"] = a["bagus"].astype(int)
     return a.sort_values(["bagian", "nama", "tgl", "label"])[KOLOM].reset_index(drop=True)
