@@ -16,7 +16,7 @@ from core import data, parsers
 ADMIN, FOREMAN = "admin", "foreman"
 # Daftar putih akun karyawan yang boleh masuk halaman admin sebagai Foreman (admin: user di Secrets [admin]). Akun lain ditolak.
 # Bisa diganti lewat Secrets: [admin] foreman = ["QC-THOFA", ...]
-USER_FOREMAN = ["QC-THOFA", "QC-RIZKI", "QC-PAMBUDI", "QC-SATRIO"]
+USER_FOREMAN = ["QC-NURMUS", "QC-RIZKI", "QC-RIZAL", "QC-SATRIO"]  # Musthofa(THOFA), Rizki Senja, Haris Rizal Pambudi, Satrio
 
 
 def _kunci(u):
