@@ -275,7 +275,7 @@ def dlg_hari(bln, prn, tgl):
     tombol_kembali()
     nama = logic.peta_nama_prn().get(prn, prn)
     st.markdown(f"<div class='id'><b>TANGGAL</b>: {tgl_id(tgl)} &nbsp;&nbsp; <b>NAMA</b>: {html.escape(nama)}</div>", unsafe_allow_html=True)
-    tab1, tab2, tab3 = st.tabs(["HASIL KERJA", "INPUT LABEL", "PINDAH LABEL"])
+    tab1, tab2, tab3, tab4 = st.tabs(["HASIL KERJA", "INPUT LABEL", "PINDAH LABEL", "PINDAH MEJA"])
     with tab1:
         _isi_hasil(bln, prn, tgl)
     adm = bool(st.session_state.get("adm"))
@@ -289,6 +289,11 @@ def dlg_hari(bln, prn, tgl):
             label_ui.form_pindah(prn, nama, tgl, _oleh(), adm, kp="hlp")
         else:
             st.info("Label hanya bisa dipindah oleh pemilik nama ini (login) atau admin.")
+    with tab4:
+        if boleh(prn):
+            label_ui.form_pindahmeja(prn, nama, tgl, _oleh(), adm, kp="hpm")
+        else:
+            st.info("Pindah meja hanya bisa dicatat oleh pemilik nama ini (login) atau admin.")
 
 
 def _isi_hasil(bln, prn, tgl):
@@ -377,7 +382,7 @@ def dlg_kegiatan(bln, prn, tgl):
     nama = logic.peta_nama_prn().get(prn, prn)
     st.markdown(f"<div class='id'><b>TANGGAL</b>: {tgl_id(tgl)} &nbsp;&nbsp; <b>NAMA</b>: {html.escape(nama)}</div>",
                 unsafe_allow_html=True)
-    tab1, tab2, tab3 = st.tabs(["KEGIATAN", "INPUT LABEL", "PINDAH LABEL"])
+    tab1, tab2, tab3, tab4 = st.tabs(["KEGIATAN", "INPUT LABEL", "PINDAH LABEL", "PINDAH MEJA"])
     adm = bool(st.session_state.get("adm"))
     with tab2:
         if boleh(prn):
@@ -389,6 +394,11 @@ def dlg_kegiatan(bln, prn, tgl):
             label_ui.form_pindah(prn, nama, tgl, _oleh(), adm, kp="klp")
         else:
             st.info("Label hanya bisa dipindah oleh pemilik nama ini (login) atau admin.")
+    with tab4:
+        if boleh(prn):
+            label_ui.form_pindahmeja(prn, nama, tgl, _oleh(), adm, kp="kpm")
+        else:
+            st.info("Pindah meja hanya bisa dicatat oleh pemilik nama ini (login) atau admin.")
     with tab1:
         _isi_kegiatan(bln, prn, tgl, nama)
 

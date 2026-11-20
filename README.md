@@ -136,3 +136,13 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 
 ## Tahap 10j
 - Input Label Afkir: bila ada label warna (DR, MA, PIV, dst.), kolom type CE7 otomatis ditampilkan paling depan.
+
+## Tahap 10k
+- Pindah meja: label dibawa lewat PINDAH LABEL (tombol BAWA SEMUA STOK); pemakaian operator hari itu dihitung di meja tujuan.
+
+## Tahap 10l — Pindah Meja, Stok Opname, Selisih + Adjust
+- Tab baru **PINDAH MEJA** di jendela Hasil Kerja (publik): meja saat ini (isi pcs bagus yang sudah dipakai di meja itu; afkir hanya info karena sudah tercatat per meja dari input foreman) → meja selanjutnya (pabrik + meja, stok tujuan tampil). Pcs bagus SAP hari itu dibagi: bagian yang diisi dibebankan ke meja lama, sisanya ke meja baru. Label yang tersisa tetap di meja lama. Isian lebih besar dari SAP diberi peringatan.
+- Afkir kini dibebankan ke meja tempat afkir itu diinput (per baris input foreman).
+- Dihapus: tombol BAWA SEMUA STOK dan aturan "stok ikut ke meja tujuan".
+- Foreman: menu **STOK OPNAME LABEL** (1 · Stok Foreman: type + jumlah; 2 · Stok per meja: pabrik, meja, type, jumlah; tombol MEJA KOSONG; progres meja; otomatis lanjut ke meja berikutnya) dan **SELISIH STOK OPNAME** (Total per type / Foreman / Per meja; sistem, aktual yang bisa diedit, selisih; unduh Excel; tombol ADJUST di bawah).
+- ADJUST: stok aktual jadi stok awal mulai tanggal opname (lokasi yang dihitung saja); pemakaian dihitung dari hari berikutnya. Nilai "sistem" dibekukan saat adjust. Tabel baru Google Sheet: `label_pindahmeja` (dibuat otomatis).

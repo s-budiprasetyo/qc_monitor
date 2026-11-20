@@ -164,6 +164,90 @@ def form_pindah(prn, nama, tgl, oleh, adm=False, kp="lp"):
             st.rerun(scope="fragment")
 
 
+# ------------------------------------------------------------------ pindah meja (operator)
+def _bagus_sap(prn, tgl):
+    """{label: pcs bagus SAP} operator itu pada tanggal (label SNI memakai pcs bagus induknya)."""
+    from core import laporan
+    b = laporan.pcs_bagus(str(tgl)[:7])
+    m = b[(b["prn"] == prn) & (b["tgl"] == tgl)]
+    out = {}
+    for lb, n in zip(m["label"], m["bagus"]):
+        out[lb] = out.get(lb, 0) + int(n)
+        if label.punya_sni(lb):
+            out[label.nama_sni(lb)] = out.get(label.nama_sni(lb), 0) + int(n)
+    return out
+
+
+def form_pindahmeja(prn, nama, tgl, oleh, adm=False, kp="pm"):
+    """Tab PINDAH MEJA: meja saat ini (isi pcs bagus yang sudah terpakai) -> meja selanjutnya."""
+    st.markdown(CSS, unsafe_allow_html=True)
+    st.markdown("<div class='ls-lbl' style='font-size:14px'>① MEJA SAAT INI</div>", unsafe_allow_html=True)
+    p1, m1 = pilih_meja(f"{kp}_a", "", prn, tgl)
+    baris = []
+    if p1 and m1:
+        sk = stok.stok_meja(p1, m1, tgl)
+        afk = {lb: n for (pp, mm, lb), n in stok.afkir_hari(prn, tgl).items() if (pp, mm) == (p1, str(m1))}
+        sap = _bagus_sap(prn, tgl)
+        daftar = stok.urut_label({lb for lb, n in sk.items() if n != 0} | set(afk))
+        st.markdown(f"<div class='ls-lbl'>STOK LABEL DI {label.nama_meja(p1, m1).upper()}</div>" + chips(sk), unsafe_allow_html=True)
+        st.markdown("<div class='ls-lbl'>LABEL TERPAKAI DI MEJA INI SAMPAI SAAT INI <span class='ls-wajib'>pcs bagus</span></div>", unsafe_allow_html=True)
+        if not daftar:
+            st.info("Tidak ada stok label di meja ini. Pindah meja tetap bisa dicatat.")
+        else:
+            k = st.columns([1.5, 1, 1.3, 1, 1.1])
+            for c, t in zip(k, ["TYPE", "STOK", "PCS BAGUS", "AFKIR HARI INI", "SISA"]):
+                c.markdown(f"<div class='ls-lbl'>{t}</div>", unsafe_allow_html=True)
+        lebih = []
+        for lb in daftar:
+            c = st.columns([1.5, 1, 1.3, 1, 1.1], vertical_alignment="center")
+            n_stok = sk.get(lb, 0)
+            c[0].markdown(f"**{lb}**")
+            c[1].write(f"{n_stok:,}".replace(",", "."))
+            n = c[2].number_input(f"Bagus {lb}", min_value=0, max_value=999999, step=1, value=0, key=f"{kp}_n_{p1}_{m1}_{lb}", label_visibility="collapsed")
+            c[3].caption(str(afk.get(lb, 0)))
+            sisa = n_stok - n
+            c[4].markdown(f"<b style='color:{'#b71c1c' if sisa < 0 else '#8a5a00'}'>{sisa:,}</b>".replace(",", "."), unsafe_allow_html=True)
+            baris.append((lb, n))
+            if n and n > sap.get(lb, 0):
+                lebih.append(lb)
+        if lebih:
+            st.warning(f"Pcs bagus {', '.join(lebih)} lebih besar dari SAP hari ini. Tetap bisa disimpan; akan dicek.")
+        if daftar:
+            st.caption("Afkir tidak diisi di sini (sudah tercatat dari input foreman). Sisa label tetap di meja ini.")
+    st.markdown("<div class='ls-lbl' style='font-size:14px;margin-top:14px'>② MEJA SELANJUTNYA</div>", unsafe_allow_html=True)
+    p2, m2 = pilih_meja(f"{kp}_b", "", wajib=True, bawaan=(None, None))
+    if p2 and m2:
+        st.markdown(f"<div class='ls-lbl'>STOK LABEL DI {label.nama_meja(p2, m2).upper()}</div>" + chips(stok.stok_meja(p2, m2, tgl)), unsafe_allow_html=True)
+        st.caption("Pemakaian dan afkir operator setelah pindah dihitung di meja ini.")
+    ok = bool(p1 and m1 and p2 and m2)
+    if not ok:
+        st.caption("Pilih meja saat ini dan meja selanjutnya (pabrik + nomor meja).")
+    if st.button("PINDAH MEJA", type="primary", width="stretch", key=f"{kp}_simpan", disabled=not ok):
+        galat = stok.pindahmeja_simpan(tgl, prn, nama, (p1, m1), (p2, m2), baris, oleh)
+        if galat:
+            st.error(galat)
+        else:
+            for k_ in [k for k in st.session_state if str(k).startswith(f"{kp}_n_")]:
+                st.session_state.pop(k_, None)
+            st.session_state.pop(f"{kp}_a_pab", None)
+            st.session_state.pop(f"{kp}_b_pab", None)
+            st.toast("Pindah meja tercatat.", icon="✅")
+            st.rerun(scope="fragment")
+    d = stok.pindahmeja_daftar(prn, tgl)
+    st.markdown("<div class='ls-lbl'>PINDAH MEJA PADA TANGGAL INI</div>", unsafe_allow_html=True)
+    if d.empty:
+        st.caption("Belum ada pindah meja pada tanggal ini.")
+    for w, g in d.groupby("waktu", sort=True):
+        r = g.iloc[0]
+        c = st.columns([1, 3.6, 0.7] if adm else [1, 3.6], vertical_alignment="center")
+        c[0].caption(w[:5])
+        pakai = ", ".join(f"{x.label} {x.bagus}" for x in g.itertuples() if x.label and x.bagus)
+        c[1].caption(f"{label.nama_meja(r['dari_pabrik'], r['dari_meja'])} → {label.nama_meja(r['ke_pabrik'], r['ke_meja'])}" + (f" · terpakai: {pakai}" if pakai else ""))
+        if adm and c[2].button("🗑", key=f"{kp}_hx_{w}", help="Hapus (tercatat di riwayat)"):
+            stok.pindahmeja_hapus(w, tgl, prn, oleh)
+            st.rerun(scope="fragment")
+
+
 # ------------------------------------------------------------------ edit stok meja (klik angka stok)
 def edit_stok(pabrik, meja, lb, sekarang, tgl, oleh, kp):
     """Isi popover pada angka stok: stok dikurangi dan selisihnya WAJIB dipindahkan ke alamat yang jelas."""

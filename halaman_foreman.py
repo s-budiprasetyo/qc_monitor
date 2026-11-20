@@ -30,11 +30,11 @@ h1.judul-f{font-weight:800;color:#0b3d91;letter-spacing:.5px;margin:.6rem 0 1rem
 .st-key-hub_f [class*='st-key-hub_gear'] button p{font-size:30px;line-height:1;margin:0}
 .st-key-hub_f [class*='st-key-hub_gear'] button:hover{transform:rotate(90deg);color:#fff;filter:brightness(1.05)}
 .st-key-hub_gear_buka button{transform:rotate(180deg)}
-.st-key-btn_inputlabel button,.st-key-btn_inputstok button{background:#e8f3ff;border:1px solid #9fd0fb;color:#0b3d91;font-weight:800;
+.st-key-btn_inputlabel button,.st-key-btn_inputstok button,.st-key-btn_selisih button{background:#e8f3ff;border:1px solid #9fd0fb;color:#0b3d91;font-weight:800;
   padding:.9rem 1.4rem;border-radius:12px;min-height:0;height:auto}
 .st-key-btn_kosong button,.st-key-btn_operator button{background:#e8f3ff;border:1px solid #9fd0fb;color:#0b3d91;font-weight:800;
   padding:.9rem 1.4rem;border-radius:12px;min-height:0;height:auto}
-@media (max-width:640px){.st-key-btn_label,.st-key-btn_kosong,.st-key-btn_operator,.st-key-btn_inputlabel,.st-key-btn_inputstok{width:100%}}
+@media (max-width:640px){.st-key-btn_label,.st-key-btn_kosong,.st-key-btn_operator,.st-key-btn_inputlabel,.st-key-btn_inputstok,.st-key-btn_selisih{width:100%}}
 .nf-baris{display:flex;align-items:center;gap:10px;font-weight:700;color:#0b3d91}
 .nf-x{background:#e53935;color:#fff;border-radius:6px;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
 [class*='st-key-nf_']{border:1px solid #f1b9b6;background:#fff7f6;border-radius:10px;padding:4px 10px;margin-bottom:6px}
@@ -492,92 +492,193 @@ def _tab_terima(oleh):
             st.rerun(scope="fragment")
 
 
-def _pilih_lokasi():
-    """Lokasi hitung: Foreman atau satu meja. Return (lokasi, nama) atau (None, None) bila belum lengkap."""
-    st.markdown("<div class='kt'>LOKASI STOK YANG DIHITUNG</div>", unsafe_allow_html=True)
-    jenis = st.segmented_control("Lokasi", ["Foreman", "Meja"], key="il_lokj", label_visibility="collapsed")
-    if jenis == "Foreman":
-        return stok.FOREMAN, "Foreman"
-    if jenis == "Meja":
-        p, m = label_ui.pilih_meja("ilh", "", wajib=True, bawaan=(None, None))
-        if p and m:
-            return stok.lok(p, str(m)), label.nama_meja(p, m)
-    return None, None
+def _lok_ringkas(lk):
+    return "Foreman" if lk == stok.FOREMAN else label.nama_meja(*lk.split("|", 1))
 
 
-def _tab_hitung(oleh):
-    """Hitung stok aktual satu lokasi -> bandingkan dengan stok sistem -> simpan / adjust."""
-    st.markdown(label_ui.CSS, unsafe_allow_html=True)
-    if st.session_state.get("il_lihat"):
-        return _selisih(oleh)
-    tgl = st.date_input("Tanggal hitung (stok akhir hari)", value=label.hari_ini(), max_value=label.hari_ini(), format="DD/MM/YYYY", key="il_tgl_h")
-    lokasi, nama_lok = _pilih_lokasi()
-    st.caption("Hitung label bagus yang ada di lokasi itu, lalu isi per label. Label yang tidak dihitung tidak ikut dibandingkan.")
+def _tabel_isian(kunci, awal):
+    """Tabel type + jumlah (hitungan fisik). awal = {label: jumlah} yang sudah tersimpan."""
+    df = pd.DataFrame({"Type": list(awal), "Jumlah": [float(v) for v in awal.values()]}) if awal else \
+        pd.DataFrame({"Type": pd.Series([], dtype="object"), "Jumlah": pd.Series([], dtype="float")})
     ed = st.data_editor(
-        pd.DataFrame({"Label": pd.Series([], dtype="object"), "Aktual": pd.Series([], dtype="float")}),
-        num_rows="dynamic", hide_index=True, width="stretch", key="il_ed_h",
-        column_config={"Label": st.column_config.SelectboxColumn("Label", options=stok.semua_label(), required=True),
-                       "Aktual": st.column_config.NumberColumn("Jumlah aktual (pcs)", min_value=0, max_value=9999999, step=1, format="%d")})
-    pilih = {r["Label"]: _num(r["Aktual"]) for _, r in ed.iterrows() if r["Label"] and r["Aktual"] == r["Aktual"]}
-    c1, c2 = st.columns(2)
-    if c1.button("SIMPAN", type="primary", width="stretch", key="il_simpan_h", disabled=not (pilih and lokasi)):
-        with st.spinner("Menghitung stok sistem dan menyimpan…"):
-            sis = stok.stok_lokasi(lokasi, _tgl_iso(tgl))
-            stok.hitung_simpan(_tgl_iso(tgl), [(lb, a, sis.get(lb, 0)) for lb, a in pilih.items()], oleh, lokasi=lokasi)
-        st.session_state["il_hitung_tgl"] = (_tgl_iso(tgl), lokasi)
-        st.session_state["il_toast"] = f"Hasil hitung {len(pilih)} label ({nama_lok}) tersimpan."
-        st.session_state.pop("il_ed_h", None)
-        st.rerun(scope="fragment")
-    ada = bool(lokasi) and (st.session_state.get("il_hitung_tgl") == (_tgl_iso(tgl), lokasi) or len(stok.hitung_terakhir(_tgl_iso(tgl), lokasi)) > 0)
-    if c2.button("LIHAT SELISIH", width="stretch", key="il_lihat_btn", disabled=not ada):
-        st.session_state["il_lihat"] = (_tgl_iso(tgl), lokasi, nama_lok)
-        st.rerun(scope="fragment")
-    if not lokasi:
-        st.caption("Pilih lokasi dulu (Foreman, atau pabrik + meja).")
+        df, num_rows="dynamic", hide_index=True, width="stretch", key=kunci,
+        column_config={"Type": st.column_config.SelectboxColumn("Type label", options=stok.semua_label(), required=True),
+                       "Jumlah": st.column_config.NumberColumn("Jumlah hitungan fisik (pcs)", min_value=0, max_value=9999999, step=1, format="%d")})
+    out = {}
+    for _, r in ed.iterrows():
+        if r["Type"] and r["Jumlah"] == r["Jumlah"]:
+            out[r["Type"]] = out.get(r["Type"], 0) + _num(r["Jumlah"])
+    return out
 
 
-def _selisih(oleh):
-    tgl, lokasi, nama_lok = st.session_state["il_lihat"]
-    if st.button("← Kembali", key="il_kembali"):
-        st.session_state.pop("il_lihat", None)
+def _opname_foreman(tgl, oleh):
+    ada = stok.opname_baris(tgl, stok.FOREMAN)
+    st.caption("Hitung label di gudang foreman. Type yang tidak diisi dianggap 0. Simpan ulang pada tanggal yang sama = menimpa hitungan sebelumnya.")
+    isi = _tabel_isian(f"op_ed_f_{tgl}", {lb: a for lb, (a, _s) in ada.items()})
+    if st.button("SIMPAN HITUNGAN FOREMAN", type="primary", width="stretch", key="op_simpan_f"):
+        with st.spinner("Menyimpan…"):
+            stok.opname_simpan(tgl, stok.FOREMAN, isi, oleh)
+        st.session_state["il_toast"] = "Hitungan Foreman tersimpan."
+        st.session_state.pop(f"op_ed_f_{tgl}", None)
         st.rerun(scope="fragment")
-    st.markdown(f"**Selisih stok sistem dan aktual — {nama_lok} — {tgl[8:]}-{tgl[5:7]}-{tgl[:4]}**")
-    h = stok.hitung_terakhir(tgl, lokasi)
-    if h.empty:
-        st.info("Belum ada hasil hitung pada tanggal ini.")
-        return
-    sis = stok.stok_lokasi(lokasi, tgl)
-    beda = [(r.label, sis.get(r.label, 0), r.aktual) for r in h.itertuples() if sis.get(r.label, 0) != r.aktual]
-    kk = f"{tgl}_{lokasi}"
-    if not beda:
-        st.success(f"Semua {len(h)} label yang dihitung sama dengan stok sistem.")
-    else:
-        st.caption(f"{len(beda)} dari {len(h)} label yang dihitung tidak sama. Stok aktual boleh diubah, stok sistem tidak.")
-        k = st.columns([1.6, 1.4, 1.6, 1.2], vertical_alignment="center")
-        for c, t in zip(k, ["TYPE", "STOK AKTUAL", "STOK SISTEM", "SELISIH"]):
-            c.markdown(f"<div class='kt'>{t}</div>", unsafe_allow_html=True)
-        for lb, sx, ak in beda:
-            c = st.columns([1.6, 1.4, 1.6, 1.2], vertical_alignment="center")
-            c[0].markdown(f"**{lb}**")
-            c[2].write(f"{sx:,}".replace(",", "."))
-            v = c[1].number_input(f"Aktual {lb}", min_value=0, max_value=9999999, step=1, value=int(ak), key=f"il_a_{kk}_{lb}", label_visibility="collapsed")
-            d = int(v) - sx
-            c[3].markdown(f"<b style='color:{'#b71c1c' if d < 0 else '#1d6f2f'}'>{d:+,}</b>".replace(",", "."), unsafe_allow_html=True)
-    nilai = {r.label: int(st.session_state.get(f"il_a_{kk}_{r.label}", r.aktual)) for r in h.itertuples()}
-    s1, s2 = st.columns(2)
-    if s1.button("SIMPAN", width="stretch", key="il_s_simpan"):
-        stok.hitung_simpan(tgl, [(lb, a, sis.get(lb, 0)) for lb, a in nilai.items()], oleh, lokasi=lokasi)
-        st.session_state["il_toast"] = "Perubahan hitung tersimpan."
-        st.rerun(scope="fragment")
-    with s2, st.container(key="il_adj"):
-        if st.button("ADJUST", type="primary", width="stretch", key="il_s_adjust",
-                     help="Stok sistem lokasi ini disamakan dengan stok aktual"):
-            with st.spinner("Menyesuaikan stok…"):
-                stok.hitung_simpan(tgl, [(lb, a, sis.get(lb, 0)) for lb, a in nilai.items()], oleh, adjust=True, lokasi=lokasi)
-            st.session_state.pop("il_lihat", None)
-            st.session_state["il_toast"] = "Stok disesuaikan dengan stok aktual."
+    if stok.FOREMAN in stok.opname_status(tgl):
+        st.success("Hitungan Foreman pada tanggal ini sudah tersimpan.")
+
+
+def _opname_meja(tgl, oleh):
+    sl = stok.opname_status(tgl)
+    nxt = st.session_state.pop("op_next", None)
+    if nxt:
+        st.session_state["opm_pab"] = nxt[0]
+        st.session_state[f"opm_mej_{nxt[0]}"] = nxt[1]
+    pabrik, meja = label_ui.pilih_meja("opm", "", wajib=True, bawaan=(None, None))
+    if pabrik and meja:
+        lk = stok.lok(pabrik, str(meja))
+        ada = stok.opname_baris(tgl, lk)
+        isi = _tabel_isian(f"op_ed_m_{tgl}_{lk}", {lb: a for lb, (a, _s) in ada.items()})
+        c1, c2 = st.columns([2, 1])
+
+        def _lanjut():
+            n = str(int(meja) + 1) if str(meja).isdigit() and int(meja) < label.PABRIK[pabrik] else str(meja)
+            st.session_state["op_next"] = (pabrik, n)
+            st.session_state["il_toast"] = f"Hitungan {label.nama_meja(pabrik, meja)} tersimpan."
+        if c1.button(f"SIMPAN MEJA {meja}", type="primary", width="stretch", key="op_simpan_m", disabled=not isi):
+            stok.opname_simpan(tgl, lk, isi, oleh)
+            st.session_state.pop(f"op_ed_m_{tgl}_{lk}", None)
+            _lanjut()
             st.rerun(scope="fragment")
-    st.caption("SIMPAN: menyimpan perubahan stok aktual. ADJUST: stok aktual dijadikan stok sistem di lokasi ini (mulai tanggal itu).")
+        if c2.button("MEJA KOSONG", width="stretch", key="op_kosong_m", help="Tidak ada label di meja ini: dicatat sudah dihitung (0)"):
+            stok.opname_simpan(tgl, lk, {}, oleh)
+            st.session_state.pop(f"op_ed_m_{tgl}_{lk}", None)
+            _lanjut()
+            st.rerun(scope="fragment")
+        if lk in sl:
+            st.success(f"{label.nama_meja(pabrik, meja)} sudah dihitung pada tanggal ini (boleh disimpan ulang).")
+    if pabrik:
+        daftar = label.meja_daftar(pabrik)
+        n = sum(1 for m in daftar if stok.lok(pabrik, m) in sl)
+        st.markdown(f"<div class='kt'>PROGRES {pabrik.upper()} — {n} dari {len(daftar)} meja sudah dihitung</div>", unsafe_allow_html=True)
+        st.markdown("".join(
+            f"<span class='ls-chip{'' if stok.lok(pabrik, m) in sl else ' min'}'>{m}{'' if stok.lok(pabrik, m) in sl else ' belum'}</span>" for m in daftar),
+            unsafe_allow_html=True)
+
+
+@st.dialog("STOK OPNAME LABEL", width="large", on_dismiss="rerun")
+def dlg_opname():
+    kontrol_jendela("inputlabel")
+    kepala("label", "STOK OPNAME LABEL")
+    st.markdown(label_ui.CSS, unsafe_allow_html=True)
+    if st.session_state.get("il_toast"):
+        st.toast(st.session_state.pop("il_toast"), icon="✅")
+    tgl = _tgl_iso(st.date_input("Tanggal opname (stok akhir hari)", value=label.hari_ini(), max_value=label.hari_ini(), format="DD/MM/YYYY", key="op_tgl"))
+    oleh = akses.pelaku()
+    t1, t2 = st.tabs(["1 · STOK FOREMAN", "2 · STOK PER MEJA"])
+    with t1:
+        _opname_foreman(tgl, oleh)
+    with t2:
+        _opname_meja(tgl, oleh)
+    st.caption("Hasil hitung baru dipakai sistem setelah tombol ADJUST di menu SELISIH STOK OPNAME.")
+
+
+def _selisih_angka(d):
+    c = "#1d6f2f" if d == 0 else ("#b71c1c" if d < 0 else "#8a5a00")
+    return f"<b style='color:{c}'>{d:+,}</b>".replace(",", ".") if d else "<b style='color:#1d6f2f'>0</b>"
+
+
+def _excel_selisih(tgl, status):
+    import io
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Selisih opname"
+    ws.append(["LOKASI", "TYPE", "SISTEM", "AKTUAL", "SELISIH"])
+    for lk in status:
+        for lb, (a, sx) in stok.opname_baris(tgl, lk).items():
+            r = ws.max_row + 1
+            ws.append([_lok_ringkas(lk), lb, sx, a, f"=D{r}-C{r}"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+@st.dialog("SELISIH STOK OPNAME", width="large", on_dismiss="rerun")
+def dlg_selisih():
+    kontrol_jendela("inputlabel")
+    kepala("label", "SELISIH STOK OPNAME")
+    st.markdown(label_ui.CSS, unsafe_allow_html=True)
+    if st.session_state.get("il_toast"):
+        st.toast(st.session_state.pop("il_toast"), icon="✅")
+    oleh = akses.pelaku()
+    tanggal = stok.opname_tanggal()
+    if not tanggal:
+        st.info("Belum ada hasil stok opname. Isi dulu lewat menu STOK OPNAME LABEL.")
+        return
+    c1, c2 = st.columns([1, 2], vertical_alignment="bottom")
+    tgl = c1.selectbox("Opname tanggal", tanggal, key="sl_tgl", format_func=label_ui.tgl_id)
+    lihat = c2.segmented_control("Lihat", ["Total per type", "Foreman", "Per meja"], default="Total per type", key="sl_lihat", label_visibility="collapsed") or "Total per type"
+    status = stok.opname_status(tgl)
+    lokasi = None
+    if lihat == "Foreman":
+        lokasi = stok.FOREMAN
+    elif lihat == "Per meja":
+        meja_ada = [lk for lk in status if lk != stok.FOREMAN]
+        lokasi = st.selectbox("Meja yang sudah dihitung", meja_ada, index=None, placeholder="Pilih meja…", key="sl_lok", format_func=_lok_ringkas)
+    kolom = [1.6, 1.4, 1.6, 1.2]
+    if lihat == "Total per type":
+        sis, akt = {}, {}
+        for lk in status:
+            for lb, (a, sx) in stok.opname_baris(tgl, lk).items():
+                sis[lb] = sis.get(lb, 0) + sx
+                akt[lb] = akt.get(lb, 0) + a
+        k = st.columns(kolom)
+        for c, t in zip(k, ["TYPE", "SISTEM", "AKTUAL", "SELISIH"]):
+            c.markdown(f"<div class='kt'>{t}</div>", unsafe_allow_html=True)
+        for lb in stok.urut_label(sis):
+            c = st.columns(kolom, vertical_alignment="center")
+            c[0].markdown(f"**{lb}**")
+            c[1].write(f"{sis[lb]:,}".replace(",", "."))
+            c[2].write(f"{akt[lb]:,}".replace(",", "."))
+            c[3].markdown(_selisih_angka(akt[lb] - sis[lb]), unsafe_allow_html=True)
+        st.caption("Gabungan semua lokasi (Foreman + meja) yang sudah dihitung pada tanggal ini.")
+    elif lokasi:
+        if lokasi not in status:
+            st.info("Lokasi ini belum dihitung pada tanggal tersebut.")
+        else:
+            h = stok.opname_baris(tgl, lokasi)
+            if not h:
+                st.success("Lokasi ini dicatat kosong (0).")
+            k = st.columns(kolom)
+            for c, t in zip(k, ["TYPE", "SISTEM", "AKTUAL (bisa diedit)", "SELISIH"]):
+                c.markdown(f"<div class='kt'>{t}</div>", unsafe_allow_html=True)
+            nilai = {}
+            for lb in stok.urut_label(h):
+                a, sx = h[lb]
+                c = st.columns(kolom, vertical_alignment="center")
+                c[0].markdown(f"**{lb}**")
+                c[1].write(f"{sx:,}".replace(",", "."))
+                nilai[lb] = int(c[2].number_input(f"Aktual {lb}", min_value=0, max_value=9999999, step=1, value=int(a), key=f"sl_a_{tgl}_{lokasi}_{lb}", label_visibility="collapsed"))
+                c[3].markdown(_selisih_angka(nilai[lb] - sx), unsafe_allow_html=True)
+            if st.button("SIMPAN PERUBAHAN AKTUAL", width="stretch", key="sl_simpan", disabled=not h):
+                stok.opname_simpan(tgl, lokasi, nilai, oleh)
+                st.session_state["il_toast"] = "Perubahan stok aktual tersimpan."
+                st.rerun(scope="fragment")
+    else:
+        st.caption("Pilih meja yang ingin dilihat.")
+    belum = [lk for lk, sdh in status.items() if not sdh]
+    st.download_button("⬇ UNDUH EXCEL", _excel_selisih(tgl, status), file_name=f"selisih_opname_{tgl}.xlsx", width="stretch", key="sl_xls")
+    st.markdown("---")
+    st.markdown(f"**ADJUST** — jadikan stok aktual sebagai stok awal periode berikutnya  \n"
+                f"<span class='ls-nt'>{len(status)} lokasi dihitung pada tanggal ini, {len(belum)} belum di-adjust. "
+                "Stok sistem lokasi itu diganti angka aktual mulai tanggal opname; pemakaian dihitung lagi dari hari berikutnya. "
+                "Lokasi yang tidak dihitung tidak berubah.</span>", unsafe_allow_html=True)
+    ya = st.checkbox("Saya yakin, pakai stok aktual sebagai stok awal", key="sl_ya", disabled=not belum)
+    with st.container(key="il_adj"):
+        if st.button("ADJUST: PAKAI STOK AKTUAL SEBAGAI STOK AWAL", type="primary", width="stretch", key="sl_adj", disabled=not (belum and ya)):
+            with st.spinner("Menyesuaikan stok…"):
+                n = stok.opname_adjust(tgl, oleh, belum)
+            st.session_state["il_toast"] = f"{n} lokasi di-adjust: stok aktual jadi stok awal."
+            st.session_state.pop("sl_ya", None)
+            st.rerun(scope="fragment")
 
 
 @st.dialog("KOSONGKAN LABEL MEJA", width="small", on_dismiss="rerun")
@@ -609,15 +710,6 @@ def dlg_label_bagus():
     _tab_terima(akses.pelaku())
 
 
-@st.dialog("INPUT LABEL STOK", width="large", on_dismiss="rerun")
-def dlg_label_stok():
-    kontrol_jendela("inputlabel")
-    kepala("label", "INPUT LABEL STOK")
-    if st.session_state.get("il_toast"):
-        st.toast(st.session_state.pop("il_toast"), icon="✅")
-    _tab_hitung(akses.pelaku())
-
-
 def _hub():
     """Roda gigi biru muda: klik untuk membuka/menutup menu. Menu bisa ditambah item lain nanti."""
     buka = st.session_state.get("hub_buka", True)
@@ -634,10 +726,11 @@ def _hub():
                 if st.button("📦  INPUT LABEL BAGUS"):
                     dlg_label_bagus()
             with st.container(key="btn_inputstok"):
-                if st.button("🧮  INPUT LABEL STOK"):
-                    for k_ in ("il_lihat", "il_hitung_tgl"):
-                        st.session_state.pop(k_, None)
-                    dlg_label_stok()
+                if st.button("🧮  STOK OPNAME LABEL"):
+                    dlg_opname()
+            with st.container(key="btn_selisih"):
+                if st.button("📊  SELISIH STOK OPNAME"):
+                    dlg_selisih()
             with st.container(key="btn_kosong"):
                 if st.button("🧹  KOSONGKAN LABEL MEJA"):
                     for k_ in ("ks_pab", "ks_ya"):

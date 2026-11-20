@@ -33,6 +33,7 @@ KOLOM = {
     "label_hitung": ["tgl", "waktu", "label", "aktual", "sistem", "adjust", "oleh", "lokasi"],  # hitung stok aktual per lokasi (kosong/FOREMAN = stok utama, "Pabrik|meja"); adjust="ya" = jadi stok awal
     "label_meja": ["id", "tgl", "waktu", "prn", "nama", "pabrik", "meja", "label", "jumlah", "oleh"],  # label diterima operator dari foreman (masuk stok meja)
     "label_pindah": ["id", "tgl", "waktu", "dari_pabrik", "dari_meja", "ke_pabrik", "ke_meja", "label", "jumlah", "oleh", "prn"],  # pemindahan stok antar meja / kembali ke foreman (ke_pabrik kosong = foreman)
+    "label_pindahmeja": ["id", "tgl", "waktu", "prn", "nama", "dari_pabrik", "dari_meja", "ke_pabrik", "ke_meja", "label", "bagus", "oleh"],  # operator pindah meja: pcs bagus yang sudah dipakai di meja lama sampai saat pindah
     "label_kosong": ["id", "tgl", "waktu", "pabrik", "oleh"],  # tombol Kosongkan Label Meja
     "label_riwayat": ["waktu", "tgl", "oleh", "jenis", "kunci", "sebelum", "sesudah"],  # riwayat perubahan/hapus input label
     "operator": ["prn", "kode_opr", "oleh", "waktu"],  # Daftar Operator: siapa yang bisa dipilih di Monitoring Label
