@@ -133,3 +133,6 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 
 ## Tahap 10g
 - Halaman admin hanya untuk 5 akun: admin QC-SALIS (Secrets) + foreman QC-NURMUS (Musthofa), QC-RIZKI, QC-PAMBUDI (Haris Rizal Pambudi, akun khusus), QC-SATRIO (password dari tabel karyawan). Akun lain ditolak.
+
+## Tahap 10j
+- Input Label Afkir: bila ada label warna (DR, MA, PIV, dst.), kolom type CE7 otomatis ditampilkan paling depan.

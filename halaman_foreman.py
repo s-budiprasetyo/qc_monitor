@@ -190,6 +190,8 @@ def dlg_label():
     if isinstance(cols, dict):
         cols = st.session_state["w_cols"] = list(cols)
     induk = list(cols)  # label yang dipilih; kolom SNI pendamping ditambahkan otomatis
+    if any(label.ket_label(x) for x in induk) and "CE7" not in induk:
+        induk.insert(0, "CE7")  # label warna (DR, MA, PIV, ...) selalu disertai type CE7 di paling depan
     cols = label.kolom_lengkap(induk)
 
     a, b = st.columns([3, 2], vertical_alignment="center")
@@ -241,7 +243,7 @@ def dlg_label():
                     kecil, besar = (label.ket_label(t) or label.kategori_label(t)).upper(), t
                 st.markdown(f"<div class='lb-th{' lb-sni' if sni else ''}'><small>{kecil}</small><b>{besar}</b></div>",
                             unsafe_allow_html=True)
-                if not sni:
+                if not sni and not (t == "CE7" and any(label.ket_label(x) for x in induk)):
                     with st.container(key=f"lbx_{i}"):
                         if st.button("✕", key=f"lbrm_{i}", help="Hapus label ini"):
                             st.session_state["w_cols"] = [x for x in induk if x != t]
