@@ -124,6 +124,40 @@ def _bersih_form(jaga_meja=False):
             del st.session_state[k]
 
 
+def _peringatan_ada(ada, nama, prn, pabrik, meja, tgl_s, shift):
+    """Peringatan 'data sudah diinput' (muncul tepat setelah nomor meja dipilih)."""
+    st.markdown("""<style>
+.pw{background:#fff4d6;border:2px solid #f0a500;border-radius:14px;padding:14px 16px;margin:.6rem 0}
+.pw h4{margin:0 0 4px;color:#8a5a00;font-size:16px;font-weight:800}
+.pw p{margin:0;color:#5a4300;font-size:13px}
+.pw table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12.5px;background:#fff}
+.pw th,.pw td{border:1px solid #e8d49a;padding:4px 8px;text-align:center}.pw th{background:#fbe9ad;color:#6b4a00}
+</style>""", unsafe_allow_html=True)
+    baris = "".join(f"<tr><td><b>{x['type']}</b></td><td>{label._int(x['lengket'])}</td><td>{label._int(x['garis'])}</td>"
+                    f"<td>{label._int(x['kotor'])}</td><td>{label._int(x['proses'])}</td><td><b>{x['total']}</b></td><td>{x['waktu']}</td>"
+                    f"<td>{x.get('oleh', '')}</td></tr>" for _, x in ada.iterrows())
+    tg = f"{tgl_s[8:]}-{tgl_s[5:7]}-{tgl_s[:4]}"
+    st.markdown(f"<div class='pw'><h4>⚠ DATA INI SUDAH PERNAH DIINPUT</h4>"
+                f"<p>{nama} · {label.nama_meja(pabrik, meja)} · {tg} ({shift}) sudah punya input label afkir. "
+                "Supaya data lama tidak hilang atau dobel, perbaiki lewat tombol di bawah (riwayat perubahan tercatat).</p>"
+                "<table><tr><th>TYPE</th><th>LENGKET</th><th>GARIS</th><th>KOTOR</th><th>PROSES</th><th>TOTAL</th><th>JAM</th><th>OLEH</th></tr>"
+                f"{baris}</table></div>", unsafe_allow_html=True)
+    rw = label.riwayat_kelompok(tgl_s, shift, prn, pabrik, str(meja))
+    if len(rw):
+        with st.expander(f"Riwayat perubahan sebelumnya ({len(rw)})"):
+            for _, x in rw.iterrows():
+                st.caption(f"{x['waktu'][5:16]} · {x['oleh']} · {x['jenis']} · {str(x['kunci']).split('|')[-1]}: "
+                           f"{x['sebelum'] or '-'} → {x['sesudah']}")
+    b1, b2 = st.columns(2)
+    if b1.button("✎ PERBAIKI DATA", type="primary", width="stretch", key="lb_ubah_ada"):
+        kolom = {x["type"]: {j: x[j] for j, _ in label.JENIS} for _, x in ada.iterrows()}
+        st.session_state["w_muat"] = {"prn": prn, "pabrik": pabrik, "meja": str(meja), "kolom": kolom,
+                                      "catatan": str(ada.iloc[0].get("catatan", "") or "")}
+        st.rerun(scope="fragment")
+    b2.button("PILIH MEJA LAIN", width="stretch", key="lb_meja_lain",
+              on_click=lambda: st.session_state.__setitem__(f"w_meja_{pabrik}", None))
+
+
 @st.dialog("INPUT LABEL AFKIR", width="large", on_dismiss="rerun")
 def dlg_label():
     st.markdown(CSS_JENDELA, unsafe_allow_html=True)
@@ -172,6 +206,12 @@ def dlg_label():
     pabrik = st.segmented_control("PABRIK", list(label.PABRIK), key="w_pabrik") or "Pabrik 1"
     meja = st.selectbox("MEJA", label.meja_daftar(pabrik), index=None, key=f"w_meja_{pabrik}",
                         format_func=lambda m: f"Meja {m}", placeholder="Pilih meja…")
+    if prn and meja and not edit:
+        ada = label.baca_hari(_tgl_iso(tgl), shift)
+        ada = ada[(ada["prn"] == prn) & (ada["pabrik"] == pabrik) & (ada["meja"] == str(meja))]
+        if len(ada):  # data yang sama sudah ada: tampilkan peringatan dulu, form disembunyikan sampai foreman memilih
+            _peringatan_ada(ada, nama_pilih, prn, pabrik, meja, _tgl_iso(tgl), shift)
+            return
     stok_m = stok.stok_meja(pabrik, meja, _tgl_iso(tgl)) if meja else {}
     posting = label.tanggal_posting(prn, _tgl_iso(tgl), shift) if prn else ""
     sap = laporan.sap_hari(prn, posting) if prn else {}
@@ -259,21 +299,7 @@ def dlg_label():
                         st.session_state["w_pk"] = n + 1
                         st.rerun(scope="fragment")
 
-    if prn and meja and not edit:
-        ada = label.baca_hari(_tgl_iso(tgl), shift)
-        ada = ada[(ada["prn"] == prn) & (ada["pabrik"] == pabrik) & (ada["meja"] == str(meja))]
-        if len(ada):
-            with st.container(border=True):
-                st.markdown(f"**Sudah ada input** — {nama_pilih} · {label.nama_meja(pabrik, meja)} · {_tgl_iso(tgl)[8:]}-{_tgl_iso(tgl)[5:7]} ({shift}). "
-                            "Menyimpan lagi akan menambah/mengganti type yang sama.")
-                for _, x in ada.iterrows():
-                    st.caption(f"{x['waktu']} · **{x['type']}** · lengket {x['lengket']} · garis {x['garis']} · kotor {x['kotor']} · "
-                               f"proses {label._int(x['proses'])} · total {x['total']}")
-                if st.button("✎ Ubah input ini", key="lb_ubah_ada"):
-                    kolom = {x["type"]: {j: x[j] for j, _ in label.JENIS} for _, x in ada.iterrows()}
-                    st.session_state["w_muat"] = {"prn": prn, "pabrik": pabrik, "meja": str(meja), "kolom": kolom,
-                                                  "catatan": str(ada.iloc[0].get("catatan", "") or "")}
-                    st.rerun(scope="fragment")
+    if prn and meja:
         rw = label.riwayat_kelompok(_tgl_iso(tgl), shift, prn, pabrik, str(meja))
         if len(rw):
             with st.expander(f"Riwayat perubahan ({len(rw)})"):

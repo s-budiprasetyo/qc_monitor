@@ -14,6 +14,23 @@ import streamlit as st
 from core import data, parsers
 
 ADMIN, FOREMAN = "admin", "foreman"
+# Akun karyawan yang otomatis berperan Foreman di halaman admin (selain yang jenisnya FOREMAN di tabel karyawan).
+# Bisa diganti lewat Secrets: [admin] foreman = ["QC-THOFA", ...]
+USER_FOREMAN = ["QC-THOFA", "QC-SENJA", "QC-PAMBUDI"]
+
+
+def _kunci(u):
+    return "".join(ch for ch in str(u).upper() if ch.isalnum())
+
+
+def user_foreman(adm=None):
+    daftar = USER_FOREMAN
+    try:
+        if adm and adm.get("foreman"):
+            daftar = list(adm["foreman"])
+    except Exception:
+        pass
+    return {_kunci(x) for x in daftar}
 MAKS_GAGAL = 5
 
 CSS_BAR = """
@@ -81,8 +98,8 @@ def cek_login(user, password, adm, karyawan):
     if adm and hmac.compare_digest(u.encode(), str(adm["user"]).encode()) \
             and hmac.compare_digest(password.encode(), str(adm["password"]).encode()):
         return ADMIN, str(adm["user"]), ""
-    k = karyawan[karyawan["user"].str.strip().str.upper() == u.upper()]
-    k = k[k["jenis"].str.strip().str.upper() == "FOREMAN"]
+    k = karyawan[karyawan["user"].map(_kunci) == _kunci(u)]
+    k = k[(k["jenis"].str.strip().str.upper() == "FOREMAN") | (k["user"].map(_kunci).isin(user_foreman(adm)))]
     if len(k) and hmac.compare_digest(parsers.hash_pw(password), str(k.iloc[0]["pass_hash"])):
         return FOREMAN, str(k.iloc[0]["nama_web"]), str(k.iloc[0]["prn"])
     return None

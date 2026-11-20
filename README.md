@@ -124,3 +124,9 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 ## Tahap 10d
 - Verifikasi Google WAJIB lagi di halaman publik (langkah 1) dan untuk Foreman di halaman admin; email dicatat di riwayat (akses.pelaku()).
 - Baris type di Input Label Afkir dirapikan (rata atas).
+
+## Tahap 10e
+- Login halaman admin: akun QC-THOFA, QC-SENJA, QC-PAMBUDI (dari tabel karyawan) berperan Foreman dan langsung masuk halaman Foreman. Daftar bisa diganti lewat Secrets [admin] foreman = [...].
+
+## Tahap 10f
+- Input Label Afkir: setelah tanggal, nama, pabrik, dan meja dipilih, bila data yang sama sudah ada muncul peringatan dengan tombol PERBAIKI DATA (membuka form berisi data lama + riwayat) atau PILIH MEJA LAIN. Form baru disembunyikan agar tidak dobel.
