@@ -132,4 +132,4 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Input Label Afkir: setelah tanggal, nama, pabrik, dan meja dipilih, bila data yang sama sudah ada muncul peringatan dengan tombol PERBAIKI DATA (membuka form berisi data lama + riwayat) atau PILIH MEJA LAIN. Form baru disembunyikan agar tidak dobel.
 
 ## Tahap 10g
-- Halaman admin hanya untuk 5 akun: admin QC-SALIS (Secrets) + foreman QC-NURMUS (Musthofa), QC-RIZKI, QC-RIZAL (Pambudi), QC-SATRIO (password dari tabel karyawan). Akun lain ditolak.
+- Halaman admin hanya untuk 5 akun: admin QC-SALIS (Secrets) + foreman QC-NURMUS (Musthofa), QC-RIZKI, QC-PAMBUDI (Haris Rizal Pambudi, akun khusus), QC-SATRIO (password dari tabel karyawan). Akun lain ditolak.

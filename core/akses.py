@@ -16,7 +16,9 @@ from core import data, parsers
 ADMIN, FOREMAN = "admin", "foreman"
 # Daftar putih akun karyawan yang boleh masuk halaman admin sebagai Foreman (admin: user di Secrets [admin]). Akun lain ditolak.
 # Bisa diganti lewat Secrets: [admin] foreman = ["QC-THOFA", ...]
-USER_FOREMAN = ["QC-NURMUS", "QC-RIZKI", "QC-RIZAL", "QC-SATRIO"]  # Musthofa(THOFA), Rizki Senja, Haris Rizal Pambudi, Satrio
+USER_FOREMAN = ["QC-NURMUS", "QC-RIZKI", "QC-SATRIO"]  # Musthofa(THOFA), Rizki Senja, Satrio
+# Akun khusus halaman admin yang tidak ada di tabel karyawan: user -> (prn, nama, sha256 password)
+AKUN_KHUSUS = {"QC-PAMBUDI": ("901", "HARIS RIZAL PAMBUDI", "fa88d374b9cf5e059fad4a2fe406feae4c49cbf4803083ec521d3c75ee22557c")}
 
 
 def _kunci(u):
@@ -98,6 +100,11 @@ def cek_login(user, password, adm, karyawan):
     if adm and hmac.compare_digest(u.encode(), str(adm["user"]).encode()) \
             and hmac.compare_digest(password.encode(), str(adm["password"]).encode()):
         return ADMIN, str(adm["user"]), ""
+    for au, (aprn, anama, ahash) in AKUN_KHUSUS.items():
+        if _kunci(u) == _kunci(au):
+            if hmac.compare_digest(parsers.hash_pw(password), ahash):
+                return FOREMAN, anama, aprn
+            return None
     k = karyawan[karyawan["user"].map(_kunci) == _kunci(u)]
     k = k[k["user"].map(_kunci).isin(user_foreman(adm))]  # hanya akun yang terdaftar (daftar putih); admin lewat Secrets
     if len(k) and hmac.compare_digest(parsers.hash_pw(password), str(k.iloc[0]["pass_hash"])):
