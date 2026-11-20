@@ -14,9 +14,9 @@ import streamlit as st
 from core import data, parsers
 
 ADMIN, FOREMAN = "admin", "foreman"
-# Akun karyawan yang otomatis berperan Foreman di halaman admin (selain yang jenisnya FOREMAN di tabel karyawan).
+# Daftar putih akun karyawan yang boleh masuk halaman admin sebagai Foreman (admin: user di Secrets [admin]). Akun lain ditolak.
 # Bisa diganti lewat Secrets: [admin] foreman = ["QC-THOFA", ...]
-USER_FOREMAN = ["QC-THOFA", "QC-SENJA", "QC-PAMBUDI"]
+USER_FOREMAN = ["QC-THOFA", "QC-RIZKI", "QC-PAMBUDI", "QC-SATRIO"]
 
 
 def _kunci(u):
@@ -99,7 +99,7 @@ def cek_login(user, password, adm, karyawan):
             and hmac.compare_digest(password.encode(), str(adm["password"]).encode()):
         return ADMIN, str(adm["user"]), ""
     k = karyawan[karyawan["user"].map(_kunci) == _kunci(u)]
-    k = k[(k["jenis"].str.strip().str.upper() == "FOREMAN") | (k["user"].map(_kunci).isin(user_foreman(adm)))]
+    k = k[k["user"].map(_kunci).isin(user_foreman(adm))]  # hanya akun yang terdaftar (daftar putih); admin lewat Secrets
     if len(k) and hmac.compare_digest(parsers.hash_pw(password), str(k.iloc[0]["pass_hash"])):
         return FOREMAN, str(k.iloc[0]["nama_web"]), str(k.iloc[0]["prn"])
     return None
