@@ -69,6 +69,32 @@ def _tujuan(kp):
     return None
 
 
+
+def _reset(kp):
+    for k in [k for k in st.session_state if str(k).startswith(kp + "_")]:
+        st.session_state.pop(k, None)
+
+
+def isi_jumlah(kp, awal=None, minimal=1, maksimal=999999, judul="Pilih type label"):
+    """Isian type + jumlah TANPA data_editor (data_editor memuat JS tambahan yang sering gagal di tablet/sinyal lemah).
+    awal = {label: jumlah} untuk nilai bawaan. Return list [(label, jumlah)] untuk type yang jumlahnya terisi."""
+    opsi = stok.semua_label()
+    kd = f"{kp}_pilih"
+    if kd not in st.session_state:
+        st.session_state[kd] = [lb for lb in (awal or {}) if lb in opsi]
+    dipilih = st.multiselect(judul, opsi, key=kd, placeholder="Ketik/pilih type label…")
+    out = []
+    for lb in dipilih:
+        c = st.columns([1, 1.3], vertical_alignment="center")
+        c[0].markdown(f"**{lb}**")
+        v = c[1].number_input(lb, min_value=0 if minimal == 0 else minimal, max_value=maksimal, step=1,
+                              value=int((awal or {}).get(lb, 0)) if minimal == 0 else None,
+                              key=f"{kp}_n_{lb}", label_visibility="collapsed", placeholder="pcs")
+        if v is not None and (v >= minimal if minimal else True):
+            out.append((lb, int(v)))
+    return out
+
+
 # ------------------------------------------------------------------ label diterima operator
 def form_terima(prn, nama, tgl, oleh, adm=False, kp="lt"):
     """Tab INPUT LABEL: operator menerima label dari foreman (masuk stok meja)."""
@@ -78,12 +104,7 @@ def form_terima(prn, nama, tgl, oleh, adm=False, kp="lt"):
         st.markdown("<div class='ls-lbl'>STOK DI MEJA SEKARANG</div>" + chips(stok.stok_meja(pabrik, meja, tgl)), unsafe_allow_html=True)
     st.markdown("<div class='ls-lbl'>LABEL DITERIMA</div>", unsafe_allow_html=True)
     st.caption("Label SNI diinput sendiri (jumlah boleh berbeda dari type induknya).")
-    ed = st.data_editor(
-        pd.DataFrame({"Type": pd.Series([], dtype="object"), "Jumlah": pd.Series([], dtype="float")}),
-        num_rows="dynamic", hide_index=True, width="stretch", key=f"{kp}_ed",
-        column_config={"Type": st.column_config.SelectboxColumn("Type label", options=stok.semua_label(), required=True),
-                       "Jumlah": st.column_config.NumberColumn("Jumlah (pcs)", min_value=1, max_value=999999, step=1, format="%d")})
-    baris = [(r["Type"], r["Jumlah"]) for _, r in ed.iterrows() if r["Type"] and r["Jumlah"] == r["Jumlah"] and r["Jumlah"] > 0]
+    baris = isi_jumlah(kp + "_isi")
     lengkap = bool(pabrik and meja and baris)
     if not (pabrik and meja):
         st.caption("Pilih pabrik dan nomor meja dulu — tanpa alamat meja, stok tidak bisa dipetakan.")
@@ -92,7 +113,7 @@ def form_terima(prn, nama, tgl, oleh, adm=False, kp="lt"):
         if galat:
             st.error(galat)
         else:
-            st.session_state.pop(f"{kp}_ed", None)
+            _reset(kp + "_isi")
             st.toast("Label diterima tersimpan.", icon="✅")
             st.rerun(scope="fragment")
     _daftar_terima(prn, tgl, oleh, adm, kp)

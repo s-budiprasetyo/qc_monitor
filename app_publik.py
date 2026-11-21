@@ -20,6 +20,8 @@ BULAN = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTU
          "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"]
 
 st.set_page_config(page_title="Monitoring Hasil Kerja Karyawan", layout="wide")
+from core import ui as _ui_ping
+_ui_ping.jaga_koneksi()
 
 if st.query_params.get("privasi") is not None:  # halaman kebijakan privasi (dipakai di konfigurasi login Google)
     st.title("Kebijakan Privasi — Monitoring QC TOTO")

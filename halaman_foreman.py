@@ -476,17 +476,12 @@ def _tab_terima(oleh):
     dept = _pilih_dept("il_dept_t", "Masuk ke stok Foreman")
     tgl = st.date_input("Tanggal diterima", value=label.hari_ini(), format="DD/MM/YYYY", key="il_tgl_t")
     st.caption("Pilih label lalu isi jumlah (pcs). Contoh: CE7 7000. Tambah baris dengan klik baris kosong paling bawah.")
-    ed = st.data_editor(
-        pd.DataFrame({"Label": pd.Series([], dtype="object"), "Jumlah": pd.Series([], dtype="float")}),
-        num_rows="dynamic", hide_index=True, width="stretch", key="il_ed_t",
-        column_config={"Label": st.column_config.SelectboxColumn("Label", options=stok.semua_label(), required=True),
-                       "Jumlah": st.column_config.NumberColumn("Jumlah (pcs)", min_value=1, max_value=999999, step=1, format="%d")})
-    pilih = [(r["Label"], _num(r["Jumlah"])) for _, r in ed.iterrows() if r["Label"] and _num(r["Jumlah"]) > 0]
+    pilih = label_ui.isi_jumlah("il_t")
     if st.button("SIMPAN LABEL DITERIMA", type="primary", width="stretch", key="il_simpan_t", disabled=not pilih):
         with st.spinner("Menyimpan…"):
             n = stok.terima_simpan(_tgl_iso(tgl), pilih, oleh, dept)
         st.session_state["il_toast"] = f"{n} penerimaan label tersimpan."
-        st.session_state.pop("il_ed_t", None)
+        label_ui._reset("il_t")
         st.rerun(scope="fragment")
     riwayat = stok.terima_daftar(label.hari_ini().strftime("%Y-%m"), dept)
     st.markdown(f"**Penerimaan bulan ini · Foreman {dept}**")
@@ -510,18 +505,8 @@ def _lok_ringkas(lk):
 
 
 def _tabel_isian(kunci, awal):
-    """Tabel type + jumlah (hitungan fisik). awal = {label: jumlah} yang sudah tersimpan."""
-    df = pd.DataFrame({"Type": list(awal), "Jumlah": [float(v) for v in awal.values()]}) if awal else \
-        pd.DataFrame({"Type": pd.Series([], dtype="object"), "Jumlah": pd.Series([], dtype="float")})
-    ed = st.data_editor(
-        df, num_rows="dynamic", hide_index=True, width="stretch", key=kunci,
-        column_config={"Type": st.column_config.SelectboxColumn("Type label", options=stok.semua_label(), required=True),
-                       "Jumlah": st.column_config.NumberColumn("Jumlah hitungan fisik (pcs)", min_value=0, max_value=9999999, step=1, format="%d")})
-    out = {}
-    for _, r in ed.iterrows():
-        if r["Type"] and r["Jumlah"] == r["Jumlah"]:
-            out[r["Type"]] = out.get(r["Type"], 0) + _num(r["Jumlah"])
-    return out
+    """Type + jumlah hitungan fisik. awal = {label: jumlah} yang sudah tersimpan. Return {label: jumlah}."""
+    return {lb: n for lb, n in label_ui.isi_jumlah(kunci, awal, minimal=0, maksimal=9999999)}
 
 
 def _opname_foreman(tgl, oleh, dept):
@@ -533,7 +518,7 @@ def _opname_foreman(tgl, oleh, dept):
         with st.spinner("Menyimpan…"):
             stok.opname_simpan(tgl, lk, isi, oleh)
         st.session_state["il_toast"] = f"Hitungan Foreman {dept} tersimpan."
-        st.session_state.pop(f"op_ed_f_{dept}_{tgl}", None)
+        label_ui._reset(f"op_ed_f_{dept}_{tgl}")
         st.rerun(scope="fragment")
     if lk in stok.opname_status(tgl):
         st.success(f"Hitungan Foreman {dept} pada tanggal ini sudah tersimpan.")
@@ -559,12 +544,12 @@ def _opname_meja(tgl, oleh, dept):
             st.session_state["il_toast"] = f"Hitungan {label.nama_meja(pabrik, meja)} tersimpan."
         if c1.button(f"SIMPAN MEJA {meja}", type="primary", width="stretch", key="op_simpan_m", disabled=not isi):
             stok.opname_simpan(tgl, lk, isi, oleh)
-            st.session_state.pop(f"op_ed_m_{tgl}_{lk}", None)
+            label_ui._reset(f"op_ed_m_{tgl}_{lk}")
             _lanjut()
             st.rerun(scope="fragment")
         if c2.button("MEJA KOSONG", width="stretch", key="op_kosong_m", help="Tidak ada label di meja ini: dicatat sudah dihitung (0)"):
             stok.opname_simpan(tgl, lk, {}, oleh)
-            st.session_state.pop(f"op_ed_m_{tgl}_{lk}", None)
+            label_ui._reset(f"op_ed_m_{tgl}_{lk}")
             _lanjut()
             st.rerun(scope="fragment")
         if lk in sl:

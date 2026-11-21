@@ -175,3 +175,11 @@ def kepala_pub(jenis, judul):
     """Header jendela halaman utama: gradasi biru penuh sampai tepi, ikon garis putih, judul boleh turun baris."""
     st.markdown(f"<div class='kpx'><span class='li'><svg viewBox='0 0 24 24'>{_IKON_PUB[jenis]}</svg></span><b>{judul}</b></div>",
                 unsafe_allow_html=True)
+
+
+def jaga_koneksi():
+    """Ping ringan tiap 4 menit supaya koneksi ke server tidak diputus saat halaman dibiarkan terbuka."""
+    @st.fragment(run_every="4m")
+    def _ping():
+        st.markdown("<span style='display:none'></span>", unsafe_allow_html=True)
+    _ping()

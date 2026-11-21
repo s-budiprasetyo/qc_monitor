@@ -154,3 +154,8 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Opname/selisih per departemen (tab QC / SK / Gabungan); ADJUST per departemen dengan konfirmasi ulang; kolom aktual bisa diedit, sistem tidak; laporan bisa dibuka kapan saja via pilih tanggal.
 - Laporan Stok Label: tab "DI MANA SAJA" (total + sebaran lokasi), QC / SK / Gabungan.
 - Laporan baru "Afkir Kotor (pcs)": karyawan x type, hanya label kotor.
+
+## Tahap 10n (stabilitas)
+- Tabel input (data_editor) di Input Label Diterima, Opname Foreman/Meja, dan Input Label operator diganti pilih type + kolom jumlah (tidak memuat JS tambahan yang sering gagal di tablet).
+- Streamlit dikunci ke 1.66.1 di requirements.txt supaya versi tidak berubah sendiri saat reboot.
+- Ping koneksi tiap 4 menit (core/ui.jaga_koneksi) agar halaman yang dibiarkan terbuka tidak terputus.

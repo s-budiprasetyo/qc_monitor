@@ -21,6 +21,8 @@ FILE_INFO = ["FILE HASIL KERJA", "LEMBUR", "EVALUASI KARYAWAN", "ABSENSI", "JADW
 PILIHAN_ABSEN = ["Sakit", "Ijin", "Cuti", "Dispen", "Resign", "Hapus catatan"]
 
 st.set_page_config(page_title="Welcome Admin QC TOTO", page_icon="⚙️", layout="wide")
+from core import ui as _ui_ping
+_ui_ping.jaga_koneksi()
 
 
 # ---------------------------------------------------------------- tampilan
