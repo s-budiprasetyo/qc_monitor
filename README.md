@@ -159,3 +159,7 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Tabel input (data_editor) di Input Label Diterima, Opname Foreman/Meja, dan Input Label operator diganti pilih type + kolom jumlah (tidak memuat JS tambahan yang sering gagal di tablet).
 - Streamlit dikunci ke 1.66.1 di requirements.txt supaya versi tidak berubah sendiri saat reboot.
 - Ping koneksi tiap 4 menit (core/ui.jaga_koneksi) agar halaman yang dibiarkan terbuka tidak terputus.
+
+## Tahap 10o
+- Stok Opname, Distribusi, Label Diterima (foreman) dan Input Label (operator) memakai jendela isian seperti Input Label Afkir: pilih lokasi (Foreman / Pabrik + nomor meja), + Label, isi jumlah.
+- Setelah simpan meja, otomatis lanjut ke meja berikutnya; progres meja tetap tampil.

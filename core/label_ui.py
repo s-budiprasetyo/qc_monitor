@@ -103,8 +103,11 @@ def form_terima(prn, nama, tgl, oleh, adm=False, kp="lt"):
     if pabrik and meja:
         st.markdown("<div class='ls-lbl'>STOK DI MEJA SEKARANG</div>" + chips(stok.stok_meja(pabrik, meja, tgl)), unsafe_allow_html=True)
     st.markdown("<div class='ls-lbl'>LABEL DITERIMA</div>", unsafe_allow_html=True)
-    st.caption("Label SNI diinput sendiri (jumlah boleh berbeda dari type induknya).")
-    baris = isi_jumlah(kp + "_isi")
+    st.caption("Klik + Label untuk memilih type. Kolom SNI muncul otomatis di samping type-nya, jumlahnya boleh berbeda.")
+    import halaman_foreman as _hf  # jendela isian yang sama dengan Input Label Afkir
+    st.markdown(_hf.CSS_JENDELA, unsafe_allow_html=True)
+    st.html(_hf.JS_PILIH, unsafe_allow_javascript=True)
+    baris = [(k, v) for k, v in _hf._grid_hitung(kp + "_isi", {}).items() if v > 0]
     lengkap = bool(pabrik and meja and baris)
     if not (pabrik and meja):
         st.caption("Pilih pabrik dan nomor meja dulu — tanpa alamat meja, stok tidak bisa dipetakan.")
