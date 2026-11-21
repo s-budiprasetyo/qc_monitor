@@ -157,9 +157,10 @@ def _peringatan_ada(ada, nama, prn, pabrik, meja, tgl_s, shift):
 
 @st.dialog("INPUT LABEL AFKIR", width="large", on_dismiss="rerun")
 def dlg_label():
+    kontrol_jendela("afkir")
+    kepala("label", "INPUT LABEL AFKIR")
     st.markdown(CSS_JENDELA, unsafe_allow_html=True)
     st.html(JS_PILIH, unsafe_allow_javascript=True)
-    st.markdown("<div class='lb-kepala'><b>INPUT LABEL AFKIR</b><div>Input label afkir</div></div>", unsafe_allow_html=True)
     oleh = akses.pelaku()
     tipe_kat = label.type_per_kategori()
     peta = _nama_peta()

@@ -171,3 +171,6 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 
 ## Tahap 10q
 - Tombol close jendela foreman disejajarkan dengan tombol maximize (aturan CSS lama dihapus).
+
+## Tahap 10r
+- Jendela Input Label Afkir memakai kepala + tombol maximize/close standar (close sebelumnya hilang).
