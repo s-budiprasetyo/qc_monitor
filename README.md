@@ -163,3 +163,8 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 ## Tahap 10o
 - Stok Opname, Distribusi, Label Diterima (foreman) dan Input Label (operator) memakai jendela isian seperti Input Label Afkir: pilih lokasi (Foreman / Pabrik + nomor meja), + Label, isi jumlah.
 - Setelah simpan meja, otomatis lanjut ke meja berikutnya; progres meja tetap tampil.
+
+## Tahap 10p
+- Halaman Foreman: roda gigi bergaya Jarvis (komponen roda admin + cincin skala, busur HUD, sinar penunjuk menu aktif). Menu: Afkir, Bagus, Distribusi, Opname, Selisih, Operator. Tombol Kosongkan Label Meja dihapus.
+- Stok Opname: tabel TYPE | JUMLAH HITUNGAN | STOK SEBELUMNYA (sistem). Memakai st.form (angka terkirim utuh saat simpan, tanpa rerun per ketikan).
+- Tanggal+pabrik+meja yang sama: muncul peringatan "SUDAH PERNAH DIINPUT" (siapa, jam), angka lama terisi, simpan = mengganti (bukan menjumlah).

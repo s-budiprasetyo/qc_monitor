@@ -464,6 +464,23 @@ def opname_baris(tgl, lokasi):
     return {r.label: (r.aktual, r.sistem) for r in h.itertuples() if r.label != KOSONG}
 
 
+def opname_info(tgl, lokasi):
+    """(oleh, jam 'HH:MM', sudah_adjust) hitungan tersimpan satu lokasi pada tanggal itu; None bila belum pernah."""
+    d = data.baca("label_hitung")
+    if d.empty:
+        return None
+    d = d.copy()
+    if "lokasi" not in d.columns:
+        d["lokasi"] = ""
+    d["lokasi"] = d["lokasi"].replace("", FOREMAN)
+    d = d[(d["tgl"] == tgl) & (d["lokasi"] == lokasi)]
+    if d.empty:
+        return None
+    d = d.sort_values("waktu")
+    t = d.iloc[-1]
+    return str(t.get("oleh", "")), str(t["waktu"])[:5], bool((d.drop_duplicates("label", keep="last")["adjust"] == "ya").all())
+
+
 def opname_simpan(tgl, lokasi, aktual, oleh):
     """aktual = {label: jumlah}. Label yang punya stok sistem tetapi tidak diisi dianggap 0. Lokasi kosong tetap tercatat sudah dihitung."""
     sudah = opname_status(tgl).get(lokasi)

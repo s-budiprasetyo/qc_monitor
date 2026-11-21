@@ -15,6 +15,6 @@ _RODA = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__))
 _komponen_roda = components.declare_component("roda_admin", path=_RODA)
 
 
-def roda(items, start=None, key="roda"):
+def roda(items, start=None, key="roda", judul1="UPLOAD", judul2="DATA", hud=False):
     """Roda gigi berputar. items: [{id,label,sub,icon,status_label,status,disabled}]. Mengembalikan {id,n} saat BUKA diklik."""
-    return _komponen_roda(items=items, start=start, key=key, default=None)
+    return _komponen_roda(items=items, start=start, key=key, judul1=judul1, judul2=judul2, hud=hud, default=None)
