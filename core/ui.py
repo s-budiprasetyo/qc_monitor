@@ -135,7 +135,7 @@ def _css_pub(besar):
 [data-testid='stDialog'] [role='dialog']::-webkit-scrollbar{{display:none}}
 [data-testid='stDialog'] [role='dialog'] h2{{display:none !important}}
 [data-testid='stDialog'] [role='dialog'] > div:last-child{{padding:0 16px 20px !important}}
-[data-testid='stDialog'] [role='dialog'] > button[aria-label='Close']{{position:absolute !important;top:13px;right:10px;z-index:30;
+[data-testid='stDialog'] [role='dialog'] > button[aria-label='Close']{{position:absolute !important;top:13px !important;right:10px !important;margin:0 !important;transform:none !important;z-index:30;
   width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:transparent !important;border:none !important;
   border-radius:50%;color:#fff !important}}
 [data-testid='stDialog'] [role='dialog'] > button[aria-label='Close'] svg{{width:15px;height:15px;stroke:#fff;stroke-width:2.6}}

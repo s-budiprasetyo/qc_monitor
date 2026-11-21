@@ -55,10 +55,6 @@ CSS_JENDELA = """
 <style>
 [data-testid='stDialog'] [role='dialog'] h2{display:none !important}
 [data-testid='stDialog'] [role='dialog']{position:relative}
-[data-testid='stDialog'] [role='dialog'] > button[aria-label='Close']{position:absolute !important;top:40px;right:24px;z-index:30;width:34px;height:34px;border-radius:50%;
-  color:#fff !important;background:rgba(255,255,255,.28) !important;border:2px solid #fff !important;display:flex;align-items:center;justify-content:center;padding:0}
-[data-testid='stDialog'] [role='dialog'] > button[aria-label='Close']:hover{background:#d93025 !important;border-color:#fff !important}
-[data-testid='stDialog'] [role='dialog'] > button[aria-label='Close'] svg{width:20px;height:20px;stroke:#fff;stroke-width:2.5px;fill:#fff;color:#fff !important}
 .lb-kepala{background:linear-gradient(135deg,#1a73e8,#0b3d91);color:#fff;margin:-1.4rem -1.6rem 1rem -1.6rem;padding:14px 64px 14px 20px;
   border-radius:14px 14px 0 0}
 .lb-kepala b{font-size:1.15rem;letter-spacing:.5px}.lb-kepala div{font-size:12px;opacity:.85}
