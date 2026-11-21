@@ -575,81 +575,140 @@ CSS_OPNAME = """<style>
 </style>"""
 
 
-def _baris_opname(pref, awal, sis, tgl_txt, nama_lok, pabrik, meja):
-    """Tabel hitungan fisik: TYPE | JUMLAH | STOK SEBELUMNYA (sistem, hanya baca). Memakai st.form supaya angka
-    terkirim utuh saat SIMPAN (tidak ada rerun per ketikan = lebih ringan dan stabil).
-    awal = {label: (aktual, sistem)} hitungan tersimpan; sis = stok sistem sekarang {label: jumlah}.
-    Return (isi{label: jumlah}, tombol 'simpan'/'kosong'/None)."""
-    kc = f"{pref}_cols"
-    if kc not in st.session_state:
-        st.session_state[kc] = list(dict.fromkeys(
-            [lb[len(label.SNI) + 1:] if lb.startswith(label.SNI + " ") else lb for lb in list(awal) + [k for k, v in sis.items() if v]]))
-        for lb, (a, _s) in awal.items():
-            st.session_state[f"{pref}_n_{lb}"] = int(a) or None
-    induk = list(st.session_state[kc])
-    if any(label.ket_label(x) for x in induk) and "CE7" not in induk:
-        induk.insert(0, "CE7")
-    cols = label.kolom_lengkap(induk)
-    sebelum = {lb: (awal[lb][1] if lb in awal else sis.get(lb, 0)) for lb in cols}
+def _semua_type_pilihan():
+    """{kategori: [type,...]} untuk pilihan opname: semua type + kategori SNI (semua yang punya SNI). Tidak ada yang disembunyikan."""
+    tk = label.type_per_kategori()
+    out = {k: list(v) for k, v in tk.items()}
+    sni = [label.nama_sni(lb) for v in tk.values() for lb in v if label.punya_sni(lb)]
+    out[label.SNI] = list(dict.fromkeys(sni))
+    return out
 
-    # pilih label tambahan (di luar form)
-    tipe_kat = label.type_per_kategori()
-    c1, c2 = st.columns([1, 1])
+
+def _baris_opname(pref, sis, nama_lok, meja, ada):
+    """Tabel isian opname: baris per type, boleh ada type yang sama lebih dari sekali. Memakai st.form supaya angka terkirim
+    utuh saat SIMPAN. sis = stok sistem {label: jumlah}. ada = hitungan tersimpan {label: (aktual, sistem)}.
+    Return (baru[(type, jumlah)], 'simpan'/'kosong'/None, daftar_baris[(id, type)])."""
+    ke = f"{pref}_ent"
+    if ke not in st.session_state:
+        st.session_state[f"{pref}_nid"] = 0
+        ent = []
+        for lb, v in sis.items():
+            if v:
+                ent.append([st.session_state[f"{pref}_nid"], lb])
+                st.session_state[f"{pref}_nid"] += 1
+        st.session_state[ke] = ent
+    ent = st.session_state[ke]
+
+    c1, c2 = st.columns(2)
     if c1.button("+ Label", key=f"{pref}_tambah", width="stretch"):
         st.session_state[f"{pref}_tb"] = not st.session_state.get(f"{pref}_tb", False)
         st.rerun(scope="fragment")
-    if len(induk) and c2.button("↶ Hapus label terakhir", key=f"{pref}_undo", width="stretch", help="Hanya untuk label yang baru ditambahkan"):
-        tambahan = [x for x in induk if not sis.get(x) and x not in awal]
-        if tambahan:
-            st.session_state[kc] = [x for x in induk if x != tambahan[-1]]
-            st.session_state.pop(f"{pref}_n_{tambahan[-1]}", None)
+    if ent and c2.button("↶ Hapus baris terakhir", key=f"{pref}_undo", width="stretch"):
+        idb, _t = ent.pop()
+        st.session_state.pop(f"{pref}_n_{idb}", None)
         st.rerun(scope="fragment")
     if st.session_state.get(f"{pref}_tb"):
         n = st.session_state.setdefault(f"{pref}_pk", 0)
         with st.container(border=True):
-            kat = st.pills("PILIH KATEGORI", label.KATEGORI, key=f"{pref}_kat_{n}")
+            tipe = _semua_type_pilihan()
+            kat = st.pills("PILIH KATEGORI", list(tipe), key=f"{pref}_kat_{n}")
             if kat:
-                pilihan = [t for t in tipe_kat.get(kat, []) if t not in induk]
-                if not pilihan:
-                    st.caption("Tidak ada type untuk kategori ini (atau semuanya sudah ada).")
-                else:
-                    tp = st.pills(f"{kat.upper()} → PILIH LABEL", pilihan, key=f"{pref}_typ_{n}_{kat}")
-                    if tp:
-                        st.session_state[kc] = induk + [tp]
-                        st.session_state[f"{pref}_tb"] = False
-                        st.session_state[f"{pref}_pk"] = n + 1
-                        st.rerun(scope="fragment")
+                tp = st.pills(f"{kat.upper()} → PILIH TYPE", tipe[kat], key=f"{pref}_typ_{n}_{kat}")
+                if tp:
+                    ent.append([st.session_state[f"{pref}_nid"], tp])
+                    st.session_state[f"{pref}_nid"] += 1
+                    st.session_state[f"{pref}_pk"] = n + 1
+                    st.rerun(scope="fragment")
 
-    isi, pencet = {}, None
+    baru, pencet = [], None
     with st.form(f"{pref}_form", border=False):
         st.markdown("<div class='op-th'><span>TYPE</span><span>JUMLAH HITUNGAN (PCS)</span><span class='sb'>STOK SEBELUMNYA</span></div>", unsafe_allow_html=True)
-        if not cols:
-            st.caption("Belum ada type. Klik **+ Label** di atas untuk memilih type yang dihitung.")
-        for t in cols:
+        if not ent:
+            st.caption("Belum ada baris. Klik **+ Label** untuk memilih type yang dihitung.")
+        for idb, t in ent:
             r = st.columns([1.2, 1.4, 1], vertical_alignment="center")
             sni = t.startswith(label.SNI + " ")
             nm = t[len(label.SNI) + 1:] if sni else t
-            kecil = "SNI · PENDAMPING" if sni else (label.ket_label(t) or label.kategori_label(t)).upper()
+            kecil = "SNI" if sni else (label.ket_label(t) or label.kategori_label(t)).upper()
             r[0].markdown(f"<div class='op-ty'><small>{kecil}</small><b>{nm}</b></div>", unsafe_allow_html=True)
-            v = r[1].number_input(f"Hitungan {t}", min_value=0, max_value=9999999, step=1, value=None, placeholder="0",
-                                  key=f"{pref}_n_{t}", label_visibility="collapsed")
-            isi[t] = int(v or 0)
-            sb = int(sebelum.get(t, 0))
+            v = r[1].number_input(f"Hitungan {t} {idb}", min_value=0, max_value=9999999, step=1, value=None, placeholder="0",
+                                  key=f"{pref}_n_{idb}", label_visibility="collapsed")
+            if v is not None:
+                baru.append((t, int(v)))
+            sb = int(sis.get(t, 0))
             r[2].markdown(f"<div class='op-sb{' neg' if sb < 0 else ''}'>{sb:,}</div>".replace(",", "."), unsafe_allow_html=True)
-        tot, tot_sb = sum(isi.values()), sum(int(x) for x in sebelum.values())
-        st.markdown(f"<div class='op-tot'><b>TOTAL STOK SEBELUMNYA</b><b>{tot_sb:,}</b></div>".replace(",", "."), unsafe_allow_html=True)
+        st.caption("Kolom yang dikosongkan dianggap belum dihitung. Boleh simpan bertahap; bila type yang sama sudah pernah diinput kamu akan ditanya mau dijumlahkan atau pilih salah satu.")
         b1, b2 = st.columns([2, 1])
-        ada = bool(awal)
-        if b1.form_submit_button(("SIMPAN PERUBAHAN " if ada else "SIMPAN HITUNGAN ") + nama_lok.upper(), type="primary", width="stretch"):
+        if b1.form_submit_button(("SIMPAN TAMBAHAN " if ada else "SIMPAN HITUNGAN ") + nama_lok.upper(), type="primary", width="stretch"):
             pencet = "simpan"
         if meja and b2.form_submit_button("MEJA KOSONG", width="stretch"):
             pencet = "kosong"
-    return isi, pencet
+    return baru, pencet, ent
+
+
+def _kumpul_konflik(baru, tersimpan):
+    """Gabungkan hitungan baru dengan yang tersimpan. Return (final{type: jumlah}, konflik{type: [(sumber, nilai)]})."""
+    cand = {}
+    for t, v in tersimpan.items():
+        if t != stok.KOSONG and v:
+            cand.setdefault(t, []).append(("tersimpan", int(v)))
+    kasus = {t: list(c) for t, c in cand.items()}
+    for t, v in baru:
+        kasus.setdefault(t, []).append(("baru", int(v)))
+    final, konflik = {}, {}
+    for t, c in kasus.items():
+        if len(c) == 1:
+            final[t] = c[0][1]
+        else:
+            konflik[t] = c
+    return final, konflik
+
+
+def _panel_konflik(kf, oleh):
+    """Pertanyaan saat ada type kembar: jumlahkan atau pilih salah satu. Mengembalikan True bila halaman perlu berhenti menggambar form."""
+    st.warning("**⚠ Ada type yang nilainya lebih dari satu.** Pilih cara menggabungkannya untuk setiap type di bawah ini.")
+    pilihan = {}
+    for t, c in kf["konflik"].items():
+        total = sum(v for _s, v in c)
+        opsi = [f"JUMLAHKAN semuanya = {total:,}".replace(",", ".")]
+        for i, (sumber, v) in enumerate(c):
+            opsi.append(f"PILIH SALAH SATU: {v:,} ({sumber})".replace(",", ".") + ("" if len([1 for x in c if x[0] == sumber]) == 1 else f" #{i + 1}"))
+        daftar = " + ".join(f"{v:,} ({sm})".replace(",", ".") for sm, v in c)
+        st.markdown(f"**{t}** — {daftar}")
+        pilihan[t] = (st.radio(f"Cara untuk {t}", opsi, index=None, key=f"kf_{kf['pref']}_{t}", label_visibility="collapsed"), opsi, total, c)
+    lengkap = all(v[0] is not None for v in pilihan.values())
+    b1, b2 = st.columns([2, 1])
+    if b1.button("YA, SIMPAN", type="primary", width="stretch", disabled=not lengkap, key="kf_ok"):
+        final = dict(kf["final"])
+        for t, (pil, opsi, total, c) in pilihan.items():
+            idx = opsi.index(pil)
+            final[t] = total if idx == 0 else c[idx - 1][1]
+        with st.spinner("Menyimpan…"):
+            stok.opname_simpan(kf["tgl"], kf["lk"], final, oleh)
+        for t in kf["konflik"]:
+            st.session_state.pop(f"kf_{kf['pref']}_{t}", None)
+        label_ui._reset(kf["pref"])
+        if kf.get("next"):
+            st.session_state["op_next"] = kf["next"]
+        st.session_state["il_toast"] = f"Hitungan {kf['nama']} tersimpan."
+        st.session_state.pop("op_konf", None)
+        st.rerun(scope="fragment")
+    if b2.button("KEMBALI", width="stretch", key="kf_back"):
+        for idb, val in kf["nilai"].items():
+            st.session_state[f"{kf['pref']}_n_{idb}"] = val
+        for t in kf["konflik"]:
+            st.session_state.pop(f"kf_{kf['pref']}_{t}", None)
+        st.session_state.pop("op_konf", None)
+        st.rerun(scope="fragment")
 
 
 def _opname_form(tgl, oleh, dept):
     sl = stok.opname_status(tgl)
     kp = f"opl{dept}"
+    kf = st.session_state.get("op_konf")
+    if kf:
+        _panel_konflik(kf, oleh)
+        return
     nxt = st.session_state.pop("op_next", None)
     if nxt:
         st.session_state[f"{kp}_lok"] = nxt[0]
@@ -671,28 +730,50 @@ def _opname_form(tgl, oleh, dept):
     if lk:
         tgl_txt = f"{tgl[8:10]}/{tgl[5:7]}/{tgl[:4]}"
         info = stok.opname_info(tgl, lk)
+        ada = {k: v for k, v in (stok.opname_baris(tgl, lk) if info else {}).items() if k != stok.KOSONG}
         if info:
             oleh_l, jam, adj = info
-            st.warning(f"**⚠ SUDAH PERNAH DIINPUT** — {tgl_txt} · {nama_lok} — disimpan oleh {oleh_l or '-'} pukul {jam}.  \n"
-                       "Angka di bawah adalah hitungan yang tersimpan. Ubah lalu simpan: hitungan lama **diganti**, tidak dijumlahkan."
+            chips = " ".join(f"<span class='ls-chip'>{k} · {int(v[0]):,}</span>".replace(",", ".") for k, v in ada.items() if v[0]) or "(meja ditandai kosong)"
+            st.warning(f"**⚠ SUDAH PERNAH DIINPUT** — {tgl_txt} · {nama_lok} — terakhir disimpan oleh {oleh_l or '-'} pukul {jam}.  \n"
+                       "Yang sudah tersimpan tampil di bawah. Isi tabel hanya untuk **tambahan** atau **perubahan**; "
+                       "jika type-nya sama, kamu akan ditanya mau dijumlahkan atau pilih salah satu."
                        + ("  \nHitungan ini sudah di-ADJUST; setelah diubah, lakukan ADJUST lagi di menu Selisih." if adj else ""))
+            st.markdown(f"<div class='kt'>SUDAH TERSIMPAN</div><div>{chips}</div>", unsafe_allow_html=True)
         else:
             st.success(f"Belum ada hitungan untuk {tgl_txt} · {nama_lok}. Silakan input baru.")
         pref = f"og_{lk}_{tgl}"
-        ada = stok.opname_baris(tgl, lk) if info else {}
-        isi, tekan = _baris_opname(pref, ada, stok.stok_lokasi(lk, tgl), tgl_txt, nama_lok, pabrik, meja)
-
-        def _lanjut():
-            if meja:
-                n = str(int(meja) + 1) if str(meja).isdigit() and int(meja) < label.PABRIK[pabrik] else str(meja)
-                st.session_state["op_next"] = (pabrik, n)
-            st.session_state["il_toast"] = f"Hitungan {nama_lok} tersimpan."
-        if tekan:
-            with st.spinner("Menyimpan…"):
-                stok.opname_simpan(tgl, lk, isi if tekan == "simpan" else {}, oleh)
+        baru, tekan, ent = _baris_opname(pref, stok.stok_lokasi(lk, tgl), nama_lok, meja, bool(ada))
+        nxt_m = None
+        if meja:
+            nxt_m = (pabrik, str(int(meja) + 1) if str(meja).isdigit() and int(meja) < label.PABRIK[pabrik] else str(meja))
+        if tekan == "kosong":
+            stok.opname_simpan(tgl, lk, {}, oleh)
             label_ui._reset(pref)
-            _lanjut()
+            if nxt_m:
+                st.session_state["op_next"] = nxt_m
+            st.session_state["il_toast"] = f"{nama_lok} ditandai kosong."
             st.rerun(scope="fragment")
+        elif tekan == "simpan":
+            if not baru:
+                st.error("Belum ada jumlah yang diisi.")
+            else:
+                final, konflik = _kumpul_konflik(baru, {k: v[0] for k, v in ada.items()})
+                for k, v in ada.items():      # type tersimpan yang tidak disentuh tetap dipertahankan
+                    if k != stok.KOSONG and k not in final and k not in konflik:
+                        final[k] = int(v[0])
+                if konflik:
+                    nilai = {idb: st.session_state.get(f"{pref}_n_{idb}") for idb, _t in ent}
+                    st.session_state["op_konf"] = {"pref": pref, "tgl": tgl, "lk": lk, "nama": nama_lok, "final": final,
+                                                   "konflik": konflik, "next": nxt_m, "ent": [list(e) for e in ent], "nilai": nilai}
+                    st.rerun(scope="fragment")
+                else:
+                    with st.spinner("Menyimpan…"):
+                        stok.opname_simpan(tgl, lk, final, oleh)
+                    label_ui._reset(pref)
+                    if nxt_m:
+                        st.session_state["op_next"] = nxt_m
+                    st.session_state["il_toast"] = f"Hitungan {nama_lok} tersimpan."
+                    st.rerun(scope="fragment")
     elif lokasi != "Foreman":
         st.caption("Pilih nomor meja dulu.")
     if pabrik:
@@ -938,6 +1019,8 @@ def _hub():
         st.session_state["rf_id"] = klik["id"]
         if klik["id"] == "operator":
             st.session_state.pop("op_daftar", None)
+        if klik["id"] == "opname":
+            st.session_state.pop("op_konf", None)
         MENU[klik["id"]][3]()
 
 

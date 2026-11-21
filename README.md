@@ -174,3 +174,7 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 
 ## Tahap 10r
 - Jendela Input Label Afkir memakai kepala + tombol maximize/close standar (close sebelumnya hilang).
+
+## Tahap 10s
+- Opname: semua type bisa dipilih (kategori baru "SNI"), tidak ada yang disembunyikan; type boleh dipilih lebih dari sekali.
+- Simpan bertahap: yang sudah tersimpan ditampilkan; bila type sama (dengan yang tersimpan, atau dobel di tabel) muncul pilihan JUMLAHKAN atau PILIH SALAH SATU per type sebelum disimpan.
