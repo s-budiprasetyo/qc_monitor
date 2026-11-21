@@ -178,3 +178,14 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 ## Tahap 10s
 - Opname: semua type bisa dipilih (kategori baru "SNI"), tidak ada yang disembunyikan; type boleh dipilih lebih dari sekali.
 - Simpan bertahap: yang sudah tersimpan ditampilkan; bila type sama (dengan yang tersimpan, atau dobel di tabel) muncul pilihan JUMLAHKAN atau PILIH SALAH SATU per type sebelum disimpan.
+
+## Tahap 10t (kecepatan)
+- label.jenis_tabel() dan punya_sni() di-tembolok 10 detik (perhitungan stok memanggilnya ribuan kali dan membaca ulang tabel tiap panggilan). Simpan opname ~5 dtk -> <1 dtk.
+- Opname: tambah type lewat satu form (multiselect, boleh banyak sekaligus) menggantikan 3 klik; data berat lokasi/tanggal (stok sistem, tersimpan, progres) dihitung sekali per sesi lalu dipakai ulang sampai simpan.
+
+## Tahap 10u
+- Tabel Selisih Stok Opname tetap berbentuk tabel (kolom TYPE / SISTEM / AKTUAL / SELISIH sejajar) di layar HP.
+- Tombol **UNDUH REKAP HITUNG LABEL (format Oktober)** di jendela Selisih: sheet REKAP HITUNG LABEL QC TK + SK + INPUT (rumus SUMIF, SISA LABEL = B−C, PB LABEL = E+C−B). Rencana diambil dari menu Rencana Produksi; SISA BODY diisi manual (sel biru).
+- Menu admin **RENCANA PRODUKSI** aktif: upload file Draft Rencana Produksi per pabrik (boleh dua file sekaligus). Hanya blok QUALITY CONTROL yang dibaca (kolom PERIKSA); pabrik dikenali dari nomor FORMING; CE7#W = label CE7; kolom "M" jadi type "(M)". Rencana SK menyusul.
+- Tabel baru: `rencana_qc` (dibuat otomatis).
+- Rencana produksi (revisi 10u): satu file berisi semua departemen. Dibaca rencana **harian** blok KAMA (Glazing) dan QC, disimpan di tabel `rencana_harian` (+ total di `rencana_qc`). Tampilan: total harian, per type, matriks tanggal. Dasar untuk rencana kirim QC (tahap berikutnya).

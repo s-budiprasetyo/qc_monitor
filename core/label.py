@@ -50,15 +50,32 @@ SNI = "SNI"
 _SEED = Path(__file__).resolve().parent.parent / "assets" / "jenis_label_awal.csv"
 
 
+_JT = {"t": 0.0, "df": None, "sni": set(), "seed": None}
+
+
+def jenis_bersih():
+    """Buang tembolok tabel jenis label (panggil setelah master jenis label disimpan)."""
+    _JT["t"] = 0.0
+    _JT["df"] = None
+
+
 def jenis_tabel():
-    """Tabel pemetaan jenis label. Bila belum pernah disimpan di master, dipakai data awal dari assets/."""
+    """Tabel pemetaan jenis label. Bila belum pernah disimpan di master, dipakai data awal dari assets/.
+    Hasil di-tembolok 10 detik (dipanggil ribuan kali oleh perhitungan stok; tanpa tembolok tiap panggilan membaca ulang tabel)."""
+    import time as _t
+    if _JT["df"] is not None and _t.time() - _JT["t"] < 10:
+        return _JT["df"].copy()
     t = data.baca("jenis_label")
     if t.empty and _SEED.exists():
-        t = pd.read_csv(_SEED, dtype=str, keep_default_na=False)
+        if _JT["seed"] is None:
+            _JT["seed"] = pd.read_csv(_SEED, dtype=str, keep_default_na=False)
+        t = _JT["seed"].copy()
     for c in ("kategori", "label", "type_sap", "warna", "sni", "ket"):
         if c not in t.columns:
             t[c] = ""
-    return t.fillna("").astype(str)
+    t = t.fillna("").astype(str)
+    _JT.update(t=_t.time(), df=t, sni=set(t.loc[t["sni"].str.lower() == "ya", "label"]))
+    return t.copy()
 
 
 def _norm(x):
@@ -95,8 +112,10 @@ def ket_label(lb):
 
 
 def punya_sni(lb):
-    t = jenis_tabel()
-    return bool(len(t[(t["label"] == lb) & (t["sni"].str.lower() == "ya")]))
+    import time as _t
+    if _JT["df"] is None or _t.time() - _JT["t"] >= 10:
+        jenis_tabel()  # menyegarkan himpunan
+    return lb in _JT["sni"]
 
 
 def nama_sni(lb):

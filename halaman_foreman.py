@@ -3,6 +3,7 @@ tabel input hari ini (ubah/hapus)."""
 from datetime import date
 
 import pandas as pd
+import time
 import streamlit as st
 
 from core.hub import roda
@@ -575,13 +576,49 @@ CSS_OPNAME = """<style>
 </style>"""
 
 
+@st.cache_data(ttl=600, show_spinner=False)
 def _semua_type_pilihan():
-    """{kategori: [type,...]} untuk pilihan opname: semua type + kategori SNI (semua yang punya SNI). Tidak ada yang disembunyikan."""
-    tk = label.type_per_kategori()
-    out = {k: list(v) for k, v in tk.items()}
-    sni = [label.nama_sni(lb) for v in tk.values() for lb in v if label.punya_sni(lb)]
-    out[label.SNI] = list(dict.fromkeys(sni))
-    return out
+    """[(type, kategori)] semua type + versi SNI-nya, berurutan seperti tabel jenis label. Di-cache 10 menit (tabel ini jarang berubah)."""
+    t = label.jenis_tabel()
+    hasil, lihat = [], set()
+    for r in t.itertuples():
+        lb = r.label
+        if not lb or lb in lihat:
+            continue
+        lihat.add(lb)
+        hasil.append((lb, r.kategori or "Lainnya"))
+        if str(r.sni).lower() == "ya":
+            hasil.append((label.nama_sni(lb), label.SNI))
+    return hasil
+
+
+def _ctx_opname(lk, tgl):
+    """Data berat satu lokasi/tanggal (stok sistem, hitungan tersimpan, progres) dihitung SEKALI lalu disimpan di sesi,
+    supaya klik kecil di jendela tidak memicu perhitungan ulang. Dihapus saat simpan (lihat _reset_ctx)."""
+    k = f"opx_{lk}_{tgl}"
+    c = st.session_state.get(k)
+    if c and time.time() - c["t"] < 180:
+        return c
+    info = stok.opname_info(tgl, lk)
+    ada = {x: v for x, v in (stok.opname_baris(tgl, lk) if info else {}).items() if x != stok.KOSONG}
+    c = {"t": time.time(), "sis": stok.stok_lokasi(lk, tgl), "info": info, "ada": ada}
+    st.session_state[k] = c
+    return c
+
+
+def _status_opname(tgl):
+    k = f"opx_sl_{tgl}"
+    c = st.session_state.get(k)
+    if c and time.time() - c["t"] < 180:
+        return c["v"]
+    v = stok.opname_status(tgl)
+    st.session_state[k] = {"t": time.time(), "v": v}
+    return v
+
+
+def _reset_ctx():
+    for k in [k for k in st.session_state if str(k).startswith("opx_")]:
+        del st.session_state[k]
 
 
 def _baris_opname(pref, sis, nama_lok, meja, ada):
@@ -599,32 +636,31 @@ def _baris_opname(pref, sis, nama_lok, meja, ada):
         st.session_state[ke] = ent
     ent = st.session_state[ke]
 
-    c1, c2 = st.columns(2)
-    if c1.button("+ Label", key=f"{pref}_tambah", width="stretch"):
-        st.session_state[f"{pref}_tb"] = not st.session_state.get(f"{pref}_tb", False)
+    opsi_all = _semua_type_pilihan()
+    kat_dari = dict(opsi_all)
+    with st.form(f"{pref}_addf", border=False):
+        st.markdown("<div class='kt'>TAMBAH TYPE (BOLEH BANYAK SEKALIGUS)</div>", unsafe_allow_html=True)
+        ca, cb = st.columns([3, 1], vertical_alignment="bottom")
+        pilih = ca.multiselect("Pilih type", [t for t, _k in opsi_all], key=f"{pref}_pilih_{st.session_state.get(pref + '_na', 0)}", label_visibility="collapsed",
+                               format_func=lambda t: f"{kat_dari.get(t, '')} · {t}", placeholder="Ketik/pilih type (Closet, SNI, dst)…")
+        tambah = cb.form_submit_button("TAMBAHKAN", width="stretch")
+    c2 = st.columns(1)[0]
+    if tambah and pilih:
+        for tp in pilih:
+            ent.append([st.session_state[f"{pref}_nid"], tp])
+            st.session_state[f"{pref}_nid"] += 1
+        st.session_state[f"{pref}_na"] = st.session_state.get(f"{pref}_na", 0) + 1
         st.rerun(scope="fragment")
     if ent and c2.button("↶ Hapus baris terakhir", key=f"{pref}_undo", width="stretch"):
         idb, _t = ent.pop()
         st.session_state.pop(f"{pref}_n_{idb}", None)
         st.rerun(scope="fragment")
-    if st.session_state.get(f"{pref}_tb"):
-        n = st.session_state.setdefault(f"{pref}_pk", 0)
-        with st.container(border=True):
-            tipe = _semua_type_pilihan()
-            kat = st.pills("PILIH KATEGORI", list(tipe), key=f"{pref}_kat_{n}")
-            if kat:
-                tp = st.pills(f"{kat.upper()} → PILIH TYPE", tipe[kat], key=f"{pref}_typ_{n}_{kat}")
-                if tp:
-                    ent.append([st.session_state[f"{pref}_nid"], tp])
-                    st.session_state[f"{pref}_nid"] += 1
-                    st.session_state[f"{pref}_pk"] = n + 1
-                    st.rerun(scope="fragment")
 
     baru, pencet = [], None
     with st.form(f"{pref}_form", border=False):
         st.markdown("<div class='op-th'><span>TYPE</span><span>JUMLAH HITUNGAN (PCS)</span><span class='sb'>STOK SEBELUMNYA</span></div>", unsafe_allow_html=True)
         if not ent:
-            st.caption("Belum ada baris. Klik **+ Label** untuk memilih type yang dihitung.")
+            st.caption("Belum ada baris. Pilih type di atas lalu klik **TAMBAHKAN**.")
         for idb, t in ent:
             r = st.columns([1.2, 1.4, 1], vertical_alignment="center")
             sni = t.startswith(label.SNI + " ")
@@ -687,7 +723,7 @@ def _panel_konflik(kf, oleh):
             stok.opname_simpan(kf["tgl"], kf["lk"], final, oleh)
         for t in kf["konflik"]:
             st.session_state.pop(f"kf_{kf['pref']}_{t}", None)
-        label_ui._reset(kf["pref"])
+        label_ui._reset(kf["pref"]); _reset_ctx()
         if kf.get("next"):
             st.session_state["op_next"] = kf["next"]
         st.session_state["il_toast"] = f"Hitungan {kf['nama']} tersimpan."
@@ -703,7 +739,7 @@ def _panel_konflik(kf, oleh):
 
 
 def _opname_form(tgl, oleh, dept):
-    sl = stok.opname_status(tgl)
+    sl = _status_opname(tgl)
     kp = f"opl{dept}"
     kf = st.session_state.get("op_konf")
     if kf:
@@ -729,8 +765,8 @@ def _opname_form(tgl, oleh, dept):
         nama_lok = label.nama_meja(pabrik, meja) if meja else ""
     if lk:
         tgl_txt = f"{tgl[8:10]}/{tgl[5:7]}/{tgl[:4]}"
-        info = stok.opname_info(tgl, lk)
-        ada = {k: v for k, v in (stok.opname_baris(tgl, lk) if info else {}).items() if k != stok.KOSONG}
+        cx = _ctx_opname(lk, tgl)
+        info, ada = cx["info"], cx["ada"]
         if info:
             oleh_l, jam, adj = info
             chips = " ".join(f"<span class='ls-chip'>{k} · {int(v[0]):,}</span>".replace(",", ".") for k, v in ada.items() if v[0]) or "(meja ditandai kosong)"
@@ -742,13 +778,13 @@ def _opname_form(tgl, oleh, dept):
         else:
             st.success(f"Belum ada hitungan untuk {tgl_txt} · {nama_lok}. Silakan input baru.")
         pref = f"og_{lk}_{tgl}"
-        baru, tekan, ent = _baris_opname(pref, stok.stok_lokasi(lk, tgl), nama_lok, meja, bool(ada))
+        baru, tekan, ent = _baris_opname(pref, cx["sis"], nama_lok, meja, bool(ada))
         nxt_m = None
         if meja:
             nxt_m = (pabrik, str(int(meja) + 1) if str(meja).isdigit() and int(meja) < label.PABRIK[pabrik] else str(meja))
         if tekan == "kosong":
             stok.opname_simpan(tgl, lk, {}, oleh)
-            label_ui._reset(pref)
+            label_ui._reset(pref); _reset_ctx()
             if nxt_m:
                 st.session_state["op_next"] = nxt_m
             st.session_state["il_toast"] = f"{nama_lok} ditandai kosong."
@@ -769,7 +805,7 @@ def _opname_form(tgl, oleh, dept):
                 else:
                     with st.spinner("Menyimpan…"):
                         stok.opname_simpan(tgl, lk, final, oleh)
-                    label_ui._reset(pref)
+                    label_ui._reset(pref); _reset_ctx()
                     if nxt_m:
                         st.session_state["op_next"] = nxt_m
                     st.session_state["il_toast"] = f"Hitungan {nama_lok} tersimpan."
@@ -803,6 +839,12 @@ def dlg_opname():
 def _selisih_angka(d):
     c = "#1d6f2f" if d == 0 else ("#b71c1c" if d < 0 else "#8a5a00")
     return f"<b style='color:{c}'>{d:+,}</b>".replace(",", ".") if d else "<b style='color:#1d6f2f'>0</b>"
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _rekap_bytes(tgl):
+    from core import rekap
+    return rekap.bytes_rekap(tgl)
 
 
 def _excel_selisih(tgl, status):
@@ -876,16 +918,20 @@ def dlg_selisih():
         meja_ada = [lk for lk in status if not stok.adalah_foreman(lk)]
         lokasi = st.selectbox("Meja yang sudah dihitung", meja_ada, index=None, placeholder="Pilih meja…", key="sl_lok", format_func=_lok_ringkas)
     kolom = [1.6, 1.4, 1.6, 1.2]
+    st.markdown("<style>.st-key-sl_tbl [data-testid='stHorizontalBlock']{flex-wrap:nowrap!important;gap:.4rem!important}"
+                ".st-key-sl_tbl [data-testid='stColumn']{min-width:0!important;flex:1 1 0!important}"
+                ".st-key-sl_tbl .kt{font-size:.68rem;font-weight:700;color:#555}</style>", unsafe_allow_html=True)
+    tbl = st.container(key="sl_tbl")
     if lihat == "Total per type" and status:
         sis, akt = {}, {}
         for lk in status:
             for lb, (a, sx) in stok.opname_baris(tgl, lk).items():
                 sis[lb] = sis.get(lb, 0) + sx
                 akt[lb] = akt.get(lb, 0) + a
-        for c, t in zip(st.columns(kolom), ["TYPE", "SISTEM", "AKTUAL", "SELISIH"]):
+        for c, t in zip(tbl.columns(kolom), ["TYPE", "SISTEM", "AKTUAL", "SELISIH"]):
             c.markdown(f"<div class='kt'>{t}</div>", unsafe_allow_html=True)
         for lb in stok.urut_label(sis):
-            c = st.columns(kolom, vertical_alignment="center")
+            c = tbl.columns(kolom, vertical_alignment="center")
             c[0].markdown(f"**{lb}**")
             c[1].write(f"{sis[lb]:,}".replace(",", "."))
             c[2].write(f"{akt[lb]:,}".replace(",", "."))
@@ -897,12 +943,12 @@ def dlg_selisih():
         boleh_edit = dp in boleh
         if not h:
             st.success("Lokasi ini dicatat kosong (0).")
-        for c, t in zip(st.columns(kolom), ["TYPE", "SISTEM", "AKTUAL (bisa diedit)", "SELISIH"]):
+        for c, t in zip(tbl.columns(kolom), ["TYPE", "SISTEM", "AKTUAL (bisa diedit)", "SELISIH"]):
             c.markdown(f"<div class='kt'>{t}</div>", unsafe_allow_html=True)
         nilai = {}
         for lb in stok.urut_label(h):
             a, sx = h[lb]
-            c = st.columns(kolom, vertical_alignment="center")
+            c = tbl.columns(kolom, vertical_alignment="center")
             c[0].markdown(f"**{lb}**")
             c[1].write(f"{sx:,}".replace(",", "."))
             nilai[lb] = int(c[2].number_input(f"Aktual {lb}", min_value=0, max_value=9999999, step=1, value=int(a), key=f"sl_a_{tgl}_{lokasi}_{lb}",
@@ -918,6 +964,8 @@ def dlg_selisih():
         st.caption("Pilih lokasi yang ingin dilihat.")
     if status:
         st.download_button("⬇ UNDUH EXCEL", _excel_selisih(tgl, status), file_name=f"selisih_opname_{dept_pil}_{tgl}.xlsx", width="stretch", key="sl_xls")
+        st.download_button("⬇ UNDUH REKAP HITUNG LABEL (format Oktober)", _rekap_bytes(tgl), file_name=f"REKAP_HITUNG_LABEL_{tgl}.xlsx",
+                           width="stretch", key="sl_rekap", help="QC TK + SK + sheet INPUT, rencana produksi dari menu Rencana Produksi (admin)")
     st.markdown("---")
     belum = [lk for lk, sdh in status.items() if not sdh]
     st.markdown("**ADJUST** — jadikan stok aktual sebagai stok awal periode berikutnya")

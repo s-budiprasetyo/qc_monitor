@@ -403,6 +403,95 @@ def dlg_jadwal():
         st.rerun(scope="fragment")
 
 
+
+# ---------------------------------------------------------------- rencana produksi
+@st.dialog("RENCANA PRODUKSI", width="large")
+def dlg_rencana():
+    kontrol_jendela("rencana")
+    kepala("jadwal", "RENCANA PRODUKSI")
+    from core import rencana
+    st.caption("Upload file **Draft Rencana Produksi** tiap pabrik (satu file berisi semua departemen). Yang dibaca: rencana harian **KAMA** "
+               "(blok Glazing) dan **QC** (blok Quality Control); departemen lain diabaikan. Pabrik & bulan dikenali otomatis. "
+               "Upload ulang = menggantikan data lama.")
+    fs = st.file_uploader("► Upload Rencana Produksi (boleh dua file sekaligus)", type=["xlsx"], key="rp_file", accept_multiple_files=True)
+    hasil = []
+    for f in fs or []:
+        try:
+            pabrik, o, _ = rencana.baca_file(f)
+        except Exception as e:
+            st.error(f"{f.name}: {e}")
+            continue
+        bl = rencana.bulan_dari_nama(f.name) or datetime.now(data.WIB).strftime("%Y-%m")
+        hasil.append((f.name, pabrik, o, bl))
+        st.success(f"Pabrik {pabrik} · {rencana.nama_bulan(bl)} · KAMA {int(o['KAMA'][0]['periksa'].sum()):,} · QC {int(o['QC'][0]['periksa'].sum()):,}"
+                   .replace(",", "."))
+    if hasil and st.button("SIMPAN RENCANA PRODUKSI", type="primary", width="stretch", key="rp_simpan"):
+        with st.spinner("Menyimpan…"):
+            for nama, pabrik, o, bl in hasil:
+                rencana.simpan(bl, pabrik, o, nama)
+            data.catat_update("RENCANA PRODUKSI")
+        st.session_state["rp_ok"] = True
+        st.rerun(scope="fragment")
+    if st.session_state.pop("rp_ok", False):
+        st.success("Rencana produksi tersimpan.")
+    bl = rencana.bulan_tersedia()
+    if not bl:
+        st.info("Belum ada rencana produksi.")
+        return
+    c1, c2 = st.columns(2)
+    pil = c1.selectbox("Bulan", bl, index=len(bl) - 1, format_func=rencana.nama_bulan, key="rp_bulan")
+    pab = c2.selectbox("Pabrik", ["Semua", "1", "2"], key="rp_pab")
+    lihat = st.segmented_control("Tampilan", ["Total harian", "Per type", "Matriks tanggal"], default="Total harian", key="rp_lihat",
+                                 label_visibility="collapsed") or "Total harian"
+    H = {k: rencana.harian(pil, k) for k in ("KAMA", "QC")}
+    if pab != "Semua":
+        H = {k: v[v["pabrik"].astype(str) == pab] if len(v) else v for k, v in H.items()}
+    if all(v.empty for v in H.values()):
+        st.info("Belum ada data untuk pilihan ini.")
+        return
+    import calendar
+    y, m = int(pil[:4]), int(pil[5:7])
+    hari_bulan = calendar.monthrange(y, m)[1]
+    NM = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"]
+    if lihat == "Total harian":
+        rows = []
+        for t in range(1, hari_bulan + 1):
+            k = int(H["KAMA"].loc[H["KAMA"]["tgl"] == t, "jumlah"].sum()) if len(H["KAMA"]) else 0
+            q = int(H["QC"].loc[H["QC"]["tgl"] == t, "jumlah"].sum()) if len(H["QC"]) else 0
+            rows.append({"TGL": f"{t:02d} {NM[calendar.weekday(y, m, t)]}", "KAMA": k, "QC": q, "SELISIH": k - q})
+        d = pd.DataFrame(rows)
+        tot = {"TGL": "TOTAL", "KAMA": int(d["KAMA"].sum()), "QC": int(d["QC"].sum()), "SELISIH": int(d["SELISIH"].sum())}
+        st.dataframe(pd.concat([d, pd.DataFrame([tot])], ignore_index=True), hide_index=True, width="stretch", height=430)
+        st.caption("KAMA = rencana glazur masuk kama, QC = rencana periksa QC. Selisih = KAMA − QC (bukan stok).")
+    elif lihat == "Per type":
+        tipe = sorted(set(H["KAMA"]["type"]) | set(H["QC"]["type"])) if True else []
+        tp = st.selectbox("Type", tipe, key="rp_type")
+        rows = []
+        for t in range(1, hari_bulan + 1):
+            k = int(H["KAMA"].loc[(H["KAMA"]["tgl"] == t) & (H["KAMA"]["type"] == tp), "jumlah"].sum()) if len(H["KAMA"]) else 0
+            q = int(H["QC"].loc[(H["QC"]["tgl"] == t) & (H["QC"]["type"] == tp), "jumlah"].sum()) if len(H["QC"]) else 0
+            rows.append({"TGL": f"{t:02d} {NM[calendar.weekday(y, m, t)]}", "KAMA": k, "QC": q})
+        d = pd.DataFrame(rows)
+        d = pd.concat([d, pd.DataFrame([{"TGL": "TOTAL", "KAMA": int(d["KAMA"].sum()), "QC": int(d["QC"].sum())}])], ignore_index=True)
+        st.dataframe(d, hide_index=True, width="stretch", height=430)
+    else:
+        dp = st.segmented_control("Departemen", ["KAMA", "QC"], default="QC", key="rp_dept", label_visibility="collapsed") or "QC"
+        v = H[dp]
+        if v.empty:
+            st.info("Belum ada data.")
+        else:
+            pv = v.pivot_table(index="type", columns="tgl", values="jumlah", aggfunc="sum", fill_value=0)
+            pv = pv.reindex(columns=range(1, hari_bulan + 1), fill_value=0)
+            pv["TOTAL"] = pv.sum(axis=1)
+            pv = pv.sort_values("TOTAL", ascending=False)
+            pv.loc["TOTAL"] = pv.sum()
+            pv.columns = [str(c) for c in pv.columns]
+            st.dataframe(pv.reset_index().rename(columns={"type": "TYPE"}), hide_index=True, width="stretch", height=430)
+    ada = data.baca("rencana_qc")
+    info = ada[(ada["bulan"] == pil) & (ada["dept"] == "QC")].drop_duplicates("pabrik")
+    st.caption(" · ".join(f"Pabrik {r.pabrik}: {r.waktu}" for r in info.itertuples()))
+
+
 # ---------------------------------------------------------------- verifikasi karyawan
 @st.dialog("VERIFIKASI KARYAWAN", width="large")
 def dlg_verif():
@@ -580,6 +669,7 @@ def dlg_lonceng(baru, tanpa, bentrok):
                                    "ket": ""})
             if baru_baris:
                 data.tulis("jenis_label", pd.concat([jt, pd.DataFrame(baru_baris)], ignore_index=True))
+                label.jenis_bersih()
             st.session_state["bel_buka"] = True
             st.rerun()
         st.divider()
@@ -751,6 +841,7 @@ def kelola_jenis_label():
     if c1.button("SIMPAN JENIS LABEL", type="primary", key="jl_simpan", width="stretch"):
         hasil = _jl_ke_tabel(ed)
         data.tulis("jenis_label", hasil)
+        label.jenis_bersih()
         st.success(f"Tersimpan: {len(hasil)} baris, {len({x for x in hasil['label'] if x})} jenis label.")
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as w:
@@ -768,6 +859,7 @@ def kelola_jenis_label():
         st.write(f"Terbaca **{len(baru)} baris**, {len({x for x in baru['label'] if x})} jenis label. Ini akan **menggantikan** tabel sekarang.")
         if st.button("GANTI TABEL DENGAN FILE INI", key="jl_ganti"):
             data.tulis("jenis_label", baru)
+            label.jenis_bersih()
             st.success("Tabel jenis label diganti.")
             st.rerun()
 
@@ -832,7 +924,7 @@ def halaman_admin():
             "eval": ("EVALUASI", "Verifikasi alasan tidak target", "check", dlg_eval, "Terakhir update", _terakhir("EVALUASI KARYAWAN")),
             "awal": ("DATA AWAL", "Data karyawan dan target", "db", dlg_awal, "Status", f"{len(kar)} karyawan terdaftar"),
             "operator": ("DAFTAR OPERATOR", "Daftarkan operator untuk Input Label Afkir", "user", halaman_foreman.dlg_operator, "Status", f"{jml_op} operator"),
-            "rencana": ("RENCANA PRODUKSI", "Rencana produksi per type", "doc", None, "Status", "Segera")}
+            "rencana": ("RENCANA PRODUKSI", "Upload rencana produksi QC per pabrik", "doc", dlg_rencana, "Terakhir update", _terakhir("RENCANA PRODUKSI"))}
     daftar = [{"id": k, "label": v[0], "sub": v[1], "icon": v[2], "status_label": v[4], "status": v[5], "disabled": v[3] is None}
               for k, v in MENU.items()]
     klik = roda(daftar, start=st.session_state.get("roda_id"), key="roda")

@@ -41,6 +41,8 @@ KOLOM = {
     "meja_abaikan": ["tgl", "shift", "pabrik", "meja", "oleh", "waktu"],  # meja yang tidak perlu dicek (diabaikan foreman)
     # Pemetaan jenis label (master): type SAP + warna -> label. label kosong = type itu tidak punya label (diabaikan).
     # warna kosong = berlaku untuk semua warna; sni = "ya" bila label itu punya label pendamping SNI.
+    "rencana_qc": ["bulan", "pabrik", "dept", "type", "periksa", "bagus", "file", "waktu"],  # rencana produksi bulanan blok QUALITY CONTROL per pabrik
+    "rencana_harian": ["bulan", "pabrik", "dept", "type", "tgl", "jumlah"],  # rencana harian per type (QC & KAMA)
     "jenis_label": ["kategori", "label", "type_sap", "warna", "sni", "ket"],
 }
 TAB_LAPORAN = ("HASIL KERJA KARYAWAN", "ALASAN TIDAK TARGET")
