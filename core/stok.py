@@ -20,7 +20,33 @@ import pandas as pd
 from core import data, label, laporan
 
 MULAI = os.environ.get("QC_MULAI_STOK", "2026-11-19")  # semua stok 0 mulai tanggal ini (pemakaian sebelum tanggal ini diabaikan)
-FOREMAN = "FOREMAN"
+FOREMAN = "FOREMAN"        # stok Foreman QC (Pabrik 1 dan Pabrik 2)
+FOREMAN_SK = "FOREMAN SK"  # stok Foreman SK (pabrik QC SK); data lama tanpa keterangan = QC
+DEPT = {"QC": ["Pabrik 1", "Pabrik 2"], "SK": ["QC SK"]}
+
+
+def dept_pabrik(pabrik):
+    return "SK" if pabrik == "QC SK" else "QC"
+
+
+def foreman_dept(dept):
+    return FOREMAN_SK if dept == "SK" else FOREMAN
+
+
+def adalah_foreman(lk):
+    return lk in (FOREMAN, FOREMAN_SK)
+
+
+def dept_lokasi(lk):
+    if lk == FOREMAN_SK:
+        return "SK"
+    if lk == FOREMAN:
+        return "QC"
+    return dept_pabrik(lk.split("|", 1)[0])
+
+
+def dept_cocok(lk, dept):
+    return not dept or dept_lokasi(lk) == dept
 
 
 def lok(pabrik, meja):
@@ -28,8 +54,10 @@ def lok(pabrik, meja):
 
 
 def lok_nama(lk):
+    if lk == FOREMAN_SK:
+        return "Foreman SK"
     if not lk or lk == FOREMAN:
-        return "Foreman (stok utama)"
+        return "Foreman QC"
     p, m = lk.split("|", 1)
     return f"Meja {m} · {p}"
 
@@ -96,14 +124,14 @@ def riwayat_daftar(kunci_awal="", batas=30):
 
 
 # ---------------------------------------------------------------- 1. label diterima foreman (dari packing)
-def terima_simpan(tgl, baris, oleh):
-    """baris = [(label, jumlah)]. Satu baris per input. Masuk stok FOREMAN."""
+def terima_simpan(tgl, baris, oleh, dept="QC"):
+    """baris = [(label, jumlah)]. Satu baris per input. Masuk stok Foreman departemen itu (QC | SK)."""
     waktu = _waktu()
-    d = pd.DataFrame([{"tgl": tgl, "waktu": waktu, "label": lb, "jumlah": int(n), "oleh": oleh} for lb, n in baris if lb and _int(n) > 0],
-                    columns=["tgl", "waktu", "label", "jumlah", "oleh"])
+    d = pd.DataFrame([{"tgl": tgl, "waktu": waktu, "label": lb, "jumlah": int(n), "oleh": oleh, "dept": dept} for lb, n in baris if lb and _int(n) > 0],
+                    columns=["tgl", "waktu", "label", "jumlah", "oleh", "dept"])
     if len(d):
         d["waktu"] = [f"{waktu}.{i}" for i in range(len(d))]
-        data.upsert("label_terima", d, ["tgl", "waktu", "label"])
+        data.upsert("label_terima", d, ["tgl", "waktu", "label", "dept"])
         data.catat_update("STOK LABEL")
         _bersih()
     return len(d)
@@ -111,16 +139,21 @@ def terima_simpan(tgl, baris, oleh):
 
 def terima_hapus(tgl, waktu, lb, oleh=""):
     h = pd.DataFrame([{"tgl": tgl, "waktu": waktu, "label": lb}])
-    data.upsert("label_terima", pd.DataFrame(columns=["tgl", "waktu", "label", "jumlah", "oleh"]), ["tgl", "waktu", "label"], hapus=h)
+    data.upsert("label_terima", pd.DataFrame(columns=["tgl", "waktu", "label", "jumlah", "oleh", "dept"]), ["tgl", "waktu", "label"], hapus=h)
     catat_riwayat("hapus label bagus", f"{tgl}|{lb}", "", "dihapus", oleh, tgl)
     _bersih()
 
 
-def terima_daftar(bulan=None):
+def terima_daftar(bulan=None, dept=None):
     d = data.baca("label_terima")
     if d.empty:
         return d
     d = d.copy()
+    if "dept" not in d.columns:
+        d["dept"] = ""
+    d["dept"] = d["dept"].replace("", "QC")
+    if dept:
+        d = d[d["dept"] == dept]
     d["jumlah"] = d["jumlah"].map(_int)
     if bulan:
         d = d[d["tgl"].astype(str).str[:7] == bulan]
@@ -191,7 +224,7 @@ def meja_terakhir(prn, sampai=None):
 
 # ---------------------------------------------------------------- 3. pemindahan stok
 def pindah_simpan(tgl, dari_pabrik, dari_meja, ke, baris, oleh, prn=""):
-    """ke = FOREMAN atau (pabrik, meja). baris = [(label, jumlah)]. Return galat (str) atau None."""
+    """ke = FOREMAN (kembali ke Foreman departemen meja asal) atau (pabrik, meja). baris = [(label, jumlah)]. Return galat (str) atau None."""
     if not dari_pabrik or not dari_meja:
         return "Meja asal belum dipilih."
     if ke != FOREMAN and (not ke or not ke[0] or not ke[1]):
@@ -240,9 +273,51 @@ def pindah_hapus(id_, oleh):
     _bersih()
 
 
+# ---------------------------------------------------------------- 3a. distribusi / pinjam label antar foreman (QC <-> SK)
+def distribusi_simpan(tgl, dari, ke, baris, oleh, ket=""):
+    """dari, ke = 'QC' | 'SK'. baris = [(label, jumlah)]. Return galat (str) atau None."""
+    if dari not in DEPT or ke not in DEPT or dari == ke:
+        return "Pilih foreman asal dan foreman tujuan yang berbeda (QC / SK)."
+    baris = [(lb, _int(n)) for lb, n in baris if lb and _int(n) > 0]
+    if not baris:
+        return "Isi minimal satu type label dengan jumlah lebih dari 0."
+    if str(tgl) > hari_ini():
+        return "Tanggal tidak boleh lebih dari hari ini."
+    waktu = _waktu()
+    d = pd.DataFrame([{"id": f"{_id()}-{i}", "tgl": tgl, "waktu": waktu, "dari": dari, "ke": ke, "label": lb, "jumlah": n, "oleh": oleh, "ket": ket}
+                      for i, (lb, n) in enumerate(baris)], columns=["id", "tgl", "waktu", "dari", "ke", "label", "jumlah", "oleh", "ket"])
+    data.upsert("label_distribusi", d, ["id"])
+    catat_riwayat("distribusi foreman", f"{tgl}|{dari}>{ke}", "", ", ".join(f"{lb} {n}" for lb, n in baris)[:300], oleh, tgl)
+    data.catat_update("STOK LABEL")
+    _bersih()
+    return None
+
+
+def distribusi_daftar(batas=40):
+    d = data.baca("label_distribusi")
+    if d.empty:
+        return d
+    d = d.copy()
+    d["jumlah"] = d["jumlah"].map(_int)
+    return d.sort_values(["tgl", "waktu"], ascending=False).head(batas).reset_index(drop=True)
+
+
+def distribusi_hapus(id_, oleh):
+    d = data.baca("label_distribusi")
+    x = d[d["id"] == id_]
+    if x.empty:
+        return
+    r = x.iloc[0]
+    data.upsert("label_distribusi", pd.DataFrame(columns=list(d.columns)), ["id"], hapus=pd.DataFrame([{"id": id_}]))
+    catat_riwayat("hapus distribusi foreman", f"{r['tgl']}|{r['dari']}>{r['ke']}|{r['label']}", f"{_int(r['jumlah'])}", "dihapus", oleh, r["tgl"])
+    _bersih()
+
+
 # ---------------------------------------------------------------- 3b. operator pindah meja
 def pindahmeja_simpan(tgl, prn, nama, dari, ke, baris, oleh):
-    """dari/ke = (pabrik, meja). baris = [(label, pcs_bagus_terpakai_di_meja_lama)]. Return galat (str) atau None."""
+    """dari/ke = (pabrik, meja). baris = [(label, sisa_fisik_di_meja_lama, dibawa_ke_meja_baru)].
+    Pemakaian di meja lama = stok sistem (tanpa pcs bagus SAP operator ini hari itu) - sisa fisik. Sisa yang tidak dibawa tinggal di meja lama.
+    Return galat (str) atau None."""
     if not dari or not dari[0] or not dari[1]:
         return "Meja saat ini wajib dipilih."
     if not ke or not ke[0] or not ke[1]:
@@ -251,16 +326,29 @@ def pindahmeja_simpan(tgl, prn, nama, dari, ke, baris, oleh):
         return "Meja selanjutnya tidak boleh sama dengan meja saat ini."
     if str(tgl) > hari_ini():
         return "Tanggal tidak boleh lebih dari hari ini."
-    baris = [(lb, _int(n)) for lb, n in baris if lb and _int(n) >= 0]
+    awal = stok_lokasi(lok(*dari), tgl, abaikan=(prn, tgl))
     waktu = _waktu()
-    d = pd.DataFrame([{"id": f"{_id()}-{i}", "tgl": tgl, "waktu": waktu, "prn": prn, "nama": nama, "dari_pabrik": dari[0], "dari_meja": str(dari[1]),
-                       "ke_pabrik": ke[0], "ke_meja": str(ke[1]), "label": lb, "bagus": n, "oleh": oleh} for i, (lb, n) in enumerate(baris)],
-                    columns=["id", "tgl", "waktu", "prn", "nama", "dari_pabrik", "dari_meja", "ke_pabrik", "ke_meja", "label", "bagus", "oleh"])
-    if d.empty:  # tidak ada label dipakai: tetap catat perpindahannya
-        d = pd.DataFrame([{"id": f"{_id()}-0", "tgl": tgl, "waktu": waktu, "prn": prn, "nama": nama, "dari_pabrik": dari[0], "dari_meja": str(dari[1]),
-                           "ke_pabrik": ke[0], "ke_meja": str(ke[1]), "label": "", "bagus": 0, "oleh": oleh}], columns=list(d.columns))
-    data.upsert("label_pindahmeja", d, ["id"])
-    catat_riwayat("pindah meja", f"{tgl}|{prn}|{dari[0]}|{dari[1]}", lok_nama(lok(*dari)), lok_nama(lok(*ke)), oleh, tgl)
+    rows = []
+    ring = []
+    for i, (lb, sisa, bawa) in enumerate(baris):
+        if not lb or sisa is None:
+            continue
+        sisa, bawa = _int(sisa), _int(bawa)
+        if sisa < 0 or bawa < 0:
+            return f"Jumlah {lb} tidak boleh minus."
+        if bawa > sisa:
+            return f"Label {lb} yang dibawa ({bawa}) melebihi sisa di meja ({sisa})."
+        s0 = awal.get(lb, 0)
+        rows.append({"id": f"{_id()}-{i}", "tgl": tgl, "waktu": waktu, "prn": prn, "nama": nama, "dari_pabrik": dari[0], "dari_meja": str(dari[1]),
+                     "ke_pabrik": ke[0], "ke_meja": str(ke[1]), "label": lb, "bagus": max(0, s0 - sisa), "oleh": oleh,
+                     "sisa": sisa, "bawa": bawa, "koreksi": max(0, sisa - s0)})
+        ring.append(f"{lb} sisa {sisa} bawa {bawa}")
+    if not rows:  # tidak ada label yang diisi: tetap catat perpindahannya
+        rows.append({"id": f"{_id()}-0", "tgl": tgl, "waktu": waktu, "prn": prn, "nama": nama, "dari_pabrik": dari[0], "dari_meja": str(dari[1]),
+                     "ke_pabrik": ke[0], "ke_meja": str(ke[1]), "label": "", "bagus": 0, "oleh": oleh, "sisa": 0, "bawa": 0, "koreksi": 0})
+    kol = ["id", "tgl", "waktu", "prn", "nama", "dari_pabrik", "dari_meja", "ke_pabrik", "ke_meja", "label", "bagus", "oleh", "sisa", "bawa", "koreksi"]
+    data.upsert("label_pindahmeja", pd.DataFrame(rows, columns=kol), ["id"])
+    catat_riwayat("pindah meja", f"{tgl}|{prn}|{dari[0]}|{dari[1]}", lok_nama(lok(*dari)), (lok_nama(lok(*ke)) + " · " + "; ".join(ring))[:300], oleh, tgl)
     data.catat_update("STOK LABEL")
     _bersih()
     return None
@@ -271,7 +359,10 @@ def pindahmeja_daftar(prn=None, tgl=None):
     if d.empty:
         return d
     d = d.copy()
-    d["bagus"] = d["bagus"].map(_int)
+    for k in ("bagus", "sisa", "bawa", "koreksi"):
+        if k not in d.columns:
+            d[k] = 0
+        d[k] = d[k].map(_int)
     if prn:
         d = d[d["prn"] == prn]
     if tgl:
@@ -447,25 +538,29 @@ def _peta_meja():
     return peta
 
 
-def saldo(sampai=None):
+def saldo(sampai=None, abaikan=None):
     """({(lokasi, label): saldo}, DataFrame pemakaian tanpa meja) sampai akhir hari `sampai`."""
     sampai = sampai or hari_ini()
     if time.time() - _memo["t"] > 20:
         _memo["d"] = {}
         _memo["t"] = time.time()
-    if sampai in _memo["d"]:
+    if abaikan is None and sampai in _memo["d"]:
         return _memo["d"][sampai]
     ev = []  # (tgl, urutan, jenis, lokasi, label, nilai)
     for r in data.baca("label_terima").itertuples():
-        ev.append((r.tgl, 1, "tambah", FOREMAN, r.label, _int(r.jumlah)))
+        ev.append((r.tgl, 1, "tambah", foreman_dept(getattr(r, "dept", "") or "QC"), r.label, _int(r.jumlah)))
+    for r in data.baca("label_distribusi").itertuples():
+        n = _int(r.jumlah)
+        ev.append((r.tgl, 1, "tambah", foreman_dept(r.dari), r.label, -n))
+        ev.append((r.tgl, 1, "tambah", foreman_dept(r.ke), r.label, n))
     for r in data.baca("label_meja").itertuples():
         n = _int(r.jumlah)
-        ev.append((r.tgl, 1, "tambah", FOREMAN, r.label, -n))
+        ev.append((r.tgl, 1, "tambah", foreman_dept(dept_pabrik(r.pabrik)), r.label, -n))
         ev.append((r.tgl, 1, "tambah", lok(r.pabrik, str(r.meja)), r.label, n))
     for r in data.baca("label_pindah").itertuples():
         n = _int(r.jumlah)
         ev.append((r.tgl, 1, "tambah", lok(r.dari_pabrik, str(r.dari_meja)), r.label, -n))
-        ke = FOREMAN if not r.ke_pabrik else lok(r.ke_pabrik, str(r.ke_meja))
+        ke = foreman_dept(dept_pabrik(r.dari_pabrik)) if not r.ke_pabrik else lok(r.ke_pabrik, str(r.ke_meja))
         ev.append((r.tgl, 1, "tambah", ke, r.label, n))
     for r in data.baca("label_kosong").itertuples():
         ev.append((r.tgl, 0, "reset", r.pabrik, "", 0))
@@ -486,24 +581,29 @@ def saldo(sampai=None):
             tg = r.tgl_posting or r.tgl
             if n and MULAI <= tg <= sampai:
                 ev.append((tg, 2, "tambah", lok(r.pabrik, str(r.meja)), r.type, -n))
-    # pcs bagus SAP: per (operator, hari, label); bagian yang sudah dipakai di meja lama (isian Pindah Meja) dibebankan ke meja lama,
-    # sisanya ke meja terakhir operator itu hari itu
-    pm = defaultdict(list)  # (prn, tgl, label) -> [(lokasi lama, bagus)]
-    pmd = data.baca("label_pindahmeja")
-    for r in pmd.itertuples():
-        if r.label and _int(r.bagus) > 0:
-            pm[(r.prn, r.tgl, r.label)].append((lok(r.dari_pabrik, str(r.dari_meja)), _int(r.bagus)))
+    # Pindah meja: pemakaian di meja lama (hasil isian sisa fisik), koreksi bila sisa fisik > stok sistem, dan label yang dibawa
+    pakai = defaultdict(int)  # (prn, tgl, label) -> pemakaian yang sudah dibebankan ke meja lama
+    for r in data.baca("label_pindahmeja").itertuples():
+        if not r.label:
+            continue
+        dari = lok(r.dari_pabrik, str(r.dari_meja))
+        ke = lok(r.ke_pabrik, str(r.ke_meja))
+        used, bawa, kor = _int(r.bagus), _int(getattr(r, "bawa", 0)), _int(getattr(r, "koreksi", 0))
+        if used:
+            ev.append((r.tgl, 2, "tambah", dari, r.label, -used))
+            pakai[(r.prn, r.tgl, r.label)] += used
+        if kor:
+            ev.append((r.tgl, 2, "tambah", dari, r.label, kor))
+        if bawa:
+            ev.append((r.tgl, 2, "tambah", dari, r.label, -bawa))
+            ev.append((r.tgl, 2, "tambah", ke, r.label, bawa))
+    # pcs bagus SAP: per (operator, hari, label); sisanya (di luar pemakaian meja lama) dibebankan ke meja terakhir operator itu hari itu
     tanpa = []
     for r in pem.itertuples():
         bagus = _int(r.bagus)
-        if bagus <= 0:
+        if bagus <= 0 or abaikan == (r.prn, r.tgl):
             continue
-        sisa = bagus
-        for lk0, n0 in pm.get((r.prn, r.tgl, r.label), []):
-            n0 = min(n0, sisa)
-            if n0 > 0:
-                ev.append((r.tgl, 2, "tambah", lk0, r.label, -n0))
-                sisa -= n0
+        sisa = bagus - pakai.get((r.prn, r.tgl, r.label), 0)
         if sisa > 0:
             lk = peta.get((r.prn, r.tgl))
             if lk is None:
@@ -524,13 +624,14 @@ def saldo(sampai=None):
         else:
             sal[(lk, lb)] += v
     hasil = (dict(sal), pd.DataFrame(tanpa, columns=["tgl", "prn", "nama", "label", "n"]))
-    _memo["d"][sampai] = hasil
+    if abaikan is None:
+        _memo["d"][sampai] = hasil
     return hasil
 
 
-def stok_lokasi(lokasi, sampai=None):
-    """{label: saldo} satu lokasi (foreman atau meja); hanya label yang saldonya bukan 0."""
-    sal, _ = saldo(sampai)
+def stok_lokasi(lokasi, sampai=None, abaikan=None):
+    """{label: saldo} satu lokasi (foreman atau meja); hanya label yang saldonya bukan 0. abaikan=(prn, tgl): tanpa pcs bagus SAP operator itu hari itu."""
+    sal, _ = saldo(sampai, abaikan)
     return {lb: n for (lk, lb), n in sal.items() if lk == lokasi and n != 0}
 
 
@@ -538,8 +639,8 @@ def stok_meja(pabrik, meja, sampai=None):
     return stok_lokasi(lok(pabrik, str(meja)), sampai)
 
 
-def stok_foreman(sampai=None):
-    return stok_lokasi(FOREMAN, sampai)
+def stok_foreman(sampai=None, dept="QC"):
+    return stok_lokasi(foreman_dept(dept), sampai)
 
 
 def urut_label(daftar):
@@ -547,23 +648,25 @@ def urut_label(daftar):
     return sorted(daftar, key=lambda x: (ur.get(x, 9999), x))
 
 
-def stok_semua(sampai=None):
-    """DataFrame[label, foreman, meja, total] — total stok per label."""
+def stok_semua(sampai=None, dept=None):
+    """DataFrame[label, foreman, meja, total] — total stok per label. dept = QC | SK | None (gabungan)."""
     sal, _ = saldo(sampai)
     fm, mj = defaultdict(int), defaultdict(int)
     for (lk, lb), n in sal.items():
-        (fm if lk == FOREMAN else mj)[lb] += n
-    semua = set(fm) | set(mj)
+        if not dept_cocok(lk, dept):
+            continue
+        (fm if adalah_foreman(lk) else mj)[lb] += n
+    semua = {lb for lb in set(fm) | set(mj) if fm.get(lb, 0) or mj.get(lb, 0)}
     baris = [{"label": lb, "foreman": fm.get(lb, 0), "meja": mj.get(lb, 0), "total": fm.get(lb, 0) + mj.get(lb, 0)} for lb in urut_label(semua)]
     return pd.DataFrame(baris, columns=["label", "foreman", "meja", "total"])
 
 
-def stok_per_meja(sampai=None):
+def stok_per_meja(sampai=None, dept=None):
     """DataFrame[pabrik, meja, label, stok] untuk semua meja yang punya saldo."""
     sal, _ = saldo(sampai)
     baris = []
     for (lk, lb), n in sal.items():
-        if lk == FOREMAN or n == 0:
+        if adalah_foreman(lk) or n == 0 or not dept_cocok(lk, dept):
             continue
         p, m = _lok_pisah(lk)
         baris.append({"pabrik": p, "meja": int(m) if str(m).isdigit() else m, "label": lb, "stok": n})
@@ -576,7 +679,30 @@ def stok_per_meja(sampai=None):
     return d.sort_values(["_p", "meja", "_l"]).drop(columns=["_p", "_l"]).reset_index(drop=True)
 
 
-def excel_stok(total, per_meja, sampai):
+def stok_sebaran(sampai=None, dept=None):
+    """DataFrame[label, lokasi, nama, stok, dept]: satu baris per (label, lokasi) — untuk 'CW53J ada di mana saja'. Foreman di urutan pertama."""
+    sal, _ = saldo(sampai)
+    baris = []
+    for (lk, lb), n in sal.items():
+        if n == 0 or not dept_cocok(lk, dept):
+            continue
+        baris.append({"label": lb, "lokasi": lk, "nama": lok_nama(lk), "stok": n, "dept": dept_lokasi(lk)})
+    d = pd.DataFrame(baris, columns=["label", "lokasi", "nama", "stok", "dept"])
+    if d.empty:
+        return d
+    po = {p: i for i, p in enumerate(label.PABRIK)}
+
+    def _u(lk):
+        if adalah_foreman(lk):
+            return (0 if lk == FOREMAN else 1, 0, 0)
+        p, m = _lok_pisah(lk)
+        return (2, po.get(p, 99), int(m) if str(m).isdigit() else 999)
+    d["_u"] = d["lokasi"].map(_u)
+    d["_l"] = d["label"].map({lb: i for i, lb in enumerate(semua_label())}).fillna(9999)
+    return d.sort_values(["_l", "_u"]).drop(columns=["_u", "_l"]).reset_index(drop=True)
+
+
+def excel_stok(total, per_meja, sampai, sebaran=None):
     """Excel stok: total per label (kolom Total = Foreman + Meja, rumus) dan detail per meja."""
     import io
 
@@ -621,6 +747,17 @@ def excel_stok(total, per_meja, sampai):
             if i == 4:
                 c.number_format = "#,##0;[Red]-#,##0"
     w2.freeze_panes = "A2"
+    if sebaran is not None and len(sebaran):
+        w3 = wb.create_sheet("Di mana saja")
+        kepala(w3, 1, ["LABEL", "LOKASI", "DEPARTEMEN", "STOK"], [20, 26, 14, 14])
+        for r, x in enumerate(sebaran.itertuples(), 2):
+            for i, v in enumerate([x.label, x.nama, x.dept, x.stok], 1):
+                c = w3.cell(r, i, v)
+                c.font = Font(name="Arial", size=10)
+                c.border = gar
+                if i == 4:
+                    c.number_format = "#,##0;[Red]-#,##0"
+        w3.freeze_panes = "A2"
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

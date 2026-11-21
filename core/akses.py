@@ -130,6 +130,13 @@ def _google_foreman():
         return False
 
 
+def dept_boleh():
+    """Departemen yang boleh diinput/di-adjust akun ini: admin QC dan SK, foreman SK (SATRIO) hanya SK, foreman lain hanya QC."""
+    if peran() == ADMIN:
+        return ["QC", "SK"]
+    return ["SK"] if "SATRIO" in str(st.session_state.get("nama_masuk", "")).upper() else ["QC"]
+
+
 def pelaku():
     """Nama pengguna yang masuk + email Google terverifikasi, untuk riwayat perubahan."""
     n = st.session_state.get("nama_masuk", "")

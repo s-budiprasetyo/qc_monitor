@@ -146,3 +146,11 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Dihapus: tombol BAWA SEMUA STOK dan aturan "stok ikut ke meja tujuan".
 - Foreman: menu **STOK OPNAME LABEL** (1 · Stok Foreman: type + jumlah; 2 · Stok per meja: pabrik, meja, type, jumlah; tombol MEJA KOSONG; progres meja; otomatis lanjut ke meja berikutnya) dan **SELISIH STOK OPNAME** (Total per type / Foreman / Per meja; sistem, aktual yang bisa diedit, selisih; unduh Excel; tombol ADJUST di bawah).
 - ADJUST: stok aktual jadi stok awal mulai tanggal opname (lokasi yang dihitung saja); pemakaian dihitung dari hari berikutnya. Nilai "sistem" dibekukan saat adjust. Tabel baru Google Sheet: `label_pindahmeja` (dibuat otomatis).
+
+## Tahap 10m
+- Pindah Meja v2: operator isi SISA di meja lama per type; AFKIR otomatis dari foreman; isi DIBAWA ke meja baru (sebagian/semua/tidak). Terpakai = stok - sisa.
+- Pisah QC (Pabrik 1/2) dan SK (QC SK): stok Foreman QC dan Foreman SK terpisah (stok Foreman lama dianggap QC). Foreman SK = SATRIO saja; admin keduanya.
+- Distribusi/pinjam label antar foreman (QC<->SK) di halaman foreman.
+- Opname/selisih per departemen (tab QC / SK / Gabungan); ADJUST per departemen dengan konfirmasi ulang; kolom aktual bisa diedit, sistem tidak; laporan bisa dibuka kapan saja via pilih tanggal.
+- Laporan Stok Label: tab "DI MANA SAJA" (total + sebaran lokasi), QC / SK / Gabungan.
+- Laporan baru "Afkir Kotor (pcs)": karyawan x type, hanya label kotor.

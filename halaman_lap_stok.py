@@ -38,17 +38,20 @@ st.markdown("<div class='lp-judul'>STOK LABEL</div><div class='lp-sub'>Stok labe
 c1, c2 = st.columns([1.3, 2.7], vertical_alignment="bottom")
 tgl = c1.date_input("Stok per tanggal (akhir hari)", value=hari_ini, min_value=datetime.strptime(stok.MULAI, "%Y-%m-%d").date(),
                     max_value=hari_ini, format="DD/MM/YYYY", key="st_tgl")
+dept_pil = c2.segmented_control("Departemen", ["QC", "SK", "Gabungan QC + SK"], default="QC", key="st_dept", label_visibility="collapsed") or "QC"
+dept = {"QC": "QC", "SK": "SK"}.get(dept_pil)
 tgl_s = tgl.strftime("%Y-%m-%d")
 with st.spinner("Menghitung stok…"):
-    total = stok.stok_semua(tgl_s)
-    permeja = stok.stok_per_meja(tgl_s)
+    total = stok.stok_semua(tgl_s, dept)
+    permeja = stok.stok_per_meja(tgl_s, dept)
+    sebaran = stok.stok_sebaran(tgl_s, dept)
     _, tanpa = stok.saldo(tgl_s)
 if total.empty:
-    st.info("Belum ada stok label. Foreman: Input Label Bagus, lalu operator/admin mencatat label diterima di halaman utama.")
+    st.info(f"Belum ada stok label {dept_pil}. Foreman: Input Label Bagus / Stok Opname, lalu operator/admin mencatat label diterima di halaman utama.")
     st.stop()
 st.markdown("<div class='peringatan'>Stok dihitung mulai "
             f"{stok.MULAI[8:]}-{stok.MULAI[5:7]}-{stok.MULAI[:4]} dari 0. Stok bisa minus sampai Label Bagus dan hitungan per meja diinput "
-            "(Foreman: Input Label Stok → pilih lokasi → Simpan → ADJUST).</div>", unsafe_allow_html=True)
+            "(Foreman: Stok Opname Label → Selisih Stok Opname → ADJUST).</div>", unsafe_allow_html=True)
 minus = int((total["total"] < 0).sum())
 nmeja = permeja[["pabrik", "meja"]].drop_duplicates().shape[0] if len(permeja) else 0
 st.markdown(f"<div class='kpi'><div class='k'><small>TYPE LABEL</small><b>{len(total)}</b><span>punya stok / pergerakan</span></div>"
@@ -68,7 +71,25 @@ def _warna(num, kol):
     return f
 
 
-t1, t2 = st.tabs(["TOTAL PER LABEL", "PER MEJA"])
+t0, t1, t2 = st.tabs(["DI MANA SAJA", "TOTAL PER LABEL", "PER MEJA"])
+with t0:
+    st.caption("Setiap type label: total stok dan sebarannya (Foreman dan meja).")
+    ring = []
+    for lb in total["label"]:
+        x = sebaran[sebaran["label"] == lb]
+        ring.append({"Label": lb, "Total": int(total.loc[total["label"] == lb, "total"].iloc[0]),
+                     "Sebaran": " · ".join(f"{r.nama} ({_f(r.stok)})" for r in x.itertuples())})
+    rt = pd.DataFrame(ring)
+    tam = rt.copy()
+    tam["Total"] = rt["Total"].map(_f)
+    st.dataframe(tam.style.apply(_warna(rt, ["Total"])), hide_index=True, width="stretch", height=min(80 + 38 * len(tam), 680),
+                 column_config={"Total": st.column_config.TextColumn("Total", alignment="right", width="small"),
+                                "Sebaran": st.column_config.TextColumn("Sebaran (lokasi dan pcs)", width="large")})
+    pilih = st.selectbox("Rincian satu type", total["label"], index=None, placeholder="Pilih type label…", key="st_lb")
+    if pilih:
+        x = sebaran[sebaran["label"] == pilih]
+        rd = pd.DataFrame({"Lokasi": x["nama"], "Departemen": x["dept"], "Stok": x["stok"].map(_f)})
+        st.dataframe(rd, hide_index=True, width="stretch", column_config={"Stok": st.column_config.TextColumn("Stok", alignment="right")})
 with t1:
     num = pd.DataFrame({"Label": total["label"], "Stok Foreman": total["foreman"], "Stok di meja": total["meja"], "Total": total["total"]})
     tam = num.copy()
@@ -81,7 +102,7 @@ with t2:
     if permeja.empty:
         st.info("Belum ada stok di meja.")
     else:
-        pil = st.segmented_control("Pabrik", ["Semua"] + list(label.PABRIK), default="Semua", key="st_pab", label_visibility="collapsed") or "Semua"
+        pil = st.segmented_control("Pabrik", ["Semua"] + [p for p in label.PABRIK if not dept or stok.dept_pabrik(p) == dept], default="Semua", key="st_pab", label_visibility="collapsed") or "Semua"
         d = permeja if pil == "Semua" else permeja[permeja["pabrik"] == pil]
         num = pd.DataFrame({"Pabrik": d["pabrik"], "Meja": d["meja"].astype(str), "Label": d["label"], "Stok": d["stok"]})
         tam = num.copy()
@@ -93,5 +114,5 @@ if tanpa is not None and len(tanpa):
     st.caption(f"Pemakaian SAP/afkir {n_:,} pcs belum bisa dipetakan ke meja (operator belum punya alamat meja pada hari itu) — "
                "tidak mengurangi stok meja mana pun.".replace(",", "."))
 st.caption("Angka merah = stok minus. Stok meja bergeser otomatis saat operator mencatat label diterima / pindah di halaman utama.")
-st.download_button("⬇ Unduh Excel", stok.excel_stok(total, permeja, tgl.strftime("%d-%m-%Y")),
-                   file_name=f"stok_label_{tgl_s}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+st.download_button("⬇ Unduh Excel", stok.excel_stok(total, permeja, tgl.strftime("%d-%m-%Y"), sebaran),
+                   file_name=f"stok_label_{dept_pil[:3].strip()}_{tgl_s}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

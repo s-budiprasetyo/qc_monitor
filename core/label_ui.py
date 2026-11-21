@@ -34,9 +34,9 @@ def tgl_id(t):
     return f"{t[8:]}-{t[5:7]}-{t[:4]}"
 
 
-def pilih_meja(kp, judul, prn=None, tgl=None, wajib=True, bawaan=None):
+def pilih_meja(kp, judul, prn=None, tgl=None, wajib=True, bawaan=None, pabriks=None):
     """Pilih pabrik (segmen) dan nomor meja. Return (pabrik, meja) atau (None, None) bila belum lengkap."""
-    pab = list(label.PABRIK)
+    pab = list(pabriks) if pabriks else list(label.PABRIK)
     if f"{kp}_pab" not in st.session_state:
         p0, m0 = bawaan if bawaan else (stok.meja_terakhir(prn, tgl) if prn else (None, None))
         if p0 in pab:
@@ -179,55 +179,86 @@ def _bagus_sap(prn, tgl):
 
 
 def form_pindahmeja(prn, nama, tgl, oleh, adm=False, kp="pm"):
-    """Tab PINDAH MEJA: meja saat ini (isi pcs bagus yang sudah terpakai) -> meja selanjutnya."""
+    """Tab PINDAH MEJA: meja saat ini (isi sisa label di meja; afkir terisi dari input foreman) -> meja selanjutnya (label yang dibawa)."""
     st.markdown(CSS, unsafe_allow_html=True)
     st.markdown("<div class='ls-lbl' style='font-size:14px'>① MEJA SAAT INI</div>", unsafe_allow_html=True)
     p1, m1 = pilih_meja(f"{kp}_a", "", prn, tgl)
-    baris = []
+    baris, salah, bawa_total = [], [], {}
     if p1 and m1:
-        sk = stok.stok_meja(p1, m1, tgl)
+        awal = stok.stok_lokasi(stok.lok(p1, str(m1)), tgl, abaikan=(prn, tgl))
         afk = {lb: n for (pp, mm, lb), n in stok.afkir_hari(prn, tgl).items() if (pp, mm) == (p1, str(m1))}
-        sap = _bagus_sap(prn, tgl)
-        daftar = stok.urut_label({lb for lb, n in sk.items() if n != 0} | set(afk))
-        st.markdown(f"<div class='ls-lbl'>STOK LABEL DI {label.nama_meja(p1, m1).upper()}</div>" + chips(sk), unsafe_allow_html=True)
-        st.markdown("<div class='ls-lbl'>LABEL TERPAKAI DI MEJA INI SAMPAI SAAT INI <span class='ls-wajib'>pcs bagus</span></div>", unsafe_allow_html=True)
+        daftar = stok.urut_label({lb for lb, n in awal.items() if n != 0} | set(afk))
+        st.markdown(f"<div class='ls-lbl'>STOK LABEL DI {label.nama_meja(p1, m1).upper()} (sebelum pemakaian hari ini)</div>" + chips(awal), unsafe_allow_html=True)
         if not daftar:
             st.info("Tidak ada stok label di meja ini. Pindah meja tetap bisa dicatat.")
         else:
-            k = st.columns([1.5, 1, 1.3, 1, 1.1])
-            for c, t in zip(k, ["TYPE", "STOK", "PCS BAGUS", "AFKIR HARI INI", "SISA"]):
+            st.markdown("<div class='ls-lbl'>ISI <b>SISA LABEL DI MEJA</b> SAAT INI <span class='ls-wajib'>wajib per type yang dipakai</span> · "
+                        "afkir terisi otomatis dari input foreman</div>", unsafe_allow_html=True)
+            lebar = [1.5, 0.95, 1.25, 0.8, 0.9, 1.25, 0.9]
+            for c, t in zip(st.columns(lebar), ["TYPE", "STOK", "SISA DI MEJA", "AFKIR", "TERPAKAI", "DIBAWA", "TINGGAL"]):
                 c.markdown(f"<div class='ls-lbl'>{t}</div>", unsafe_allow_html=True)
-        lebih = []
-        for lb in daftar:
-            c = st.columns([1.5, 1, 1.3, 1, 1.1], vertical_alignment="center")
-            n_stok = sk.get(lb, 0)
-            c[0].markdown(f"**{lb}**")
-            c[1].write(f"{n_stok:,}".replace(",", "."))
-            n = c[2].number_input(f"Bagus {lb}", min_value=0, max_value=999999, step=1, value=0, key=f"{kp}_n_{p1}_{m1}_{lb}", label_visibility="collapsed")
-            c[3].caption(str(afk.get(lb, 0)))
-            sisa = n_stok - n
-            c[4].markdown(f"<b style='color:{'#b71c1c' if sisa < 0 else '#8a5a00'}'>{sisa:,}</b>".replace(",", "."), unsafe_allow_html=True)
-            baris.append((lb, n))
-            if n and n > sap.get(lb, 0):
-                lebih.append(lb)
-        if lebih:
-            st.warning(f"Pcs bagus {', '.join(lebih)} lebih besar dari SAP hari ini. Tetap bisa disimpan; akan dicek.")
-        if daftar:
-            st.caption("Afkir tidak diisi di sini (sudah tercatat dari input foreman). Sisa label tetap di meja ini.")
+
+            def _semua():
+                for lb_ in daftar:
+                    sv = st.session_state.get(f"{kp}_s_{p1}_{m1}_{lb_}")
+                    if sv:
+                        st.session_state[f"{kp}_w_{p1}_{m1}_{lb_}"] = sv
+
+            def _nol():
+                for lb_ in daftar:
+                    st.session_state.pop(f"{kp}_w_{p1}_{m1}_{lb_}", None)
+            for lb in daftar:
+                c = st.columns(lebar, vertical_alignment="center")
+                s0 = awal.get(lb, 0)
+                c[0].markdown(f"**{lb}**")
+                c[1].write(f"{s0:,}".replace(",", "."))
+                sisa = c[2].number_input(f"Sisa {lb}", min_value=0, max_value=999999, step=1, value=None, placeholder="sisa", key=f"{kp}_s_{p1}_{m1}_{lb}",
+                                         label_visibility="collapsed")
+                c[3].caption(str(afk.get(lb, 0)))
+                if sisa is None:
+                    c[4].caption("–")
+                    c[5].caption("isi sisa dulu")
+                    c[6].caption("–")
+                    continue
+                pakai = max(0, s0 - sisa)
+                c[4].markdown(f"<b>{pakai:,}</b>".replace(",", "."), unsafe_allow_html=True)
+                bawa = c[5].number_input(f"Bawa {lb}", min_value=0, max_value=999999, step=1, value=None, placeholder="bawa", key=f"{kp}_w_{p1}_{m1}_{lb}",
+                                         label_visibility="collapsed") or 0
+                if bawa > sisa:
+                    salah.append(lb)
+                tinggal = sisa - bawa
+                c[6].markdown(f"<b style='color:{'#b71c1c' if tinggal < 0 else '#8a5a00'}'>{tinggal:,}</b>".replace(",", "."), unsafe_allow_html=True)
+                if sisa > s0:
+                    st.caption(f"{lb}: sisa fisik lebih besar dari stok sistem — stok meja ini dikoreksi +{sisa - s0}.")
+                baris.append((lb, sisa, bawa))
+                if bawa:
+                    bawa_total[lb] = bawa
+            b1, b2 = st.columns(2)
+            b1.button("BAWA SEMUA SISA", key=f"{kp}_semua", on_click=_semua, width="stretch")
+            b2.button("TIDAK ADA YANG DIBAWA", key=f"{kp}_nol", on_click=_nol, width="stretch")
+            if salah:
+                st.error(f"Label dibawa melebihi sisa: {', '.join(salah)}.")
+            st.caption("Afkir tetap tercatat di meja ini. Sisa yang tidak dibawa tinggal di meja ini; yang dibawa pindah ke meja selanjutnya.")
     st.markdown("<div class='ls-lbl' style='font-size:14px;margin-top:14px'>② MEJA SELANJUTNYA</div>", unsafe_allow_html=True)
     p2, m2 = pilih_meja(f"{kp}_b", "", wajib=True, bawaan=(None, None))
     if p2 and m2:
-        st.markdown(f"<div class='ls-lbl'>STOK LABEL DI {label.nama_meja(p2, m2).upper()}</div>" + chips(stok.stok_meja(p2, m2, tgl)), unsafe_allow_html=True)
+        s2 = stok.stok_meja(p2, m2, tgl)
+        st.markdown(f"<div class='ls-lbl'>STOK LABEL DI {label.nama_meja(p2, m2).upper()}</div>" + chips(s2), unsafe_allow_html=True)
+        if bawa_total:
+            sesudah = dict(s2)
+            for lb, n in bawa_total.items():
+                sesudah[lb] = sesudah.get(lb, 0) + n
+            st.markdown("<div class='ls-lbl'>SETELAH LABEL DIBAWA</div>" + chips(sesudah), unsafe_allow_html=True)
         st.caption("Pemakaian dan afkir operator setelah pindah dihitung di meja ini.")
-    ok = bool(p1 and m1 and p2 and m2)
-    if not ok:
+    ok = bool(p1 and m1 and p2 and m2) and not salah
+    if not (p1 and m1 and p2 and m2):
         st.caption("Pilih meja saat ini dan meja selanjutnya (pabrik + nomor meja).")
     if st.button("PINDAH MEJA", type="primary", width="stretch", key=f"{kp}_simpan", disabled=not ok):
         galat = stok.pindahmeja_simpan(tgl, prn, nama, (p1, m1), (p2, m2), baris, oleh)
         if galat:
             st.error(galat)
         else:
-            for k_ in [k for k in st.session_state if str(k).startswith(f"{kp}_n_")]:
+            for k_ in [k for k in st.session_state if str(k).startswith((f"{kp}_s_", f"{kp}_w_"))]:
                 st.session_state.pop(k_, None)
             st.session_state.pop(f"{kp}_a_pab", None)
             st.session_state.pop(f"{kp}_b_pab", None)
@@ -241,8 +272,8 @@ def form_pindahmeja(prn, nama, tgl, oleh, adm=False, kp="pm"):
         r = g.iloc[0]
         c = st.columns([1, 3.6, 0.7] if adm else [1, 3.6], vertical_alignment="center")
         c[0].caption(w[:5])
-        pakai = ", ".join(f"{x.label} {x.bagus}" for x in g.itertuples() if x.label and x.bagus)
-        c[1].caption(f"{label.nama_meja(r['dari_pabrik'], r['dari_meja'])} → {label.nama_meja(r['ke_pabrik'], r['ke_meja'])}" + (f" · terpakai: {pakai}" if pakai else ""))
+        ring = ", ".join(f"{x.label} sisa {x.sisa}" + (f" bawa {x.bawa}" if x.bawa else "") for x in g.itertuples() if x.label)
+        c[1].caption(f"{label.nama_meja(r['dari_pabrik'], r['dari_meja'])} → {label.nama_meja(r['ke_pabrik'], r['ke_meja'])}" + (f" · {ring}" if ring else ""))
         if adm and c[2].button("🗑", key=f"{kp}_hx_{w}", help="Hapus (tercatat di riwayat)"):
             stok.pindahmeja_hapus(w, tgl, prn, oleh)
             st.rerun(scope="fragment")
