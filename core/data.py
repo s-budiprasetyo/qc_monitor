@@ -36,6 +36,30 @@ def baca(nama):
     return df.copy()
 
 
+def muat(nama_list, maks=6):
+    """Isi tembolok beberapa tabel SEKALIGUS (paralel). Di Google Sheet tiap tabel = satu panggilan API (~0,5-1 detik); membaca belasan tabel
+    berurutan itu yang membuat halaman lambat saat tembolok habis. Best-effort: galat diabaikan, pembacaan biasa tetap jalan sesudahnya."""
+    c, sekarang_ = _tembolok(), time.time()
+    perlu = [n for n in dict.fromkeys(nama_list) if not (n in c and sekarang_ - c[n][0] < TTL)]
+    if len(perlu) < 2:
+        return
+    s = store()  # diambil di thread utama
+
+    def _baca(n):
+        try:
+            return n, s.read(n)
+        except Exception:
+            return n, None
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(min(maks, len(perlu))) as ex:
+        for n, df in ex.map(_baca, perlu):
+            if df is None:
+                continue
+            if n.startswith("hasil_") and "trx" not in df.columns:
+                df["trx"] = df["tgl"]
+            c[n] = (time.time(), df)
+
+
 def daftar_bulan():
     c, sekarang_ = _tembolok(), time.time()
     if "_bulan" in c and sekarang_ - c["_bulan"][0] < TTL:

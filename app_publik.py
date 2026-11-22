@@ -603,6 +603,7 @@ def rekap(bln):
     return logic.rekap_bulan(bln)
 
 
+data.muat(["karyawan", "alias", "target", f"hasil_{bulan}", "lembur", "pengajuan", "absensi", f"jadwal_{bulan}", "kegiatan", "bagian", "roster", "label_meja"])
 baris = rekap(bulan)
 # tampilan smartphone: admin boleh melihat siapa pun (pilih nama), karyawan hanya dirinya; belum login = tabel ringkas
 _me = st.session_state.get("me")

@@ -192,3 +192,9 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Unduh Excel di jendela Selisih kini berisi: sheet "Selisih opname" + REKAP HITUNG LABEL QC / SK + INPUT (format Oktober). Rencana produksi memakai **bulan sesudah** tanggal hitung (hitung Okt → rencana Nov; hitung Nov → rencana Des). Tombol rekap terpisah dihapus.
 - Menu admin **STOK BODY**: upload file Stok Opname harian QC TK (PAGI/SORE). Kolom PERIKSA per type → tabel `sisa_body` → kolom SISA BODY di rekap hitung label (file terbaru pada/sebelum tanggal hitung). CE7 = jumlah semua CE7#W (P1/P2, HPC/BC) + varian; SNI = jumlah semua type CW kecuali CW52J (subset, tidak dihitung dua kali di SUM).
 - Revisi 10u (4): adjust stok opname ditulis sekali untuk semua lokasi (sebelumnya satu per satu, ±10 menit di Google Sheet). Info "Terakhir di-ADJUST" di jendela Selisih dan panel ADJUST + cek aktual vs stok sistem di Laporan Stok Label. Upload Rencana Produksi dan Stok Body punya pilihan jenis: QC(+KAMA) / SK Firstfiring / SK Refiring. Rekap SK: sisa body = FF + RF, rencana FF di kolom E, RF di kolom H. Pembaca file SK bersifat umum (belum diuji dengan file SK asli).
+- Menu foreman **CHECK LABEL**: pilih tanggal, pabrik, meja → stok label sistem meja itu (crosscheck), satu tabel TYPE | DIISI OLEH | SEBELUM | JUMLAH. Notifikasi bila karyawan sudah input label diterima; foreman bisa menambah/mengurangi lalu SIMPAN. Koreksi disimpan sebagai baris selisih (prn FOREMAN) di `label_meja` + riwayat `koreksi label meja`; DIISI OLEH berubah menjadi Foreman. Input asli karyawan tidak dihapus.
+
+### Tahap 10u (revisi: pindah meja, label diterima, kecepatan)
+- Pindah Meja: satu baris per type = TYPE | SISA DI MEJA | DIBAWA (tetap horizontal di HP).
+- Label Diterima: type yang sudah ada di meja otomatis tampil untuk diisi jumlahnya; "+ Label" hanya untuk type baru.
+- Halaman utama: data tabel dimuat paralel (`data.muat`) sebelum dihitung, sehingga lebih cepat.

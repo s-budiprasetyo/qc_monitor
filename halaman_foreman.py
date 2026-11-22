@@ -2,6 +2,7 @@
 tabel input hari ini (ubah/hapus)."""
 from datetime import date
 
+import html
 import pandas as pd
 import time
 import streamlit as st
@@ -1050,6 +1051,119 @@ def dlg_label_bagus():
     _tab_terima(akses.pelaku())
 
 
+CSS_CEK = """<style>
+.st-key-ck_tbl [data-testid='stHorizontalBlock']{flex-wrap:nowrap!important;gap:.4rem!important;align-items:center}
+.st-key-ck_tbl [data-testid='stColumn']{min-width:0!important;flex:1 1 0!important}
+.ck-th{font-size:.66rem;font-weight:800;color:#5b7399;letter-spacing:.5px;padding:2px 0 4px}
+.ck-ty small{display:block;font-size:.58rem;font-weight:800;color:#7b8fb0;letter-spacing:.5px}.ck-ty b{font-size:.95rem;color:#0b3d91}
+.ck-by{font-size:.78rem;line-height:1.2;color:#35507f}.ck-by.fm{color:#1d6f2f;font-weight:700}.ck-by.no{color:#9aa8c2}
+.ck-sb{font-weight:700;color:#35507f;text-align:right}
+.ck-nt{background:#fff7e0;border:1px solid #f0d88a;border-radius:10px;padding:9px 12px;color:#6b5200;font-size:.85rem;margin:.4rem 0}
+.ck-in{background:#eef3fb;border:1px solid #c9d8f3;border-radius:10px;padding:9px 12px;color:#35507f;font-size:.85rem;margin:.4rem 0}
+</style>"""
+
+
+def _baris_cek(pref, cur):
+    """Satu tabel: TYPE | DIISI OLEH | SEBELUM | JUMLAH (bisa diubah). Return ({type: jumlah}, ditekan_simpan)."""
+    ke = f"{pref}_ent"
+    info = {r.label: r for r in cur.itertuples()}
+    if ke not in st.session_state:
+        st.session_state[f"{pref}_nid"] = 0
+        ent = []
+        for r in cur.itertuples():
+            ent.append([st.session_state[f"{pref}_nid"], r.label])
+            st.session_state[f"{pref}_n_{st.session_state[f'{pref}_nid']}"] = int(r.jumlah)
+            st.session_state[f"{pref}_nid"] += 1
+        st.session_state[ke] = ent
+    ent = st.session_state[ke]
+    opsi = [(t, k) for t, k in _semua_type_pilihan() if t not in {x[1] for x in ent}]
+    kat_dari = dict(opsi)
+    with st.form(f"{pref}_addf", border=False):
+        st.markdown("<div class='kt'>TAMBAH TYPE (BOLEH BANYAK SEKALIGUS)</div>", unsafe_allow_html=True)
+        ca, cb = st.columns([3, 1], vertical_alignment="bottom")
+        pilih = ca.multiselect("Pilih type", [t for t, _k in opsi], key=f"{pref}_pilih_{st.session_state.get(pref + '_na', 0)}", label_visibility="collapsed",
+                               format_func=lambda t: f"{kat_dari.get(t, '')} · {t}", placeholder="Ketik/pilih type (Closet, SNI, dst)…")
+        tambah = cb.form_submit_button("TAMBAHKAN", width="stretch")
+    if tambah and pilih:
+        for tp in pilih:
+            ent.append([st.session_state[f"{pref}_nid"], tp])
+            st.session_state[f"{pref}_nid"] += 1
+        st.session_state[f"{pref}_na"] = st.session_state.get(f"{pref}_na", 0) + 1
+        st.rerun(scope="fragment")
+    hasil, pencet = {}, False
+    with st.form(f"{pref}_form", border=False), st.container(key="ck_tbl"):
+        h = st.columns([1.1, 1.5, 0.8, 1.2])
+        for c, tx, al in zip(h, ("TYPE", "DIISI OLEH", "SEBELUM", "JUMLAH"), ("left", "left", "right", "left")):
+            c.markdown(f"<div class='ck-th' style='text-align:{al}'>{tx}</div>", unsafe_allow_html=True)
+        if not ent:
+            st.caption("Belum ada baris. Pilih type di atas lalu klik **TAMBAHKAN**.")
+        for idb, t in ent:
+            r = st.columns([1.1, 1.5, 0.8, 1.2], vertical_alignment="center")
+            sni = t.startswith(label.SNI + " ")
+            nm = t[len(label.SNI) + 1:] if sni else t
+            kecil = "SNI" if sni else (label.ket_label(t) or label.kategori_label(t)).upper()
+            r[0].markdown(f"<div class='ck-ty'><small>{kecil}</small><b>{nm}</b></div>", unsafe_allow_html=True)
+            x = info.get(t)
+            if x is None:
+                r[1].markdown("<div class='ck-by no'>belum ada</div>", unsafe_allow_html=True)
+            elif x.foreman:
+                r[1].markdown(f"<div class='ck-by fm'>Foreman · {html.escape(x.oleh)}<br>{x.jam}</div>", unsafe_allow_html=True)
+            else:
+                r[1].markdown(f"<div class='ck-by'>{html.escape(x.oleh)} (operator)<br>{x.jam}</div>", unsafe_allow_html=True)
+            sb = int(x.jumlah) if x is not None else 0
+            r[2].markdown(f"<div class='ck-sb'>{sb:,}</div>".replace(",", "."), unsafe_allow_html=True)
+            v = r[3].number_input(f"Jumlah {t} {idb}", min_value=0, max_value=9999999, step=1, value=None, placeholder="0",
+                                  key=f"{pref}_n_{idb}", label_visibility="collapsed")
+            if v is not None:
+                hasil[t] = int(v)
+        st.caption("Ubah angka di kolom JUMLAH (tambah atau kurangi) lalu SIMPAN. Setelah disimpan, kolom DIISI OLEH berubah menjadi Foreman.")
+        if st.form_submit_button("SIMPAN", type="primary", width="stretch"):
+            pencet = True
+    return hasil, pencet
+
+
+@st.dialog("CHECK LABEL", width="large", on_dismiss="rerun")
+def dlg_check_label():
+    kontrol_jendela("inputlabel")
+    kepala("label", "CHECK LABEL MEJA")
+    st.markdown(label_ui.CSS + CSS_JENDELA + CSS_OPNAME + CSS_CEK, unsafe_allow_html=True)
+    if st.session_state.get("ck_toast"):
+        st.toast(st.session_state.pop("ck_toast"), icon="✅")
+    oleh = akses.pelaku()
+    st.caption("Label yang dikeluarkan foreman ke karyawan per meja. Bila karyawan sudah menginput label diterima, riwayatnya muncul di tabel dan bisa dikoreksi di sini.")
+    tgl = _tgl_iso(st.date_input("Tanggal", value=label.hari_ini(), max_value=label.hari_ini(), format="DD/MM/YYYY", key="ck_tgl"))
+    pabrik, meja = label_ui.pilih_meja("ck", "", wajib=True, bawaan=(None, None))
+    if not (pabrik and meja):
+        st.caption("Pilih pabrik dan nomor meja dulu.")
+        return
+    ctx = (tgl, pabrik, str(meja))
+    if st.session_state.get("ck_ctx") != ctx:
+        label_ui._reset("ckf")
+        st.session_state["ck_ctx"] = ctx
+    st.markdown("<div class='ls-lbl'>STOK LABEL DI MEJA INI SEKARANG (SISTEM) — untuk crosscheck hitungan aktual</div>"
+                + label_ui.chips(stok.stok_meja(pabrik, meja, tgl)), unsafe_allow_html=True)
+    cur = stok.meja_cek(tgl, pabrik, meja)
+    if len(cur):
+        op = cur[~cur["foreman"]]
+        siapa = ", ".join(sorted(set(op["oleh"]))) or "foreman"
+        st.markdown(f"<div class='ck-nt'><b>SUDAH DIINPUT</b> pada tanggal ini ({html.escape(siapa)}). "
+                    "Bila ada yang salah, ubah jumlahnya di tabel lalu SIMPAN.</div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<div class='ck-in'>Belum ada label diterima di meja ini pada tanggal ini.</div>", unsafe_allow_html=True)
+    hasil, pencet = _baris_cek("ckf", cur)
+    if pencet:
+        n, galat = stok.meja_cek_simpan(tgl, pabrik, meja, hasil, oleh)
+        if galat:
+            st.error(galat)
+        elif n == 0:
+            st.info("Tidak ada perubahan jumlah.")
+        else:
+            label_ui._reset("ckf")
+            st.session_state.pop("ck_ctx", None)
+            st.session_state["ck_toast"] = f"Tersimpan: {n} type diperbarui."
+            st.rerun(scope="fragment")
+
+
 def _hub():
     """Roda gigi bergaya Jarvis (komponen yang sama dengan halaman admin): ikon menu mengitari roda, sinar menunjuk menu aktif."""
     try:
@@ -1061,6 +1175,7 @@ def _hub():
     MENU = {"afkir": ("INPUT LABEL AFKIR", "Catat label kotor per karyawan, pabrik, dan meja", "tag", _buka_jendela, "Fungsi", "Input harian"),
             "bagus": ("INPUT LABEL BAGUS", "Catat label bagus yang diterima foreman", "box", dlg_label_bagus, "Fungsi", "Barang masuk"),
             "distribusi": ("DISTRIBUSI LABEL", "Pinjam atau pindahkan label antar foreman QC dan SK", "swap", dlg_distribusi, "Fungsi", "QC ⇄ SK"),
+            "check": ("CHECK LABEL", "Label keluar ke karyawan per meja, cek stok meja", "check", dlg_check_label, "Fungsi", "Per meja"),
             "opname": ("STOK OPNAME LABEL", "Hitung fisik label per lokasi, pabrik, dan meja", "calc", dlg_opname, "Status", ket_op),
             "selisih": ("SELISIH STOK OPNAME", "Bandingkan stok sistem dengan hitungan fisik, lalu ADJUST", "bars", dlg_selisih, "Status", ket_op),
             "operator": ("DAFTAR OPERATOR", "Daftarkan operator untuk Input Label Afkir", "user", dlg_operator, "Fungsi", "Akun operator")}

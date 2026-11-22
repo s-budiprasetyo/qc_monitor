@@ -193,6 +193,60 @@ def meja_terima_simpan(tgl, prn, nama, pabrik, meja, baris, oleh):
     return None
 
 
+PRN_FOREMAN = "FOREMAN"  # penanda baris label_meja yang diinput/dikoreksi foreman (bukan operator)
+
+
+def meja_cek(tgl, pabrik, meja):
+    """Label diterima satu meja pada satu tanggal, satu baris per type:
+    DataFrame[label, jumlah (total semua input + koreksi), oleh (pengisi terakhir), foreman (True bila pengisi terakhir foreman), jam, n]."""
+    kol = ["label", "jumlah", "oleh", "foreman", "jam", "n"]
+    d = data.baca("label_meja")
+    if d.empty:
+        return pd.DataFrame(columns=kol)
+    d = d[(d["tgl"] == tgl) & (d["pabrik"] == pabrik) & (d["meja"].astype(str) == str(meja))].copy()
+    if d.empty:
+        return pd.DataFrame(columns=kol)
+    d["jumlah"] = d["jumlah"].map(_int)
+    d = d.sort_values("waktu")
+    baris = []
+    for lb, g in d.groupby("label", sort=False):
+        t = g.iloc[-1]
+        baris.append({"label": lb, "jumlah": int(g["jumlah"].sum()), "oleh": (t["nama"] or t["oleh"] or "").strip(),
+                      "foreman": str(t["prn"]) == PRN_FOREMAN, "jam": str(t["waktu"])[:5], "n": len(g)})
+    out = pd.DataFrame(baris, columns=kol)
+    return out.set_index("label").loc[urut_label(set(out["label"]))].reset_index()
+
+
+def meja_cek_simpan(tgl, pabrik, meja, target, oleh):
+    """target = {label: jumlah akhir}. Selisih terhadap total tercatat disimpan sebagai baris koreksi foreman (jumlah bisa minus);
+    input asli operator tidak dihapus. Return (jumlah type berubah, pesan galat atau None)."""
+    if not pabrik or not meja:
+        return 0, "Pabrik dan nomor meja wajib dipilih."
+    if str(tgl) > hari_ini():
+        return 0, "Tanggal tidak boleh lebih dari hari ini."
+    if any(_int(v) < 0 for v in target.values()):
+        return 0, "Jumlah tidak boleh di bawah 0."
+    cur = meja_cek(tgl, pabrik, meja)
+    ada = dict(zip(cur["label"], cur["jumlah"]))
+    waktu = _waktu()
+    baris, riwayat = [], []
+    for lb, v in target.items():
+        delta = _int(v) - ada.get(lb, 0)
+        if not delta:
+            continue
+        baris.append({"id": f"{_id()}-{len(baris)}", "tgl": tgl, "waktu": waktu, "prn": PRN_FOREMAN, "nama": oleh, "pabrik": pabrik,
+                      "meja": str(meja), "label": lb, "jumlah": delta, "oleh": oleh})
+        riwayat.append({"waktu": datetime.now(data.WIB).strftime("%Y-%m-%d %H:%M:%S"), "tgl": tgl, "oleh": oleh, "jenis": "koreksi label meja",
+                        "kunci": f"{tgl}|{pabrik}|{meja}|{lb}", "sebelum": str(ada.get(lb, 0)), "sesudah": str(_int(v))})
+    if not baris:
+        return 0, None
+    data.upsert("label_meja", pd.DataFrame(baris, columns=["id", "tgl", "waktu", "prn", "nama", "pabrik", "meja", "label", "jumlah", "oleh"]), ["id"])
+    data.upsert("label_riwayat", pd.DataFrame(riwayat, columns=["waktu", "tgl", "oleh", "jenis", "kunci", "sebelum", "sesudah"]), ["waktu", "kunci", "jenis"])
+    data.catat_update("STOK LABEL")
+    _bersih()
+    return len(baris), None
+
+
 def meja_terima_hapus(id_, oleh):
     d = data.baca("label_meja")
     x = d[d["id"] == id_]
@@ -623,6 +677,8 @@ def saldo(sampai=None, abaikan=None):
         _memo["t"] = time.time()
     if abaikan is None and sampai in _memo["d"]:
         return _memo["d"][sampai]
+    data.muat(["label_terima", "label_distribusi", "label_meja", "label_pindah", "label_kosong", "label_hitung", "label_afkir", "label_pindahmeja",
+               "karyawan", "alias"] + [f"hasil_{b}" for b in pd.period_range(MULAI[:7], sampai[:7], freq="M")])
     ev = []  # (tgl, urutan, jenis, lokasi, label, nilai)
     for r in data.baca("label_terima").itertuples():
         ev.append((r.tgl, 1, "tambah", foreman_dept(getattr(r, "dept", "") or "QC"), r.label, _int(r.jumlah)))

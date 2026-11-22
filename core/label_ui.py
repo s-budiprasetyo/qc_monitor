@@ -107,7 +107,14 @@ def form_terima(prn, nama, tgl, oleh, adm=False, kp="lt"):
     import halaman_foreman as _hf  # jendela isian yang sama dengan Input Label Afkir
     st.markdown(_hf.CSS_JENDELA, unsafe_allow_html=True)
     st.html(_hf.JS_PILIH, unsafe_allow_javascript=True)
-    baris = [(k, v) for k, v in _hf._grid_hitung(kp + "_isi", {}).items() if v > 0]
+    ctx = (pabrik, str(meja), tgl)
+    if st.session_state.get(f"{kp}_ctx") != ctx:  # ganti meja/tanggal: kolom type diisi ulang dari stok meja itu
+        _reset(kp + "_isi")
+        st.session_state[f"{kp}_ctx"] = ctx
+    ada_meja = {lb: 0 for lb, n in stok.stok_meja(pabrik, meja, tgl).items() if n > 0} if (pabrik and meja) else {}
+    if ada_meja:
+        st.caption("Type yang sudah ada di meja ini sudah tersedia di bawah; isi jumlahnya saja. Klik + Label hanya untuk type baru.")
+    baris = [(k, v) for k, v in _hf._grid_hitung(kp + "_isi", ada_meja).items() if v > 0]
     lengkap = bool(pabrik and meja and baris)
     if not (pabrik and meja):
         st.caption("Pilih pabrik dan nomor meja dulu — tanpa alamat meja, stok tidak bisa dipetakan.")
@@ -216,11 +223,12 @@ def form_pindahmeja(prn, nama, tgl, oleh, adm=False, kp="pm"):
         if not daftar:
             st.info("Tidak ada stok label di meja ini. Pindah meja tetap bisa dicatat.")
         else:
-            st.markdown("<div class='ls-lbl'>ISI <b>SISA LABEL DI MEJA</b> SAAT INI <span class='ls-wajib'>wajib per type yang dipakai</span> · "
-                        "afkir terisi otomatis dari input foreman</div>", unsafe_allow_html=True)
-            lebar = [1.5, 0.95, 1.25, 0.8, 0.9, 1.25, 0.9]
-            for c, t in zip(st.columns(lebar), ["TYPE", "STOK", "SISA DI MEJA", "AFKIR", "TERPAKAI", "DIBAWA", "TINGGAL"]):
-                c.markdown(f"<div class='ls-lbl'>{t}</div>", unsafe_allow_html=True)
+            st.markdown("<div class='ls-lbl'>ISI <b>SISA</b> LABEL DI MEJA DAN <b>DIBAWA</b> KE MEJA SELANJUTNYA</div>", unsafe_allow_html=True)
+            st.markdown(f"<style>.st-key-{kp}_tbl [data-testid='stHorizontalBlock']{{flex-wrap:nowrap!important;gap:.5rem!important}}"
+                        f".st-key-{kp}_tbl [data-testid='stColumn']{{min-width:0!important}}"
+                        ".pm-ty b{font-size:1rem;color:#0b3d91}.pm-ty small{display:block;color:#7b8fb0;font-size:.7rem}"
+                        ".pm-th{font-size:.68rem;font-weight:800;color:#5b7399;letter-spacing:.4px}"
+                        ".pm-in{font-size:.75rem;color:#7a5a00;margin:-.4rem 0 .5rem}</style>", unsafe_allow_html=True)
 
             def _semua():
                 for lb_ in daftar:
@@ -231,32 +239,31 @@ def form_pindahmeja(prn, nama, tgl, oleh, adm=False, kp="pm"):
             def _nol():
                 for lb_ in daftar:
                     st.session_state.pop(f"{kp}_w_{p1}_{m1}_{lb_}", None)
-            for lb in daftar:
-                c = st.columns(lebar, vertical_alignment="center")
-                s0 = awal.get(lb, 0)
-                c[0].markdown(f"**{lb}**")
-                c[1].write(f"{s0:,}".replace(",", "."))
-                sisa = c[2].number_input(f"Sisa {lb}", min_value=0, max_value=999999, step=1, value=None, placeholder="sisa", key=f"{kp}_s_{p1}_{m1}_{lb}",
-                                         label_visibility="collapsed")
-                c[3].caption(str(afk.get(lb, 0)))
-                if sisa is None:
-                    c[4].caption("–")
-                    c[5].caption("isi sisa dulu")
-                    c[6].caption("–")
-                    continue
-                pakai = max(0, s0 - sisa)
-                c[4].markdown(f"<b>{pakai:,}</b>".replace(",", "."), unsafe_allow_html=True)
-                bawa = c[5].number_input(f"Bawa {lb}", min_value=0, max_value=999999, step=1, value=None, placeholder="bawa", key=f"{kp}_w_{p1}_{m1}_{lb}",
-                                         label_visibility="collapsed") or 0
-                if bawa > sisa:
-                    salah.append(lb)
-                tinggal = sisa - bawa
-                c[6].markdown(f"<b style='color:{'#b71c1c' if tinggal < 0 else '#8a5a00'}'>{tinggal:,}</b>".replace(",", "."), unsafe_allow_html=True)
-                if sisa > s0:
-                    st.caption(f"{lb}: sisa fisik lebih besar dari stok sistem — stok meja ini dikoreksi +{sisa - s0}.")
-                baris.append((lb, sisa, bawa))
-                if bawa:
-                    bawa_total[lb] = bawa
+            with st.container(key=f"{kp}_tbl"):
+                h = st.columns([1.2, 1, 1])
+                for c, t in zip(h, ["TYPE", "SISA DI MEJA", "DIBAWA"]):
+                    c.markdown(f"<div class='pm-th'>{t}</div>", unsafe_allow_html=True)
+                for lb in daftar:
+                    c = st.columns([1.2, 1, 1], vertical_alignment="center")
+                    s0 = awal.get(lb, 0)
+                    c[0].markdown(f"<div class='pm-ty'><b>{lb}</b><small>stok {s0:,} · afkir {afk.get(lb, 0)}</small></div>".replace(",", "."), unsafe_allow_html=True)
+                    sisa = c[1].number_input(f"Sisa {lb}", min_value=0, max_value=999999, step=1, value=None, placeholder="sisa", key=f"{kp}_s_{p1}_{m1}_{lb}",
+                                             label_visibility="collapsed")
+                    bawa = c[2].number_input(f"Bawa {lb}", min_value=0, max_value=999999, step=1, value=None, placeholder="bawa", key=f"{kp}_w_{p1}_{m1}_{lb}",
+                                             label_visibility="collapsed", disabled=sisa is None) or 0
+                    if sisa is None:
+                        continue
+                    pakai = max(0, s0 - sisa)
+                    if bawa > sisa:
+                        salah.append(lb)
+                    tinggal = sisa - bawa
+                    st.markdown(f"<div class='pm-in'>terpakai <b>{pakai:,}</b> · tinggal di meja <b style='color:{'#b71c1c' if tinggal < 0 else '#7a5a00'}'>{tinggal:,}</b></div>".replace(",", "."),
+                                unsafe_allow_html=True)
+                    if sisa > s0:
+                        st.caption(f"{lb}: sisa fisik lebih besar dari stok sistem — stok meja ini dikoreksi +{sisa - s0}.")
+                    baris.append((lb, sisa, bawa))
+                    if bawa:
+                        bawa_total[lb] = bawa
             b1, b2 = st.columns(2)
             b1.button("BAWA SEMUA SISA", key=f"{kp}_semua", on_click=_semua, width="stretch")
             b2.button("TIDAK ADA YANG DIBAWA", key=f"{kp}_nol", on_click=_nol, width="stretch")
