@@ -1,6 +1,6 @@
 """Halaman Upload Foreman: jendela INPUT LABEL AFKIR (input label afkir), notifikasi meja yang belum dicek,
 tabel input hari ini (ubah/hapus)."""
-from datetime import date
+from datetime import date, timedelta
 
 import html
 import pandas as pd
@@ -1055,6 +1055,7 @@ CSS_CEK = """<style>
 .st-key-ck_tbl [data-testid='stHorizontalBlock']{flex-wrap:nowrap!important;gap:.4rem!important;align-items:center}
 .st-key-ck_tbl [data-testid='stColumn']{min-width:0!important;flex:1 1 0!important}
 .ck-th{font-size:.66rem;font-weight:800;color:#5b7399;letter-spacing:.5px;padding:2px 0 4px}
+.ck-ty i{display:block;font-style:normal;font-size:.62rem;color:#8a98b3}.ck-ty i .fm{color:#1d6f2f;font-weight:700}.ck-sb.tot{color:#0b3d91;font-weight:800}
 .ck-ty small{display:block;font-size:.58rem;font-weight:800;color:#7b8fb0;letter-spacing:.5px}.ck-ty b{font-size:.95rem;color:#0b3d91}
 .ck-by{font-size:.78rem;line-height:1.2;color:#35507f}.ck-by.fm{color:#1d6f2f;font-weight:700}.ck-by.no{color:#9aa8c2}
 .ck-sb{font-weight:700;color:#35507f;text-align:right}
@@ -1063,62 +1064,62 @@ CSS_CEK = """<style>
 </style>"""
 
 
-def _baris_cek(pref, cur):
-    """Satu tabel: TYPE | DIISI OLEH | SEBELUM | JUMLAH (bisa diubah). Return ({type: jumlah}, ditekan_simpan)."""
+def _baris_cek(pref, cur, awal):
+    """SATU tabel: TYPE | STOK AWAL | DIINPUT KARYAWAN (bisa diubah foreman) | TOTAL HARI ITU.
+    Selalu ada satu baris kosong di bawah untuk menambah type. Return ({type: jumlah diinput}, ditekan_simpan)."""
     ke = f"{pref}_ent"
     info = {r.label: r for r in cur.itertuples()}
     if ke not in st.session_state:
         st.session_state[f"{pref}_nid"] = 0
         ent = []
-        for r in cur.itertuples():
-            ent.append([st.session_state[f"{pref}_nid"], r.label])
-            st.session_state[f"{pref}_n_{st.session_state[f'{pref}_nid']}"] = int(r.jumlah)
-            st.session_state[f"{pref}_nid"] += 1
+        for lb in stok.urut_label(set(awal) | set(info)):
+            i = st.session_state[f"{pref}_nid"]
+            ent.append([i, lb])
+            st.session_state[f"{pref}_n_{i}"] = int(info[lb].jumlah) if lb in info else 0
+            st.session_state[f"{pref}_nid"] = i + 1
         st.session_state[ke] = ent
     ent = st.session_state[ke]
-    opsi = [(t, k) for t, k in _semua_type_pilihan() if t not in {x[1] for x in ent}]
+    sudah = {x[1] for x in ent}
+    opsi = [(t, k) for t, k in _semua_type_pilihan() if t not in sudah]
     kat_dari = dict(opsi)
-    with st.form(f"{pref}_addf", border=False):
-        st.markdown("<div class='kt'>TAMBAH TYPE (BOLEH BANYAK SEKALIGUS)</div>", unsafe_allow_html=True)
-        ca, cb = st.columns([3, 1], vertical_alignment="bottom")
-        pilih = ca.multiselect("Pilih type", [t for t, _k in opsi], key=f"{pref}_pilih_{st.session_state.get(pref + '_na', 0)}", label_visibility="collapsed",
-                               format_func=lambda t: f"{kat_dari.get(t, '')} · {t}", placeholder="Ketik/pilih type (Closet, SNI, dst)…")
-        tambah = cb.form_submit_button("TAMBAHKAN", width="stretch")
-    if tambah and pilih:
-        for tp in pilih:
-            ent.append([st.session_state[f"{pref}_nid"], tp])
-            st.session_state[f"{pref}_nid"] += 1
-        st.session_state[f"{pref}_na"] = st.session_state.get(f"{pref}_na", 0) + 1
-        st.rerun(scope="fragment")
+    W = [1.5, 0.8, 1.2, 0.9]
     hasil, pencet = {}, False
-    with st.form(f"{pref}_form", border=False), st.container(key="ck_tbl"):
-        h = st.columns([1.1, 1.5, 0.8, 1.2])
-        for c, tx, al in zip(h, ("TYPE", "DIISI OLEH", "SEBELUM", "JUMLAH"), ("left", "left", "right", "left")):
+    with st.container(key="ck_tbl"):
+        h = st.columns(W)
+        for c, tx, al in zip(h, ("TYPE", "STOK AWAL", "DIINPUT KARYAWAN", "TOTAL"), ("left", "right", "left", "right")):
             c.markdown(f"<div class='ck-th' style='text-align:{al}'>{tx}</div>", unsafe_allow_html=True)
-        if not ent:
-            st.caption("Belum ada baris. Pilih type di atas lalu klik **TAMBAHKAN**.")
         for idb, t in ent:
-            r = st.columns([1.1, 1.5, 0.8, 1.2], vertical_alignment="center")
+            r = st.columns(W, vertical_alignment="center")
             sni = t.startswith(label.SNI + " ")
             nm = t[len(label.SNI) + 1:] if sni else t
             kecil = "SNI" if sni else (label.ket_label(t) or label.kategori_label(t)).upper()
-            r[0].markdown(f"<div class='ck-ty'><small>{kecil}</small><b>{nm}</b></div>", unsafe_allow_html=True)
             x = info.get(t)
             if x is None:
-                r[1].markdown("<div class='ck-by no'>belum ada</div>", unsafe_allow_html=True)
+                oleh_t = ""
             elif x.foreman:
-                r[1].markdown(f"<div class='ck-by fm'>Foreman · {html.escape(x.oleh)}<br>{x.jam}</div>", unsafe_allow_html=True)
+                oleh_t = f"<span class='fm'>Foreman · {html.escape(x.oleh)} {x.jam}</span>"
             else:
-                r[1].markdown(f"<div class='ck-by'>{html.escape(x.oleh)} (operator)<br>{x.jam}</div>", unsafe_allow_html=True)
-            sb = int(x.jumlah) if x is not None else 0
-            r[2].markdown(f"<div class='ck-sb'>{sb:,}</div>".replace(",", "."), unsafe_allow_html=True)
-            v = r[3].number_input(f"Jumlah {t} {idb}", min_value=0, max_value=9999999, step=1, value=None, placeholder="0",
-                                  key=f"{pref}_n_{idb}", label_visibility="collapsed")
-            if v is not None:
-                hasil[t] = int(v)
-        st.caption("Ubah angka di kolom JUMLAH (tambah atau kurangi) lalu SIMPAN. Setelah disimpan, kolom DIISI OLEH berubah menjadi Foreman.")
-        if st.form_submit_button("SIMPAN", type="primary", width="stretch"):
-            pencet = True
+                oleh_t = f"{html.escape(x.oleh)} · {x.jam}"
+            r[0].markdown(f"<div class='ck-ty'><small>{kecil}</small><b>{nm}</b><i>{oleh_t}</i></div>", unsafe_allow_html=True)
+            aw = int(awal.get(t, 0))
+            r[1].markdown(f"<div class='ck-sb'>{aw:,}</div>".replace(",", "."), unsafe_allow_html=True)
+            v = r[2].number_input(f"Diinput {t} {idb}", min_value=0, max_value=9999999, step=1, key=f"{pref}_n_{idb}", label_visibility="collapsed")
+            v = int(v or 0)
+            hasil[t] = v
+            r[3].markdown(f"<div class='ck-sb tot'>{aw + v:,}</div>".replace(",", "."), unsafe_allow_html=True)
+        # baris kosong: klik untuk menambah type (SNI boleh berdiri sendiri, tanpa type induknya)
+        r = st.columns(W, vertical_alignment="center")
+        pilih = r[0].selectbox("Tambah type", [t for t, _k in opsi], index=None, key=f"{pref}_add_{st.session_state.get(pref + '_na', 0)}",
+                               label_visibility="collapsed", placeholder="＋ tambah type…", format_func=lambda t: f"{kat_dari.get(t, '')} · {t}")
+        if pilih:
+            ent.append([st.session_state[f"{pref}_nid"], pilih])
+            st.session_state[f"{pref}_nid"] += 1
+            st.session_state[f"{pref}_na"] = st.session_state.get(f"{pref}_na", 0) + 1
+            st.rerun(scope="fragment")
+    st.caption("Ubah angka di kolom DIINPUT KARYAWAN (tambah atau kurangi) lalu SIMPAN. Setelah disimpan, pengisinya tercatat sebagai Foreman. "
+               "TOTAL = stok awal + yang diinput hari itu.")
+    if st.button("SIMPAN", type="primary", width="stretch", key=f"{pref}_simpan"):
+        pencet = True
     return hasil, pencet
 
 
@@ -1140,9 +1141,9 @@ def dlg_check_label():
     if st.session_state.get("ck_ctx") != ctx:
         label_ui._reset("ckf")
         st.session_state["ck_ctx"] = ctx
-    st.markdown("<div class='ls-lbl'>STOK LABEL DI MEJA INI SEKARANG (SISTEM) — untuk crosscheck hitungan aktual</div>"
-                + label_ui.chips(stok.stok_meja(pabrik, meja, tgl)), unsafe_allow_html=True)
     cur = stok.meja_cek(tgl, pabrik, meja)
+    kemarin = (date.fromisoformat(tgl) - timedelta(days=1)).isoformat()
+    awal = stok.stok_meja(pabrik, meja, kemarin)
     if len(cur):
         op = cur[~cur["foreman"]]
         siapa = ", ".join(sorted(set(op["oleh"]))) or "foreman"
@@ -1150,7 +1151,7 @@ def dlg_check_label():
                     "Bila ada yang salah, ubah jumlahnya di tabel lalu SIMPAN.</div>", unsafe_allow_html=True)
     else:
         st.markdown("<div class='ck-in'>Belum ada label diterima di meja ini pada tanggal ini.</div>", unsafe_allow_html=True)
-    hasil, pencet = _baris_cek("ckf", cur)
+    hasil, pencet = _baris_cek("ckf", cur, awal)
     if pencet:
         n, galat = stok.meja_cek_simpan(tgl, pabrik, meja, hasil, oleh)
         if galat:

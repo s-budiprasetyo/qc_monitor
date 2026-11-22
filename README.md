@@ -198,3 +198,4 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Pindah Meja: satu baris per type = TYPE | SISA DI MEJA | DIBAWA (tetap horizontal di HP).
 - Label Diterima: type yang sudah ada di meja otomatis tampil untuk diisi jumlahnya; "+ Label" hanya untuk type baru.
 - Halaman utama: data tabel dimuat paralel (`data.muat`) sebelum dihitung, sehingga lebih cepat.
+- CHECK LABEL (revisi): satu tabel TYPE | STOK AWAL (akhir hari sebelumnya) | DIINPUT KARYAWAN (bisa dikoreksi foreman) | TOTAL; selalu ada satu baris kosong "+ tambah type"; SNI bisa ditambah sendiri tanpa type induk.
