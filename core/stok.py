@@ -498,19 +498,79 @@ def opname_simpan(tgl, lokasi, aktual, oleh):
 
 
 def opname_adjust(tgl, oleh, lokasi_daftar=None):
-    """Jadikan hasil hitung (aktual) sebagai stok awal: semua lokasi yang dihitung pada tanggal itu (atau lokasi_daftar). Return jumlah lokasi."""
+    """Jadikan hasil hitung (aktual) sebagai stok awal: semua lokasi yang dihitung pada tanggal itu (atau lokasi_daftar). Return jumlah lokasi.
+    Semua lokasi ditulis SEKALIGUS (satu kali tulis per tabel) supaya cepat walau puluhan meja."""
     status = opname_status(tgl)
-    n = 0
-    for lk in (lokasi_daftar or list(status)):
-        if lk not in status:
+    pilih = [lk for lk in (lokasi_daftar or list(status)) if lk in status]
+    if not pilih:
+        return 0
+    d = data.baca("label_hitung").copy()
+    if "lokasi" not in d.columns:
+        d["lokasi"] = ""
+    d["lokasi"] = d["lokasi"].replace("", FOREMAN)
+    d = d[(d["tgl"] == tgl) & (d["lokasi"].isin(pilih))].sort_values(["tgl", "waktu"]).drop_duplicates(["lokasi", "label"], keep="last")
+    if d.empty:
+        return 0
+    now = datetime.now(data.WIB)
+    waktu = now.strftime("%H:%M:%S.%f")
+    baris, riwayat, n = [], [], 0
+    for lk in pilih:
+        g = d[d["lokasi"] == lk]
+        if g.empty:
             continue
-        h = hitung_terakhir(tgl, lk)
-        if h.empty:
-            continue
-        hitung_simpan(tgl, [(r.label, r.aktual, r.sistem) for r in h.itertuples()], oleh, adjust=True, lokasi=lk)
-        catat_riwayat("adjust stok opname", f"{tgl}|{lk}", "", ", ".join(f"{r.label}={r.aktual}" for r in h.itertuples() if r.label != KOSONG)[:300], oleh, tgl)
         n += 1
+        for r in g.itertuples():
+            baris.append({"tgl": tgl, "waktu": f"{waktu}-{len(baris):04d}", "label": r.label, "aktual": _int(r.aktual), "sistem": _int(r.sistem),
+                          "adjust": "ya", "oleh": oleh, "lokasi": lk})
+        riwayat.append({"waktu": now.strftime("%Y-%m-%d %H:%M:%S"), "tgl": tgl, "oleh": oleh, "jenis": "adjust stok opname", "kunci": f"{tgl}|{lk}",
+                        "sebelum": "", "sesudah": ", ".join(f"{r.label}={_int(r.aktual)}" for r in g.itertuples() if r.label != KOSONG)[:300]})
+    data.upsert("label_hitung", pd.DataFrame(baris, columns=["tgl", "waktu", "label", "aktual", "sistem", "adjust", "oleh", "lokasi"]),
+                ["tgl", "waktu", "label", "lokasi"])
+    data.upsert("label_riwayat", pd.DataFrame(riwayat, columns=["waktu", "tgl", "oleh", "jenis", "kunci", "sebelum", "sesudah"]),
+                ["waktu", "kunci", "jenis"])
+    data.catat_update("STOK LABEL")
+    _bersih()
     return n
+
+
+def adjust_terakhir(dept=None):
+    """Adjust stok opname terakhir untuk dept (QC | SK | None): {'tgl': tanggal hitung, 'waktu': kapan diproses, 'oleh', 'lokasi': [..]} atau None."""
+    r = data.baca("label_riwayat")
+    if r.empty:
+        return None
+    r = r[r["jenis"] == "adjust stok opname"].copy()
+    if r.empty:
+        return None
+    r["lk"] = r["kunci"].astype(str).str.split("|", n=1).str[1].fillna("")
+    r = r[[dept_cocok(lk, dept) for lk in r["lk"]]]
+    if r.empty:
+        return None
+    t = r.sort_values(["tgl", "waktu"]).iloc[-1]["tgl"]
+    r = r[r["tgl"] == t]
+    w = r["waktu"].max()
+    x = r[r["waktu"].str[:16] == w[:16]]
+    return {"tgl": t, "waktu": w, "oleh": x.iloc[0]["oleh"], "lokasi": list(x["lk"])}
+
+
+def adjust_cek(dept):
+    """Cek apakah hasil ADJUST terakhir sudah jadi stok sistem. -> (info, DataFrame[label, aktual, sistem, ok], belum_adjust[lokasi]) atau (None, None, [])."""
+    info = adjust_terakhir(dept)
+    if not info:
+        return None, None, []
+    tgl = info["tgl"]
+    sal, _ = saldo(tgl)
+    akt = defaultdict(int)
+    sis = defaultdict(int)
+    for lk in info["lokasi"]:
+        for lb, (a, _sx) in opname_baris(tgl, lk).items():
+            akt[lb] += a
+        for (l2, lb), nn in sal.items():
+            if l2 == lk:
+                sis[lb] += nn
+    baris = [{"label": lb, "aktual": akt.get(lb, 0), "sistem": sis.get(lb, 0), "ok": akt.get(lb, 0) == sis.get(lb, 0)}
+             for lb in urut_label(set(akt) | {k for k, v in sis.items() if v})]
+    belum = [lk for lk, sdh in opname_status(tgl).items() if dept_cocok(lk, dept) and not sdh]
+    return info, pd.DataFrame(baris, columns=["label", "aktual", "sistem", "ok"]), belum
 
 
 def opname_tanggal():

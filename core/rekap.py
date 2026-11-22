@@ -35,7 +35,7 @@ def _hitungan(tgl, dept):
     return out
 
 
-def _sheet(ws, judul, dept, kol_in, hit, plan, baris_nama, sisa=None):
+def _sheet(ws, judul, dept, kol_in, hit, plan, baris_nama, sisa=None, sni_cw=False, plan_rf=None):
     sisa = sisa or {}
     ws["A1"] = judul
     ws["A1"].font = Font(name=F, bold=True, size=16)
@@ -56,7 +56,7 @@ def _sheet(ws, judul, dept, kol_in, hit, plan, baris_nama, sisa=None):
         if nama == "CE7":
             ws.cell(r, 3, f"={int(sisa.get('CE7', 0))}+SUM(C{BARIS_AWAL + baris_nama.index('CE7#HBE')}:C{BARIS_AWAL + baris_nama.index('CE7#PP')})")
             ws.cell(r, 5, f"={int(plan.get('CE7', 0))}+SUM(E{BARIS_AWAL + baris_nama.index('CE7#HBE')}:E{BARIS_AWAL + baris_nama.index('CE7#PP')})")
-        elif nama == "SNI" and sisa:  # sisa body SNI = jumlah semua type CW kecuali CW52J
+        elif nama == "SNI" and sni_cw and sisa:  # sisa body SNI = jumlah semua type CW kecuali CW52J
             cw = [BARIS_AWAL + baris_nama.index(k) for k in baris_nama if k.startswith("CW") and k != "CW52J"]
             ws.cell(r, 3, "=" + "+".join(f"C{x}" for x in cw))
             ws.cell(r, 5, None)
@@ -65,19 +65,30 @@ def _sheet(ws, judul, dept, kol_in, hit, plan, baris_nama, sisa=None):
                 ws.cell(r, 3, int(sisa[nama]))
             ws.cell(r, 5, int(plan[nama]) if plan.get(nama) else None)
         ws.cell(r, 6, f"=E{r}+C{r}-B{r}" if not nama.startswith("SPARE") else None)
+        if plan_rf is not None and plan_rf.get(nama):
+            ws.cell(r, 8, int(plan_rf[nama]))
+            ws.cell(r, 8).font = Font(name=F, color="0000FF")
+            ws.cell(r, 8).number_format = "#,##0"
         for cc in range(1, 7):
             c = ws.cell(r, cc)
             c.font = Font(name=F, bold=(cc == 1), color=("0000FF" if cc in (3, 5) else "000000"))
             c.border = KOTAK
             if cc > 1:
                 c.number_format = "#,##0;[Red]-#,##0;-"
+    if plan_rf is not None:
+        ws["H2"] = "RENCANA RF"
+        ws["H2"].font = Font(name=F, bold=True)
+        ws["H2"].fill = PatternFill("solid", fgColor="D9E1F2")
+        ws["H2"].border = KOTAK
+        ws["E2"] = "RENCANA PRODUKSI (FF)"
+        ws.column_dimensions["H"].width = 13
     rs = BARIS_AKHIR + 1
     ws.cell(rs, 1, "SUM")
     for col in "BDF":
         ws[f"{col}{rs}"] = f"=SUM({col}{BARIS_AWAL}:{col}{BARIS_AKHIR})"
     # SISA BODY & RENCANA type CE7 sudah memuat jumlah varian CE7#… (baris 57-64), jadi varian tidak dihitung dua kali di SUM
     v0, v1 = BARIS_AWAL + baris_nama.index("CE7#HBE"), BARIS_AWAL + baris_nama.index("CE7#PP")
-    ws[f"C{rs}"] = f"=SUM(C{BARIS_AWAL}:C{BARIS_AKHIR})-SUM(C{v0}:C{v1})" + (f"-C{BARIS_AWAL + baris_nama.index('SNI')}" if sisa else "")  # SNI = subset CW
+    ws[f"C{rs}"] = f"=SUM(C{BARIS_AWAL}:C{BARIS_AKHIR})-SUM(C{v0}:C{v1})" + (f"-C{BARIS_AWAL + baris_nama.index('SNI')}" if sni_cw and sisa else "")  # SNI = subset CW
     ws[f"E{rs}"] = f"=SUM(E{BARIS_AWAL}:E{BARIS_AKHIR})-SUM(E{v0}:E{v1})"
     for cc in range(1, 7):
         c = ws.cell(rs, cc)
@@ -102,7 +113,11 @@ def buat(tgl, bulan_plan=None, wb=None):
     Rencana diambil dari `bulan_plan` (default: bulan sesudah tanggal hitung)."""
     bulan_plan = bulan_plan or bulan_rencana(tgl)
     plan_qc = rencana.per_type(bulan_plan, "QC")
-    plan_sk = rencana.per_type(bulan_plan, "SK")
+    plan_sk = rencana.per_type(bulan_plan, "SK-FF")
+    plan_rf = rencana.per_type(bulan_plan, "SK-RF")
+    sisa_ff, info_ff = sisabody.untuk(tgl, "SK-FF")
+    sisa_rf, info_rf = sisabody.untuk(tgl, "SK-RF")
+    sisa_sk = {k: sisa_ff.get(k, 0) + sisa_rf.get(k, 0) for k in set(sisa_ff) | set(sisa_rf)}
     hit = {d: _hitungan(tgl, d) for d in ("QC", "SK")}
     # type di luar daftar baku -> baris SPARE (urut nama)
     sisa_qc, sisa_info = sisabody.untuk(tgl)
@@ -115,7 +130,7 @@ def buat(tgl, bulan_plan=None, wb=None):
         for k, sp in zip(tambah, spare):
             baris[baris.index(sp)] = k
         return baris
-    nm = {"QC": _nama_baris(hit["QC"], plan_qc, sisa_qc), "SK": _nama_baris(hit["SK"], plan_sk)}
+    nm = {"QC": _nama_baris(hit["QC"], plan_qc, sisa_qc), "SK": _nama_baris(hit["SK"], {**plan_rf, **plan_sk}, sisa_sk)}
     if wb is None:
         wb = Workbook()
         ws_qc = wb.active
@@ -123,8 +138,8 @@ def buat(tgl, bulan_plan=None, wb=None):
         ws_qc = wb.create_sheet()
     ws_sk, ws_in = wb.create_sheet(), wb.create_sheet("INPUT")
     ws_qc.title, ws_sk.title = "REKAP HITUNG LABEL QC", "REKAP HITUNG LABEL SK"
-    _sheet(ws_qc, "REKAP HITUNG LABEL QC TK", "QC", ("A", "B", "C", "D"), hit["QC"], plan_qc, nm["QC"], sisa_qc)
-    _sheet(ws_sk, "REKAP HITUNG LABEL QC SK", "SK", ("F", "G", "H", "I"), hit["SK"], plan_sk, nm["SK"])
+    _sheet(ws_qc, "REKAP HITUNG LABEL QC TK", "QC", ("A", "B", "C", "D"), hit["QC"], plan_qc, nm["QC"], sisa_qc, True)
+    _sheet(ws_sk, "REKAP HITUNG LABEL QC SK", "SK", ("F", "G", "H", "I"), hit["SK"], plan_sk, nm["SK"], sisa_sk, False, plan_rf)
     # INPUT
     y, m, d = int(tgl[:4]), int(tgl[5:7]), int(tgl[8:10])
     bln = f"{BULAN_ID[m - 1]} {y}"
@@ -158,6 +173,11 @@ def buat(tgl, bulan_plan=None, wb=None):
     ws_qc["A93"] = (f"Hitungan aktual per {d} {bln}. Rencana produksi: {rencana.nama_bulan(bulan_plan)} (blok QUALITY CONTROL). "
                     + (f"Sisa body: file stok body {int(sisa_info[0][8:10])} {BULAN_ID[int(sisa_info[0][5:7]) - 1]} {sisa_info[0][:4]} {sisa_info[1]} (kolom PERIKSA)."
                      if sisa_info else "Sisa body belum diupload (menu Stok Body di admin); kolom biru bisa diisi manual.") + ("" if plan_qc else " RENCANA BELUM DIUPLOAD untuk bulan ini (menu Rencana Produksi di admin)."))
+    ket = []
+    for nmx, inf in (("Firstfiring", info_ff), ("Refiring", info_rf)):
+        ket.append(f"SK {nmx}: " + (f"{int(inf[0][8:10])} {BULAN_ID[int(inf[0][5:7]) - 1]} {inf[1]}" if inf else "belum diupload"))
+    ws_qc["A94"] = "Sisa body SK = " + "; ".join(ket) + ". Rencana SK: FF di kolom E, RF di kolom H."
+    ws_qc["A94"].font = Font(name=F, italic=True, size=9)
     ws_qc["A93"].font = Font(name=F, italic=True, size=9)
     return wb
 

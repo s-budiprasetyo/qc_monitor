@@ -976,6 +976,9 @@ def dlg_selisih():
     elif dept not in boleh:
         st.caption(f"ADJUST {dept} hanya bisa dilakukan oleh foreman {dept} atau admin.")
     else:
+        _ai = stok.adjust_terakhir(dept)
+        if _ai:
+            st.caption(f"Terakhir di-ADJUST: stok opname tanggal {label_ui.tgl_id(_ai['tgl'])} (diproses {_ai['waktu'][11:16]} {label_ui.tgl_id(_ai['waktu'][:10])}, oleh {_ai['oleh']}).")
         st.caption(f"{len(status)} lokasi {dept} dihitung pada tanggal ini, {len(belum)} belum di-adjust. "
                    "Stok sistem diganti angka aktual mulai tanggal opname; lokasi yang tidak dihitung tidak berubah.")
         with st.container(key="il_adj"):

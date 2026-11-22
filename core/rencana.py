@@ -38,6 +38,7 @@ def _angka(v):
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
 
 
+DEPT_SK = {"SK-FF": "SK Firstfiring", "SK-RF": "SK Refiring"}
 BLOK = {"QC": ("QUALITY CONTROL", "PERIKSA"), "KAMA": ("GLAZING", "GLAZUR")}  # KAMA = blok GLAZING (hasil glazur masuk kama/bakar)
 NAMA_DEPT = {"QC": "QC", "KAMA": "KAMA"}
 
@@ -124,6 +125,67 @@ def baca_file(f):
         forming = forming or fm
     pabrik = "2" if forming and min(forming) >= 5 else "1"
     return pabrik, out, []
+
+
+def baca_sk(f, nama=""):
+    """Rencana produksi SK (Firstfiring / Refiring) — pembaca umum: cari blok berjudul 'RENCANA PRODUKSI', kolom tanggal 1..31 dan kolom total.
+    -> (pabrik, (total, harian), peringatan[]). Pabrik dari tulisan 'PABRIK: n' / nama file; bila tidak ketemu '1' (bisa diganti di layar)."""
+    import openpyxl
+    wb = openpyxl.load_workbook(f, data_only=True)
+    ws = None
+    for w in wb.worksheets:
+        if any(isinstance(c.value, str) and "RENCANA PRODUKSI" in c.value.upper() for r in w.iter_rows(min_row=1, max_row=8) for c in r):
+            ws = w
+            break
+    if ws is None:
+        raise ValueError("Judul 'RENCANA PRODUKSI' tidak ditemukan di 8 baris pertama. Kirim contoh file SK-nya supaya formatnya bisa disesuaikan.")
+    judul = [c for r in ws.iter_rows(min_row=1, max_row=8) for c in r if isinstance(c.value, str) and "RENCANA PRODUKSI" in c.value.upper()]
+    col0 = min(c.column for c in judul)
+    brs = None
+    for r in range(5, 20):  # baris tanggal: >= 10 angka 1..31 di kanan kolom type
+        n = sum(1 for c in range(col0 + 1, col0 + 60) if isinstance(ws.cell(r, c).value, (int, float)) and 1 <= ws.cell(r, c).value <= 31)
+        if n >= 10:
+            brs = r
+            break
+    if brs is None:
+        raise ValueError("Baris tanggal (1-31) tidak ditemukan. Kirim contoh file SK-nya supaya formatnya bisa disesuaikan.")
+    hari = {c: int(ws.cell(brs, c).value) for c in range(col0 + 1, col0 + 60)
+            if isinstance(ws.cell(brs, c).value, (int, float)) and 1 <= ws.cell(brs, c).value <= 31}
+    ct = None
+    for c in range(max(hari) + 1, max(hari) + 12):
+        for rr in range(brs - 2, brs + 2):
+            v = ws.cell(rr, c).value
+            if isinstance(v, str) and v.strip().upper() in ("TOTAL", "JUMLAH", "PERIKSA", "KIRIM", "BAGUS", "TOTAL BULAN"):
+                ct = ct or c
+    tot, har = [], []
+    for r in range(brs + 1, ws.max_row + 1):
+        t = ws.cell(r, col0).value
+        if not isinstance(t, str) or not t.strip():
+            continue
+        u = t.strip().upper()
+        if u.startswith("GRAND TOTAL"):
+            break
+        if u.startswith(("TOTAL", "FORMING", "HAL")):
+            continue
+        k = kunci_type(t.strip(), "")
+        dh = {d: _angka(ws.cell(r, c).value) for c, d in hari.items()}
+        jml = _angka(ws.cell(r, ct).value) if ct else sum(dh.values())
+        tot.append({"type": k, "periksa": jml, "bagus": 0.0})
+        for d, v in dh.items():
+            if v:
+                har.append({"type": k, "tgl": d, "jumlah": v})
+    if not tot:
+        raise ValueError("Tidak ada baris type pada blok rencana SK.")
+    d = pd.DataFrame(tot).groupby("type", sort=False, as_index=False).sum()
+    d["periksa"] = d["periksa"].round().astype(int)
+    d["bagus"] = 0
+    h = pd.DataFrame(har, columns=["type", "tgl", "jumlah"])
+    if len(h):
+        h = h.groupby(["type", "tgl"], as_index=False).sum()
+        h["jumlah"] = h["jumlah"].round().astype(int)
+    m = re.search(r"PABRIK\s*:?\s*(\d)", " ".join(str(c.value) for r in ws.iter_rows(min_row=1, max_row=6) for c in r if isinstance(c.value, str)).upper()) \
+        or re.search(r"(?:PABRIK\s*|\bP)(\d)\b", str(nama).upper())
+    return (m.group(1) if m else "1"), (d, h), []
 
 
 def simpan(bulan, pabrik, hasil, nama_file):

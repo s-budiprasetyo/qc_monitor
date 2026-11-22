@@ -4,7 +4,8 @@ import re
 import pandas as pd
 from core import data, rencana
 
-KOLOM = ["tgl", "shift", "type", "jumlah", "file", "waktu"]
+KOLOM = ["tgl", "shift", "dept", "type", "jumlah", "file", "waktu"]
+DEPT = {"QC": "QC TK", "SK-FF": "SK Firstfiring", "SK-RF": "SK Refiring"}
 _SUFIKS = re.compile(r"\((?:P\d|HPC|BC|MESIN)\)|\s+(?:HPC|BC)$", re.I)
 
 
@@ -57,34 +58,47 @@ def baca_file(f, nama=""):
     return tgl, ms.group(1).upper(), d
 
 
-def simpan(tgl, shift, d, nama_file):
-    b = pd.DataFrame({"tgl": tgl, "shift": shift, "type": d["type"], "jumlah": d["jumlah"], "file": nama_file, "waktu": data.sekarang()})
-    lama = data.baca("sisa_body")
-    hapus = lama[(lama["tgl"] == tgl) & (lama["shift"] == shift)] if len(lama) else None
-    data.upsert("sisa_body", b[KOLOM], ["tgl", "shift", "type"], hapus=hapus[["tgl", "shift", "type"]] if hapus is not None and len(hapus) else None)
+def simpan(tgl, shift, d, nama_file, dept="QC"):
+    b = pd.DataFrame({"tgl": tgl, "shift": shift, "dept": dept, "type": d["type"], "jumlah": d["jumlah"], "file": nama_file, "waktu": data.sekarang()})
+    lama = _baca()
+    hapus = lama[(lama["tgl"] == tgl) & (lama["shift"] == shift) & (lama["dept"] == dept)] if len(lama) else None
+    data.upsert("sisa_body", b[KOLOM], ["tgl", "shift", "dept", "type"], hapus=hapus[["tgl", "shift", "dept", "type"]] if hapus is not None and len(hapus) else None)
 
 
-def daftar():
-    """DataFrame[tgl, shift, file, waktu, jumlah(total)] terbaru dulu."""
-    d = data.baca("sisa_body")
+def _baca():
+    d = data.baca("sisa_body").copy()
+    if len(d):
+        if "dept" not in d.columns:
+            d["dept"] = ""
+        d["dept"] = d["dept"].replace("", "QC")  # data lama (sebelum ada SK) = QC TK
+    return d
+
+
+def daftar(dept=None):
+    """DataFrame[tgl, shift, dept, file, waktu, jumlah(total), type(jml)] terbaru dulu."""
+    d = _baca()
     if d.empty:
         return d
+    if dept:
+        d = d[d["dept"] == dept]
+        if d.empty:
+            return d
     d["jumlah"] = pd.to_numeric(d["jumlah"], errors="coerce").fillna(0)
-    g = d.groupby(["tgl", "shift"], as_index=False).agg(file=("file", "first"), waktu=("waktu", "first"), jumlah=("jumlah", "sum"), type=("type", "count"))
+    g = d.groupby(["tgl", "shift", "dept"], as_index=False).agg(file=("file", "first"), waktu=("waktu", "first"), jumlah=("jumlah", "sum"), type=("type", "count"))
     g["u"] = g["shift"].map({"PAGI": 0, "SORE": 1})
     return g.sort_values(["tgl", "u"], ascending=False).drop(columns="u")
 
 
-def untuk(tgl):
-    """({type: jumlah}, (tgl_file, shift)) dari file stok body terbaru pada atau sebelum `tgl`; ({}, None) bila tidak ada."""
-    g = daftar()
+def untuk(tgl, dept="QC"):
+    """({type: jumlah}, (tgl_file, shift)) dari file stok body `dept` terbaru pada atau sebelum `tgl`; ({}, None) bila tidak ada."""
+    g = daftar(dept)
     if g.empty:
         return {}, None
     g = g[g["tgl"] <= tgl]
     if g.empty:
         return {}, None
     t, s = g.iloc[0]["tgl"], g.iloc[0]["shift"]
-    d = data.baca("sisa_body")
-    d = d[(d["tgl"] == t) & (d["shift"] == s)].copy()
+    d = _baca()
+    d = d[(d["tgl"] == t) & (d["shift"] == s) & (d["dept"] == dept)].copy()
     d["jumlah"] = pd.to_numeric(d["jumlah"], errors="coerce").fillna(0).astype(int)
     return d.groupby("type")["jumlah"].sum().to_dict(), (t, s)

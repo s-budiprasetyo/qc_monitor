@@ -41,6 +41,44 @@ tgl = c1.date_input("Stok per tanggal (akhir hari)", value=hari_ini, min_value=d
 dept_pil = c2.segmented_control("Departemen", ["QC", "SK", "Gabungan QC + SK"], default="QC", key="st_dept", label_visibility="collapsed") or "QC"
 dept = {"QC": "QC", "SK": "SK"}.get(dept_pil)
 tgl_s = tgl.strftime("%Y-%m-%d")
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cek_adjust(dpt, versi):
+    return stok.adjust_cek(dpt)
+
+
+def _tgl_id(t):
+    return f"{t[8:10]}-{t[5:7]}-{t[:4]}"
+
+
+def _panel_adjust(dpt):
+    """Kapan stok aktual terakhir di-ADJUST jadi stok sistem, dan bukti bahwa stok sistem sudah sama dengan hasil hitung."""
+    info, df, belum = _cek_adjust(dpt, data.versi())
+    st.markdown(f"**ADJUST STOK {dpt}**")
+    if not info:
+        st.caption("Belum pernah di-ADJUST. (Foreman: Stok Opname Label → Selisih Stok Opname → ADJUST)")
+        return
+    w = info["waktu"]
+    st.markdown(f"Terakhir di-ADJUST: **stok opname tanggal {_tgl_id(info['tgl'])}**, diproses {w[11:16]} {_tgl_id(w[:10])} oleh {info['oleh']} "
+                f"({len(info['lokasi'])} lokasi).")
+    ok = int(df["ok"].sum()) if len(df) else 0
+    if len(df) and ok == len(df):
+        st.success(f"✔ Sudah berlaku: stok sistem akhir hari {_tgl_id(info['tgl'])} sama dengan hasil hitung aktual untuk semua {len(df)} type.")
+    elif len(df):
+        st.warning(f"{len(df) - ok} dari {len(df)} type stok sistemnya belum sama dengan hasil hitung aktual (lihat tabel di bawah).")
+    if belum:
+        st.info(f"{len(belum)} lokasi sudah dihitung pada tanggal itu tetapi belum di-ADJUST.")
+    if len(df):
+        with st.expander("Lihat perbandingan per type (aktual vs stok sistem)"):
+            x = pd.DataFrame({"TYPE": df["label"], "AKTUAL (hitung)": df["aktual"], "STOK SISTEM": df["sistem"],
+                              "STATUS": ["✔ sudah berlaku" if o else "✘ beda" for o in df["ok"]]})
+            st.dataframe(x, hide_index=True, width="stretch", height=min(380, 38 + 35 * len(x)))
+            st.caption(f"Stok sistem dihitung akhir hari {_tgl_id(info['tgl'])}. Setelah itu stok bergerak lagi (label bagus, afkir, penerimaan), jadi angka stok hari ini bisa berbeda.")
+
+
+for _d in (["QC", "SK"] if dept is None else [dept]):
+    _panel_adjust(_d)
 with st.spinner("Menghitung stok…"):
     total = stok.stok_semua(tgl_s, dept)
     permeja = stok.stok_per_meja(tgl_s, dept)

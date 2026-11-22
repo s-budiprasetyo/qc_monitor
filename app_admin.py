@@ -413,18 +413,27 @@ def dlg_rencana():
     st.caption("Upload file **Draft Rencana Produksi** tiap pabrik (satu file berisi semua departemen). Yang dibaca: rencana harian **KAMA** "
                "(blok Glazing) dan **QC** (blok Quality Control); departemen lain diabaikan. Pabrik & bulan dikenali otomatis. "
                "Upload ulang = menggantikan data lama.")
-    fs = st.file_uploader("► Upload Rencana Produksi (boleh dua file sekaligus)", type=["xlsx"], key="rp_file", accept_multiple_files=True)
+    jenis = st.segmented_control("Jenis file", ["QC + KAMA", "SK Firstfiring", "SK Refiring"], default="QC + KAMA", key="rp_jenis") or "QC + KAMA"
+    kode_sk = {"SK Firstfiring": "SK-FF", "SK Refiring": "SK-RF"}.get(jenis)
+    if kode_sk:
+        st.caption("File rencana SK dipisah: Firstfiring dan Refiring masing-masing per pabrik. Pilih jenis file di atas sebelum upload.")
+    fs = st.file_uploader(f"► Upload Rencana Produksi {jenis} (boleh beberapa file)", type=["xlsx"], key=f"rp_file_{kode_sk or 'qc'}", accept_multiple_files=True)
     hasil = []
     for f in fs or []:
         try:
-            pabrik, o, _ = rencana.baca_file(f)
+            if kode_sk:
+                pabrik, hh, _ = rencana.baca_sk(f, f.name)
+                pabrik = st.selectbox(f"Pabrik untuk {f.name}", ["1", "2"], index=int(pabrik) - 1, key=f"rp_pab_{f.name}")
+                o = {kode_sk: hh}
+            else:
+                pabrik, o, _ = rencana.baca_file(f)
         except Exception as e:
             st.error(f"{f.name}: {e}")
             continue
         bl = rencana.bulan_dari_nama(f.name) or datetime.now(data.WIB).strftime("%Y-%m")
         hasil.append((f.name, pabrik, o, bl))
-        st.success(f"Pabrik {pabrik} · {rencana.nama_bulan(bl)} · KAMA {int(o['KAMA'][0]['periksa'].sum()):,} · QC {int(o['QC'][0]['periksa'].sum()):,}"
-                   .replace(",", "."))
+        ring = " · ".join(f"{rencana.DEPT_SK.get(k, k)} {int(v[0]['periksa'].sum()):,}" for k, v in o.items()).replace(",", ".")
+        st.success(f"Pabrik {pabrik} · {rencana.nama_bulan(bl)} · {ring}")
     if hasil and st.button("SIMPAN RENCANA PRODUKSI", type="primary", width="stretch", key="rp_simpan"):
         with st.spinner("Menyimpan…"):
             for nama, pabrik, o, bl in hasil:
@@ -443,41 +452,55 @@ def dlg_rencana():
     pab = c2.selectbox("Pabrik", ["Semua", "1", "2"], key="rp_pab")
     lihat = st.segmented_control("Tampilan", ["Total harian", "Per type", "Matriks tanggal"], default="Total harian", key="rp_lihat",
                                  label_visibility="collapsed") or "Total harian"
-    H = {k: rencana.harian(pil, k) for k in ("KAMA", "QC")}
+    NAMA_D = {"KAMA": "KAMA", "QC": "QC", "SK-FF": "SK FF", "SK-RF": "SK RF"}
+    H = {k: rencana.harian(pil, k) for k in NAMA_D}
     if pab != "Semua":
         H = {k: v[v["pabrik"].astype(str) == pab] if len(v) else v for k, v in H.items()}
-    if all(v.empty for v in H.values()):
+    H = {k: v for k, v in H.items() if len(v)}
+    if not H:
         st.info("Belum ada data untuk pilihan ini.")
         return
     import calendar
     y, m = int(pil[:4]), int(pil[5:7])
     hari_bulan = calendar.monthrange(y, m)[1]
     NM = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"]
+    def _jml(dp, t, tp=None):
+        v = H.get(dp)
+        if v is None or v.empty:
+            return 0
+        v = v[v["tgl"] == t]
+        if tp is not None:
+            v = v[v["type"] == tp]
+        return int(v["jumlah"].sum())
+
     if lihat == "Total harian":
         rows = []
         for t in range(1, hari_bulan + 1):
-            k = int(H["KAMA"].loc[H["KAMA"]["tgl"] == t, "jumlah"].sum()) if len(H["KAMA"]) else 0
-            q = int(H["QC"].loc[H["QC"]["tgl"] == t, "jumlah"].sum()) if len(H["QC"]) else 0
-            rows.append({"TGL": f"{t:02d} {NM[calendar.weekday(y, m, t)]}", "KAMA": k, "QC": q, "SELISIH": k - q})
+            r = {"TGL": f"{t:02d} {NM[calendar.weekday(y, m, t)]}"}
+            for dp in H:
+                r[NAMA_D[dp]] = _jml(dp, t)
+            rows.append(r)
         d = pd.DataFrame(rows)
-        tot = {"TGL": "TOTAL", "KAMA": int(d["KAMA"].sum()), "QC": int(d["QC"].sum()), "SELISIH": int(d["SELISIH"].sum())}
+        tot = {"TGL": "TOTAL", **{NAMA_D[dp]: int(d[NAMA_D[dp]].sum()) for dp in H}}
         st.dataframe(pd.concat([d, pd.DataFrame([tot])], ignore_index=True), hide_index=True, width="stretch", height=430)
-        st.caption("KAMA = rencana glazur masuk kama, QC = rencana periksa QC. Selisih = KAMA − QC (bukan stok).")
+        st.caption("KAMA = rencana glazur masuk kama, QC = rencana periksa QC, SK FF / SK RF = rencana Firstfiring / Refiring.")
     elif lihat == "Per type":
-        tipe = sorted(set(H["KAMA"]["type"]) | set(H["QC"]["type"])) if True else []
+        tipe = sorted(set().union(*[set(v["type"]) for v in H.values()]))
         tp = st.selectbox("Type", tipe, key="rp_type")
         rows = []
         for t in range(1, hari_bulan + 1):
-            k = int(H["KAMA"].loc[(H["KAMA"]["tgl"] == t) & (H["KAMA"]["type"] == tp), "jumlah"].sum()) if len(H["KAMA"]) else 0
-            q = int(H["QC"].loc[(H["QC"]["tgl"] == t) & (H["QC"]["type"] == tp), "jumlah"].sum()) if len(H["QC"]) else 0
-            rows.append({"TGL": f"{t:02d} {NM[calendar.weekday(y, m, t)]}", "KAMA": k, "QC": q})
+            r = {"TGL": f"{t:02d} {NM[calendar.weekday(y, m, t)]}"}
+            for dp in H:
+                r[NAMA_D[dp]] = _jml(dp, t, tp)
+            rows.append(r)
         d = pd.DataFrame(rows)
-        d = pd.concat([d, pd.DataFrame([{"TGL": "TOTAL", "KAMA": int(d["KAMA"].sum()), "QC": int(d["QC"].sum())}])], ignore_index=True)
+        d = pd.concat([d, pd.DataFrame([{"TGL": "TOTAL", **{NAMA_D[dp]: int(d[NAMA_D[dp]].sum()) for dp in H}}])], ignore_index=True)
         st.dataframe(d, hide_index=True, width="stretch", height=430)
     else:
-        dp = st.segmented_control("Departemen", ["KAMA", "QC"], default="QC", key="rp_dept", label_visibility="collapsed") or "QC"
-        v = H[dp]
-        if v.empty:
+        dp = st.segmented_control("Departemen", [NAMA_D[k] for k in H], default=NAMA_D[list(H)[-1]], key="rp_dept", label_visibility="collapsed") or NAMA_D[list(H)[-1]]
+        dp = {v: k for k, v in NAMA_D.items()}.get(dp, list(H)[-1])
+        v = H.get(dp)
+        if v is None or v.empty:
             st.info("Belum ada data.")
         else:
             pv = v.pivot_table(index="type", columns="tgl", values="jumlah", aggfunc="sum", fill_value=0)
@@ -488,8 +511,8 @@ def dlg_rencana():
             pv.columns = [str(c) for c in pv.columns]
             st.dataframe(pv.reset_index().rename(columns={"type": "TYPE"}), hide_index=True, width="stretch", height=430)
     ada = data.baca("rencana_qc")
-    info = ada[(ada["bulan"] == pil) & (ada["dept"] == "QC")].drop_duplicates("pabrik")
-    st.caption(" · ".join(f"Pabrik {r.pabrik}: {r.waktu}" for r in info.itertuples()))
+    info = ada[ada["bulan"] == pil].drop_duplicates(["dept", "pabrik"])
+    st.caption(" · ".join(f"{NAMA_D.get(r.dept, r.dept)} P{r.pabrik}: {r.waktu}" for r in info.itertuples()))
 
 
 
@@ -497,12 +520,16 @@ def dlg_rencana():
 @st.dialog("STOK BODY", width="large")
 def dlg_stokbody():
     kontrol_jendela("stokbody")
-    kepala("box", "STOK BODY QC TK")
+    kepala("box", "STOK BODY")
     from core import sisabody
-    st.caption("Upload file **Stok Opname harian QC TK** (PAGI / SORE). Yang dibaca: kolom **PERIKSA** (OP 100 siap periksa) per type. "
+    st.caption("Upload file **Stok Opname harian** (PAGI / SORE): QC TK, SK Firstfiring, atau SK Refiring (pilih jenis di bawah). Yang dibaca: kolom **PERIKSA** (OP 100 siap periksa) per type. "
                "Dipakai sebagai kolom **SISA BODY** pada rekap hitung label: file terbaru pada atau sebelum tanggal hitung. "
                "Upload ulang tanggal + shift yang sama = menggantikan.")
-    fs = st.file_uploader("► Upload Stok Body (boleh beberapa file)", type=["xlsx"], key="sb_file", accept_multiple_files=True)
+    jenis = st.segmented_control("Jenis file", ["QC TK", "SK Firstfiring", "SK Refiring"], default="QC TK", key="sb_jenis") or "QC TK"
+    kode = {"QC TK": "QC", "SK Firstfiring": "SK-FF", "SK Refiring": "SK-RF"}[jenis]
+    if kode != "QC":
+        st.caption("Stok body SK dipisah: satu file Firstfiring dan satu file Refiring (masing-masing sudah gabungan pabrik). Di rekap, sisa body SK = FF + RF.")
+    fs = st.file_uploader(f"► Upload Stok Body {jenis} (boleh beberapa file)", type=["xlsx"], key=f"sb_file_{kode}", accept_multiple_files=True)
     hasil = []
     for f in fs or []:
         try:
@@ -511,14 +538,14 @@ def dlg_stokbody():
             st.error(f"{f.name}: {e}")
             continue
         hasil.append((f.name, tgl, shift, d))
-        st.success(f"{label_ui.tgl_id(tgl)} · {shift} · {int((d['jumlah'] > 0).sum())} type berisi · total {int(d['jumlah'].sum()):,}".replace(",", "."))
+        st.success(f"{jenis} · {label_ui.tgl_id(tgl)} · {shift} · {int((d['jumlah'] > 0).sum())} type berisi · total {int(d['jumlah'].sum()):,}".replace(",", "."))
         with st.expander("Lihat hasil baca"):
             x = d[d["jumlah"] > 0].rename(columns={"type": "TYPE", "jumlah": "SISA BODY"})
             st.dataframe(x, hide_index=True, width="stretch", height=min(380, 38 + 35 * len(x)))
     if hasil and st.button("SIMPAN STOK BODY", type="primary", width="stretch", key="sb_simpan"):
         with st.spinner("Menyimpan…"):
             for nama, tgl, shift, d in hasil:
-                sisabody.simpan(tgl, shift, d, nama)
+                sisabody.simpan(tgl, shift, d, nama, kode)
             data.catat_update("STOK BODY")
         st.session_state["sb_ok"] = True
         st.rerun(scope="fragment")
@@ -529,8 +556,8 @@ def dlg_stokbody():
         st.info("Belum ada file stok body.")
         return
     st.markdown("**File tersimpan**")
-    g = g.head(30).assign(TANGGAL=g.head(30)["tgl"].map(label_ui.tgl_id))
-    st.dataframe(g[["TANGGAL", "shift", "type", "jumlah", "waktu"]].rename(columns={"shift": "SHIFT", "type": "JML TYPE", "jumlah": "TOTAL", "waktu": "DIUPLOAD"}),
+    g = g.head(40).assign(TANGGAL=g.head(40)["tgl"].map(label_ui.tgl_id), JENIS=g.head(40)["dept"].map(lambda k: sisabody.DEPT.get(k, k)))
+    st.dataframe(g[["TANGGAL", "shift", "JENIS", "type", "jumlah", "waktu"]].rename(columns={"shift": "SHIFT", "type": "JML TYPE", "jumlah": "TOTAL", "waktu": "DIUPLOAD"}),
                  hide_index=True, width="stretch", height=min(320, 38 + 35 * len(g)))
 
 

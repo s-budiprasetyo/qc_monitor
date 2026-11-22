@@ -43,7 +43,7 @@ KOLOM = {
     # warna kosong = berlaku untuk semua warna; sni = "ya" bila label itu punya label pendamping SNI.
     "rencana_qc": ["bulan", "pabrik", "dept", "type", "periksa", "bagus", "file", "waktu"],  # rencana produksi bulanan blok QUALITY CONTROL per pabrik
     "rencana_harian": ["bulan", "pabrik", "dept", "type", "tgl", "jumlah"],  # rencana harian per type (QC & KAMA)
-    "sisa_body": ["tgl", "shift", "type", "jumlah", "file", "waktu"],  # sisa body (kolom PERIKSA) dari file Stok Opname harian QC TK
+    "sisa_body": ["tgl", "shift", "dept", "type", "jumlah", "file", "waktu"],  # sisa body (kolom PERIKSA) dari file Stok Opname harian QC TK
     "jenis_label": ["kategori", "label", "type_sap", "warna", "sni", "ket"],
 }
 TAB_LAPORAN = ("HASIL KERJA KARYAWAN", "ALASAN TIDAK TARGET")
