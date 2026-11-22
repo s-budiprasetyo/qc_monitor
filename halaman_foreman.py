@@ -841,12 +841,6 @@ def _selisih_angka(d):
     return f"<b style='color:{c}'>{d:+,}</b>".replace(",", ".") if d else "<b style='color:#1d6f2f'>0</b>"
 
 
-@st.cache_data(ttl=30, show_spinner=False)
-def _rekap_bytes(tgl):
-    from core import rekap
-    return rekap.bytes_rekap(tgl)
-
-
 def _excel_selisih(tgl, status):
     import io
     from openpyxl import Workbook
@@ -858,9 +852,15 @@ def _excel_selisih(tgl, status):
         for lb, (a, sx) in stok.opname_baris(tgl, lk).items():
             r = ws.max_row + 1
             ws.append([_lok_ringkas(lk), lb, sx, a, f"=D{r}-C{r}"])
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
+    for col, w in zip("ABCDE", (16, 16, 11, 11, 11)):
+        ws.column_dimensions[col].width = w
+    from core import rekap
+    return rekap.bytes_rekap(tgl, wb=wb)  # + sheet rekap QC TK / SK / INPUT (format Oktober)
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _excel_selisih_c(tgl, lokasi):
+    return _excel_selisih(tgl, list(lokasi))
 
 
 def _konfirmasi_adjust(tgl, dept, belum, oleh):
@@ -963,9 +963,11 @@ def dlg_selisih():
     elif lihat != "Total per type" and status:
         st.caption("Pilih lokasi yang ingin dilihat.")
     if status:
-        st.download_button("⬇ UNDUH EXCEL", _excel_selisih(tgl, status), file_name=f"selisih_opname_{dept_pil}_{tgl}.xlsx", width="stretch", key="sl_xls")
-        st.download_button("⬇ UNDUH REKAP HITUNG LABEL (format Oktober)", _rekap_bytes(tgl), file_name=f"REKAP_HITUNG_LABEL_{tgl}.xlsx",
-                           width="stretch", key="sl_rekap", help="QC TK + SK + sheet INPUT, rencana produksi dari menu Rencana Produksi (admin)")
+        st.download_button("⬇ UNDUH EXCEL (selisih + rekap hitung label)", _excel_selisih_c(tgl, tuple(status)), file_name=f"selisih_opname_{dept_pil}_{tgl}.xlsx", width="stretch", key="sl_xls")
+        from core import rekap, rencana
+        bp = rekap.bulan_rencana(tgl)
+        st.caption(f"Excel berisi sheet Selisih opname + REKAP HITUNG LABEL QC / SK + INPUT. Rencana produksi: {rencana.nama_bulan(bp)}"
+                   + ("" if rencana.per_type(bp, "QC") else " (belum diupload di admin)") + ".")
     st.markdown("---")
     belum = [lk for lk, sdh in status.items() if not sdh]
     st.markdown("**ADJUST** — jadikan stok aktual sebagai stok awal periode berikutnya")

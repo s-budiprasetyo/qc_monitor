@@ -3,7 +3,7 @@ JUMLAH LABEL = hasil hitung aktual (SUMIF dari INPUT), SISA LABEL = B-C, PB LABE
 import io
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from core import label, rencana, stok
+from core import label, rencana, sisabody, stok
 
 URUTAN = ["CE6", "CE7", "CE9", "CW52J", "CW53J", "CW53PJ", "CW420J", "CW421J", "CW633J", "CW637J", "CW702J", "L38", "L38V1", "L521V1A",
           "L529V1", "L568V3", "LW211CJ", "LW230J", "LW236CJ", "LW240CJ", "LW246J", "LW247CJ", "LW248JT1", "LW540J", "LW642CJ", "LW647CJ",
@@ -35,7 +35,8 @@ def _hitungan(tgl, dept):
     return out
 
 
-def _sheet(ws, judul, dept, kol_in, hit, plan, baris_nama):
+def _sheet(ws, judul, dept, kol_in, hit, plan, baris_nama, sisa=None):
+    sisa = sisa or {}
     ws["A1"] = judul
     ws["A1"].font = Font(name=F, bold=True, size=16)
     for i, h in enumerate(["TYPE", "JUMLAH LABEL", "SISA BODY", "SISA LABEL", "RENCANA PRODUKSI", "PB LABEL"], start=1):
@@ -53,9 +54,15 @@ def _sheet(ws, judul, dept, kol_in, hit, plan, baris_nama):
         ws.cell(r, 2, f"=SUMIF(INPUT!${tk}$3:${tk}${TGL_INPUT_MAKS},A{r},INPUT!${jm}$3:${jm}${TGL_INPUT_MAKS})")
         ws.cell(r, 4, f"=+B{r}-C{r}")
         if nama == "CE7":
-            ws.cell(r, 3, f"=SUM(C{BARIS_AWAL + baris_nama.index('CE7#HBE')}:C{BARIS_AWAL + baris_nama.index('CE7#PP')})")
+            ws.cell(r, 3, f"={int(sisa.get('CE7', 0))}+SUM(C{BARIS_AWAL + baris_nama.index('CE7#HBE')}:C{BARIS_AWAL + baris_nama.index('CE7#PP')})")
             ws.cell(r, 5, f"={int(plan.get('CE7', 0))}+SUM(E{BARIS_AWAL + baris_nama.index('CE7#HBE')}:E{BARIS_AWAL + baris_nama.index('CE7#PP')})")
+        elif nama == "SNI" and sisa:  # sisa body SNI = jumlah semua type CW kecuali CW52J
+            cw = [BARIS_AWAL + baris_nama.index(k) for k in baris_nama if k.startswith("CW") and k != "CW52J"]
+            ws.cell(r, 3, "=" + "+".join(f"C{x}" for x in cw))
+            ws.cell(r, 5, None)
         else:
+            if sisa.get(nama):
+                ws.cell(r, 3, int(sisa[nama]))
             ws.cell(r, 5, int(plan[nama]) if plan.get(nama) else None)
         ws.cell(r, 6, f"=E{r}+C{r}-B{r}" if not nama.startswith("SPARE") else None)
         for cc in range(1, 7):
@@ -70,7 +77,7 @@ def _sheet(ws, judul, dept, kol_in, hit, plan, baris_nama):
         ws[f"{col}{rs}"] = f"=SUM({col}{BARIS_AWAL}:{col}{BARIS_AKHIR})"
     # SISA BODY & RENCANA type CE7 sudah memuat jumlah varian CE7#… (baris 57-64), jadi varian tidak dihitung dua kali di SUM
     v0, v1 = BARIS_AWAL + baris_nama.index("CE7#HBE"), BARIS_AWAL + baris_nama.index("CE7#PP")
-    ws[f"C{rs}"] = f"=SUM(C{BARIS_AWAL}:C{BARIS_AKHIR})-SUM(C{v0}:C{v1})"
+    ws[f"C{rs}"] = f"=SUM(C{BARIS_AWAL}:C{BARIS_AKHIR})-SUM(C{v0}:C{v1})" + (f"-C{BARIS_AWAL + baris_nama.index('SNI')}" if sisa else "")  # SNI = subset CW
     ws[f"E{rs}"] = f"=SUM(E{BARIS_AWAL}:E{BARIS_AKHIR})-SUM(E{v0}:E{v1})"
     for cc in range(1, 7):
         c = ws.cell(rs, cc)
@@ -84,25 +91,39 @@ def _sheet(ws, judul, dept, kol_in, hit, plan, baris_nama):
     ws.freeze_panes = "B3"
 
 
-def buat(tgl, bulan_plan=None):
-    """Workbook rekap untuk hasil hitung tanggal `tgl` (YYYY-MM-DD). Rencana diambil dari bulan `bulan_plan` (default bulan tgl)."""
-    bulan_plan = bulan_plan or tgl[:7]
+def bulan_rencana(tgl):
+    """Rekap label akhir bulan N memakai rencana produksi bulan N+1 (hitung 31 Okt -> rencana November)."""
+    y, m = int(tgl[:4]), int(tgl[5:7])
+    return f"{y + (m == 12)}-{m % 12 + 1:02d}"
+
+
+def buat(tgl, bulan_plan=None, wb=None):
+    """Sheet rekap untuk hasil hitung tanggal `tgl` (YYYY-MM-DD), ditambahkan ke `wb` (atau workbook baru).
+    Rencana diambil dari `bulan_plan` (default: bulan sesudah tanggal hitung)."""
+    bulan_plan = bulan_plan or bulan_rencana(tgl)
     plan_qc = rencana.per_type(bulan_plan, "QC")
     plan_sk = rencana.per_type(bulan_plan, "SK")
     hit = {d: _hitungan(tgl, d) for d in ("QC", "SK")}
     # type di luar daftar baku -> baris SPARE (urut nama)
-    def _nama_baris(h, p):
-        tambah = sorted({k for k in list(h) + list(p) if k not in URUTAN and (h.get(k) or p.get(k))})
+    sisa_qc, sisa_info = sisabody.untuk(tgl)
+
+    def _nama_baris(h, p, sb=None):
+        sb = sb or {}
+        tambah = sorted({k for k in list(h) + list(p) + list(sb) if k not in URUTAN and (h.get(k) or p.get(k) or sb.get(k))})
         spare = [f"SPARE{n}" for n in range(25, 0, -1)]
         baris = list(URUTAN) + spare
         for k, sp in zip(tambah, spare):
             baris[baris.index(sp)] = k
         return baris
-    nm = {"QC": _nama_baris(hit["QC"], plan_qc), "SK": _nama_baris(hit["SK"], plan_sk)}
-    wb = Workbook()
-    ws_qc, ws_sk, ws_in = wb.active, wb.create_sheet(), wb.create_sheet("INPUT")
+    nm = {"QC": _nama_baris(hit["QC"], plan_qc, sisa_qc), "SK": _nama_baris(hit["SK"], plan_sk)}
+    if wb is None:
+        wb = Workbook()
+        ws_qc = wb.active
+    else:
+        ws_qc = wb.create_sheet()
+    ws_sk, ws_in = wb.create_sheet(), wb.create_sheet("INPUT")
     ws_qc.title, ws_sk.title = "REKAP HITUNG LABEL QC", "REKAP HITUNG LABEL SK"
-    _sheet(ws_qc, "REKAP HITUNG LABEL QC TK", "QC", ("A", "B", "C", "D"), hit["QC"], plan_qc, nm["QC"])
+    _sheet(ws_qc, "REKAP HITUNG LABEL QC TK", "QC", ("A", "B", "C", "D"), hit["QC"], plan_qc, nm["QC"], sisa_qc)
     _sheet(ws_sk, "REKAP HITUNG LABEL QC SK", "SK", ("F", "G", "H", "I"), hit["SK"], plan_sk, nm["SK"])
     # INPUT
     y, m, d = int(tgl[:4]), int(tgl[5:7]), int(tgl[8:10])
@@ -135,12 +156,13 @@ def buat(tgl, bulan_plan=None):
         ws_qc[c].font = Font(name=F, bold=True)
         ws_qc[c].number_format = "#,##0"
     ws_qc["A93"] = (f"Hitungan aktual per {d} {bln}. Rencana produksi: {rencana.nama_bulan(bulan_plan)} (blok QUALITY CONTROL). "
-                    "Sisa body (kolom biru) diisi manual.")
+                    + (f"Sisa body: file stok body {int(sisa_info[0][8:10])} {BULAN_ID[int(sisa_info[0][5:7]) - 1]} {sisa_info[0][:4]} {sisa_info[1]} (kolom PERIKSA)."
+                     if sisa_info else "Sisa body belum diupload (menu Stok Body di admin); kolom biru bisa diisi manual.") + ("" if plan_qc else " RENCANA BELUM DIUPLOAD untuk bulan ini (menu Rencana Produksi di admin)."))
     ws_qc["A93"].font = Font(name=F, italic=True, size=9)
     return wb
 
 
-def bytes_rekap(tgl, bulan_plan=None):
+def bytes_rekap(tgl, bulan_plan=None, wb=None):
     buf = io.BytesIO()
-    buat(tgl, bulan_plan).save(buf)
+    buat(tgl, bulan_plan, wb).save(buf)
     return buf.getvalue()

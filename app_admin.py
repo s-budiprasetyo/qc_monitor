@@ -8,7 +8,7 @@ import pandas as pd
 import streamlit as st
 
 import halaman_foreman
-from core import akses, calc, data, label, logic, parsers
+from core import akses, calc, data, label, label_ui, logic, parsers
 from core.grid import jadwal_grid
 from core.bulan import pilih_bulan
 from core.hub import hub, roda
@@ -492,6 +492,48 @@ def dlg_rencana():
     st.caption(" · ".join(f"Pabrik {r.pabrik}: {r.waktu}" for r in info.itertuples()))
 
 
+
+# ---------------------------------------------------------------- stok body (sisa body)
+@st.dialog("STOK BODY", width="large")
+def dlg_stokbody():
+    kontrol_jendela("stokbody")
+    kepala("box", "STOK BODY QC TK")
+    from core import sisabody
+    st.caption("Upload file **Stok Opname harian QC TK** (PAGI / SORE). Yang dibaca: kolom **PERIKSA** (OP 100 siap periksa) per type. "
+               "Dipakai sebagai kolom **SISA BODY** pada rekap hitung label: file terbaru pada atau sebelum tanggal hitung. "
+               "Upload ulang tanggal + shift yang sama = menggantikan.")
+    fs = st.file_uploader("► Upload Stok Body (boleh beberapa file)", type=["xlsx"], key="sb_file", accept_multiple_files=True)
+    hasil = []
+    for f in fs or []:
+        try:
+            tgl, shift, d = sisabody.baca_file(f, f.name)
+        except Exception as e:
+            st.error(f"{f.name}: {e}")
+            continue
+        hasil.append((f.name, tgl, shift, d))
+        st.success(f"{label_ui.tgl_id(tgl)} · {shift} · {int((d['jumlah'] > 0).sum())} type berisi · total {int(d['jumlah'].sum()):,}".replace(",", "."))
+        with st.expander("Lihat hasil baca"):
+            x = d[d["jumlah"] > 0].rename(columns={"type": "TYPE", "jumlah": "SISA BODY"})
+            st.dataframe(x, hide_index=True, width="stretch", height=min(380, 38 + 35 * len(x)))
+    if hasil and st.button("SIMPAN STOK BODY", type="primary", width="stretch", key="sb_simpan"):
+        with st.spinner("Menyimpan…"):
+            for nama, tgl, shift, d in hasil:
+                sisabody.simpan(tgl, shift, d, nama)
+            data.catat_update("STOK BODY")
+        st.session_state["sb_ok"] = True
+        st.rerun(scope="fragment")
+    if st.session_state.pop("sb_ok", False):
+        st.success("Stok body tersimpan.")
+    g = sisabody.daftar()
+    if g.empty:
+        st.info("Belum ada file stok body.")
+        return
+    st.markdown("**File tersimpan**")
+    g = g.head(30).assign(TANGGAL=g.head(30)["tgl"].map(label_ui.tgl_id))
+    st.dataframe(g[["TANGGAL", "shift", "type", "jumlah", "waktu"]].rename(columns={"shift": "SHIFT", "type": "JML TYPE", "jumlah": "TOTAL", "waktu": "DIUPLOAD"}),
+                 hide_index=True, width="stretch", height=min(320, 38 + 35 * len(g)))
+
+
 # ---------------------------------------------------------------- verifikasi karyawan
 @st.dialog("VERIFIKASI KARYAWAN", width="large")
 def dlg_verif():
@@ -924,7 +966,8 @@ def halaman_admin():
             "eval": ("EVALUASI", "Verifikasi alasan tidak target", "check", dlg_eval, "Terakhir update", _terakhir("EVALUASI KARYAWAN")),
             "awal": ("DATA AWAL", "Data karyawan dan target", "db", dlg_awal, "Status", f"{len(kar)} karyawan terdaftar"),
             "operator": ("DAFTAR OPERATOR", "Daftarkan operator untuk Input Label Afkir", "user", halaman_foreman.dlg_operator, "Status", f"{jml_op} operator"),
-            "rencana": ("RENCANA PRODUKSI", "Upload rencana produksi QC per pabrik", "doc", dlg_rencana, "Terakhir update", _terakhir("RENCANA PRODUKSI"))}
+            "rencana": ("RENCANA PRODUKSI", "Upload rencana produksi QC per pabrik", "doc", dlg_rencana, "Terakhir update", _terakhir("RENCANA PRODUKSI")),
+            "stokbody": ("STOK BODY", "Upload stok body harian (sisa body untuk rekap label)", "box", dlg_stokbody, "Terakhir update", _terakhir("STOK BODY"))}
     daftar = [{"id": k, "label": v[0], "sub": v[1], "icon": v[2], "status_label": v[4], "status": v[5], "disabled": v[3] is None}
               for k, v in MENU.items()]
     klik = roda(daftar, start=st.session_state.get("roda_id"), key="roda")
