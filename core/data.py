@@ -51,10 +51,14 @@ def norm_sni(nama, df):
         s = df[k] == "SNI"
         if s.sum() > 1 and angka:
             sn, lain = df[s].copy(), df[~s]
+            if "waktu" in kunci:  # baris satu kali simpan punya akhiran urut (-0000, -0001, ...): anggap satu batch
+                sn["_batch"] = sn["waktu"].astype(str).str.replace(r"-\d{2,4}$", "", regex=True)
+                kunci = [("_batch" if c == "waktu" else c) for c in kunci]
             for c in angka:
                 sn[c] = pd.to_numeric(sn[c], errors="coerce").fillna(0)
             agg = {c: "sum" for c in angka}
             agg.update({c: "first" for c in sn.columns if c not in kunci and c not in angka})
+            agg.pop("_batch", None)
             sn = sn.groupby(kunci, as_index=False, sort=False).agg(agg)[list(df.columns)]
             for c in angka:
                 sn[c] = sn[c].map(lambda v: str(int(v)) if float(v) == int(v) else str(v))
