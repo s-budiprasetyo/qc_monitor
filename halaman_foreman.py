@@ -466,17 +466,99 @@ def _pilih_dept(kunci, judul="Foreman"):
     return st.segmented_control(judul, boleh, default=boleh[0], key=kunci, label_visibility="collapsed") or boleh[0]
 
 
+CSS_TBL = """<style>
+.st-key-tb_tbl [data-testid='stHorizontalBlock']{flex-wrap:nowrap!important;gap:.4rem!important;align-items:center}
+.st-key-tb_tbl [data-testid='stColumn']{min-width:0!important;flex:1 1 0!important}
+.st-key-tb_tbl [class*='st-key-tbkuning_']{background:#fff6d6;border-radius:8px;padding:2px 4px}
+.tb-th{font-size:.66rem;font-weight:800;color:#5b7399;letter-spacing:.5px;padding:2px 0 4px}
+.tb-ty small{display:block;font-size:.58rem;font-weight:800;color:#7b8fb0;letter-spacing:.5px}.tb-ty b{font-size:.95rem;color:#0b3d91}
+.tb-n{text-align:right;font-weight:700;color:#35507f;font-size:.95rem}.tb-n.tot{color:#0b3d91;font-weight:800}.tb-n.kosong{color:#c0c9db}
+</style>"""
+
+
+def _sel_ty(t, kecil=None):
+    kecil = kecil or ("LABEL" if label.adalah_sni(t) else (label.ket_label(t) or label.kategori_label(t)).upper())
+    return f"<div class='tb-ty'><small>{kecil}</small><b>{html.escape(t)}</b></div>"
+
+
+def _urut():
+    return {lb: i for i, lb in enumerate(stok.semua_label())}
+
+
+def _ang(n):
+    return f"{int(n):,}".replace(",", ".")
+
+
+def _kepala_tbl(W, judul, rata):
+    h = st.columns(W)
+    for c, tx, al in zip(h, judul, rata):
+        c.markdown(f"<div class='tb-th' style='text-align:{al}'>{tx}</div>", unsafe_allow_html=True)
+
+
+def _baris_tambah(pref, ent, W, ganda):
+    """Baris kosong di ujung tabel: klik kolom TYPE untuk memilih. ganda=True: type yang sama boleh dipilih lagi.
+    SNI hadir otomatis bila type CW dipilih, CE7 bila label warna dipilih (aturan lama)."""
+    sudah = set() if ganda else {x[1] for x in ent}
+    opsi = [(t, k) for t, k in _semua_type_pilihan() if t not in sudah]
+    kat = dict(opsi)
+    r = st.columns([1], vertical_alignment="center")
+    pilih = r[0].selectbox("Tambah type", [t for t, _k in opsi], index=None, key=f"{pref}_add_{st.session_state.get(pref + '_na', 0)}",
+                           label_visibility="collapsed", placeholder="＋ klik di sini untuk menambah type…", format_func=lambda t: f"{kat.get(t, '')} · {t}")
+    if pilih:
+        tambah = [pilih]
+        ada = {x[1] for x in ent}
+        if label.punya_sni(pilih) and label.SNI not in ada:
+            tambah.append(label.SNI)
+        if label.ket_label(pilih) and "CE7" not in ada and "CE7" not in tambah:
+            tambah.append("CE7")
+        for t in tambah:
+            ent.append([st.session_state[f"{pref}_nid"], t])
+            st.session_state[f"{pref}_nid"] += 1
+        st.session_state[f"{pref}_na"] = st.session_state.get(f"{pref}_na", 0) + 1
+        st.rerun(scope="fragment")
+
+
+def _tabel_terima(pref, tgl, dept):
+    """TYPE | DITAMBAH | SISA STOK (sampai tanggal itu) | JADI. Type baris kosong dipilih dengan klik; sisa stok muncul setelah type dipilih."""
+    ke = f"{pref}_ent"
+    if ke not in st.session_state:
+        st.session_state[ke] = []
+        st.session_state[f"{pref}_nid"] = 0
+    ent = st.session_state[ke]
+    sisa = stok.stok_foreman(tgl, dept)
+    W = [1.4, 1.1, 1, 1]
+    hasil = []
+    with st.container(key="tb_tbl"):
+        _kepala_tbl(W, ("TYPE", "DITAMBAH (PCS)", "SISA STOK", "JADI"), ("left", "left", "right", "right"))
+        for idb, t in ent:
+            r = st.columns(W, vertical_alignment="center")
+            r[0].markdown(_sel_ty(t), unsafe_allow_html=True)
+            v = r[1].number_input(f"Tambah {t} {idb}", min_value=0, max_value=9999999, step=1, value=None, placeholder="0",
+                                  key=f"{pref}_n_{idb}", label_visibility="collapsed")
+            sb = int(sisa.get(t, 0))
+            r[2].markdown(f"<div class='tb-n'>{_ang(sb)}</div>", unsafe_allow_html=True)
+            r[3].markdown(f"<div class='tb-n tot'>{_ang(sb + int(v or 0))}</div>", unsafe_allow_html=True)
+            if v:
+                hasil.append((t, int(v)))
+        _baris_tambah(pref, ent, W, ganda=False)
+    if ent and st.button("↶ Hapus baris terakhir", key=f"{pref}_undo", width="stretch"):
+        idb, _t = ent.pop()
+        st.session_state.pop(f"{pref}_n_{idb}", None)
+        st.rerun(scope="fragment")
+    return hasil
+
+
 def _tab_terima(oleh):
     """Label diterima dari packing = menambah stok Foreman departemen (QC atau SK)."""
     dept = _pilih_dept("il_dept_t", "Masuk ke stok Foreman")
     tgl = st.date_input("Tanggal diterima", value=label.hari_ini(), format="DD/MM/YYYY", key="il_tgl_t")
-    st.caption("Klik + Label untuk memilih type, lalu isi jumlah (pcs). Contoh: CE7 7000.")
-    pilih = [(k, v) for k, v in _grid_hitung("il_t", {}).items() if v > 0]
+    st.caption("Klik baris kosong di kolom TYPE untuk memilih type, lalu isi jumlah (pcs). Sisa stok muncul setelah type dipilih.")
+    pilih = _tabel_terima(f"il_t{dept}", _tgl_iso(tgl), dept)
     if st.button("SIMPAN LABEL DITERIMA", type="primary", width="stretch", key="il_simpan_t", disabled=not pilih):
         with st.spinner("Menyimpan…"):
             n = stok.terima_simpan(_tgl_iso(tgl), pilih, oleh, dept)
         st.session_state["il_toast"] = f"{n} penerimaan label tersimpan."
-        label_ui._reset("il_t")
+        label_ui._reset(f"il_t{dept}")
         st.rerun(scope="fragment")
     riwayat = stok.terima_daftar(label.hari_ini().strftime("%Y-%m"), dept)
     st.markdown(f"**Penerimaan bulan ini · Foreman {dept}**")
@@ -633,63 +715,60 @@ def _reset_ctx():
 
 
 def _baris_opname(pref, sis, nama_lok, meja, ada):
-    """Tabel isian opname: baris per type, boleh ada type yang sama lebih dari sekali. Memakai st.form supaya angka terkirim
-    utuh saat SIMPAN. sis = stok sistem {label: jumlah}. ada = hitungan tersimpan {label: (aktual, sistem)}.
-    Return (baru[(type, jumlah)], 'simpan'/'kosong'/None, daftar_baris[(id, type)])."""
+    """Tabel opname: TYPE | HITUNG AKTUAL | SISTEM | SELISIH. Awalnya kosong; klik baris kosong di kolom TYPE untuk memilih type,
+    stok sistem muncul setelah type dipilih. Type yang sama boleh diinput lagi (baris kuning): jumlahnya terakumulasi,
+    SISTEM tetap sama dan SELISIH berkurang sesuai total hitungan sampai baris itu.
+    Return (baru[(type, total jumlah)], 'simpan'/'kosong'/None, daftar_baris[(id, type)])."""
     ke = f"{pref}_ent"
     if ke not in st.session_state:
+        st.session_state[ke] = []
         st.session_state[f"{pref}_nid"] = 0
-        ent = []
-        for lb, v in sis.items():
-            if v:
-                ent.append([st.session_state[f"{pref}_nid"], lb])
-                st.session_state[f"{pref}_nid"] += 1
-        st.session_state[ke] = ent
     ent = st.session_state[ke]
-
-    opsi_all = _semua_type_pilihan()
-    kat_dari = dict(opsi_all)
-    with st.form(f"{pref}_addf", border=False):
-        st.markdown("<div class='kt'>TAMBAH TYPE (BOLEH BANYAK SEKALIGUS)</div>", unsafe_allow_html=True)
-        ca, cb = st.columns([3, 1], vertical_alignment="bottom")
-        pilih = ca.multiselect("Pilih type", [t for t, _k in opsi_all], key=f"{pref}_pilih_{st.session_state.get(pref + '_na', 0)}", label_visibility="collapsed",
-                               format_func=lambda t: f"{kat_dari.get(t, '')} · {t}", placeholder="Ketik/pilih type (Closet, SNI, dst)…")
-        tambah = cb.form_submit_button("TAMBAHKAN", width="stretch")
-    c2 = st.columns(1)[0]
-    if tambah and pilih:
-        for tp in pilih:
-            ent.append([st.session_state[f"{pref}_nid"], tp])
-            st.session_state[f"{pref}_nid"] += 1
-        st.session_state[f"{pref}_na"] = st.session_state.get(f"{pref}_na", 0) + 1
-        st.rerun(scope="fragment")
-    if ent and c2.button("↶ Hapus baris terakhir", key=f"{pref}_undo", width="stretch"):
+    W = [1.4, 1.1, 1, 1]
+    total, lihat = {}, set()
+    with st.container(key="tb_tbl"):
+        _kepala_tbl(W, ("TYPE", "HITUNG AKTUAL", "SISTEM", "SELISIH"), ("left", "left", "right", "right"))
+        for idb, t in ent:
+            ulang = t in lihat
+            lihat.add(t)
+            with st.container(key=f"{'tbkuning_' if ulang else 'tbbiasa_'}{pref}_{idb}"):
+                r = st.columns(W, vertical_alignment="center")
+                r[0].markdown(_sel_ty(t, "SUDAH DIINPUT" if ulang else None), unsafe_allow_html=True)
+                v = r[1].number_input(f"Hitungan {t} {idb}", min_value=0, max_value=9999999, step=1, value=None, placeholder="0",
+                                      key=f"{pref}_n_{idb}", label_visibility="collapsed")
+                sb = int(sis.get(t, 0))
+                r[2].markdown(f"<div class='tb-n'>{_ang(sb)}</div>", unsafe_allow_html=True)
+                if v is not None:
+                    total[t] = total.get(t, 0) + int(v)
+                    r[3].markdown(f"<div class='tb-n'>{_selisih_angka(total[t] - sb)}</div>", unsafe_allow_html=True)
+                else:
+                    r[3].markdown("<div class='tb-n kosong'>–</div>", unsafe_allow_html=True)
+        _baris_tambah(pref, ent, W, ganda=True)
+    c1, c2 = st.columns(2)
+    if ent and c1.button("↶ Hapus baris terakhir", key=f"{pref}_undo", width="stretch"):
         idb, _t = ent.pop()
         st.session_state.pop(f"{pref}_n_{idb}", None)
         st.rerun(scope="fragment")
-
-    baru, pencet = [], None
-    with st.form(f"{pref}_form", border=False):
-        st.markdown("<div class='op-th'><span>TYPE</span><span>JUMLAH HITUNGAN (PCS)</span><span class='sb'>STOK SEBELUMNYA</span></div>", unsafe_allow_html=True)
-        if not ent:
-            st.caption("Belum ada baris. Pilih type di atas lalu klik **TAMBAHKAN**.")
-        for idb, t in ent:
-            r = st.columns([1.2, 1.4, 1], vertical_alignment="center")
-            nm = t
-            kecil = "LABEL" if label.adalah_sni(t) else (label.ket_label(t) or label.kategori_label(t)).upper()
-            r[0].markdown(f"<div class='op-ty'><small>{kecil}</small><b>{nm}</b></div>", unsafe_allow_html=True)
-            v = r[1].number_input(f"Hitungan {t} {idb}", min_value=0, max_value=9999999, step=1, value=None, placeholder="0",
-                                  key=f"{pref}_n_{idb}", label_visibility="collapsed")
-            if v is not None:
-                baru.append((t, int(v)))
-            sb = int(sis.get(t, 0))
-            r[2].markdown(f"<div class='op-sb{' neg' if sb < 0 else ''}'>{sb:,}</div>".replace(",", "."), unsafe_allow_html=True)
-        st.caption("Kolom yang dikosongkan dianggap belum dihitung. Boleh simpan bertahap; bila type yang sama sudah pernah diinput kamu akan ditanya mau dijumlahkan atau pilih salah satu.")
-        b1, b2 = st.columns([2, 1])
-        if b1.form_submit_button(("SIMPAN TAMBAHAN " if ada else "SIMPAN HITUNGAN ") + nama_lok.upper(), type="primary", width="stretch"):
-            pencet = "simpan"
-        if meja and b2.form_submit_button("MEJA KOSONG", width="stretch"):
-            pencet = "kosong"
-    return baru, pencet, ent
+    if ent and c2.button("Salin baris terakhir", key=f"{pref}_dup", width="stretch", help="Tambah baris dengan type yang sama untuk hitungan berikutnya"):
+        ent.append([st.session_state[f"{pref}_nid"], ent[-1][1]])
+        st.session_state[f"{pref}_nid"] += 1
+        st.rerun(scope="fragment")
+    st.caption("Type yang punya stok sistem tetapi tidak kamu masukkan dianggap 0 saat disimpan. Baris dengan type yang sama dijumlahkan; bila type itu sudah pernah tersimpan, kamu akan ditanya mau dijumlahkan atau pilih salah satu.")
+    pencet = None
+    b1, b2 = st.columns([2, 1])
+    if b1.button(("SIMPAN TAMBAHAN " if ada else "SIMPAN HITUNGAN ") + nama_lok.upper(), type="primary", width="stretch", key=f"{pref}_simpan"):
+        pencet = "simpan"
+    if meja and b2.button("MEJA KOSONG", width="stretch", key=f"{pref}_kosong"):
+        pencet = "kosong"
+    # type yang punya stok sistem tetapi belum ada di tabel (dan belum tersimpan) -> daftar "belum dihitung"
+    dipakai = {t for _i, t in ent} | set(ada or {})
+    belum = [(t, n) for t, n in sorted(sis.items(), key=lambda x: _urut().get(x[0], 9999)) if n and t not in dipakai]
+    if belum:
+        st.markdown(f"<div class='kt'>BELUM DIHITUNG — {len(belum)} type masih punya stok sistem</div>"
+                    + "".join(f"<span class='ls-chip min'>{html.escape(t)} ({_ang(n)})</span>" for t, n in belum)
+                    + "<div style='font-size:.72rem;color:#8a98b3;margin-top:.3rem'>Hilang dari daftar ini setelah type-nya masuk ke tabel hitung di atas.</div>",
+                    unsafe_allow_html=True)
+    return list(total.items()), pencet, ent
 
 
 def _kumpul_konflik(baru, tersimpan):
@@ -788,7 +867,7 @@ def _opname_form(tgl, oleh, dept):
         else:
             st.success(f"Belum ada hitungan untuk {tgl_txt} · {nama_lok}. Silakan input baru.")
         pref = f"og_{lk}_{tgl}"
-        baru, tekan, ent = _baris_opname(pref, cx["sis"], nama_lok, meja, bool(ada))
+        baru, tekan, ent = _baris_opname(pref, cx["sis"], nama_lok, meja, ada)
         nxt_m = None
         if meja:
             nxt_m = (pabrik, str(int(meja) + 1) if str(meja).isdigit() and int(meja) < label.PABRIK[pabrik] else str(meja))
@@ -836,7 +915,7 @@ def dlg_opname():
     kontrol_jendela("inputlabel")
     kepala("label", "STOK OPNAME LABEL")
     st.markdown(label_ui.CSS, unsafe_allow_html=True)
-    st.markdown(CSS_JENDELA + CSS_OPNAME, unsafe_allow_html=True)
+    st.markdown(CSS_JENDELA + CSS_OPNAME + CSS_TBL, unsafe_allow_html=True)
     st.html(JS_PILIH, unsafe_allow_javascript=True)
     if st.session_state.get("il_toast"):
         st.toast(st.session_state.pop("il_toast"), icon="✅")
@@ -1053,7 +1132,7 @@ def dlg_label_bagus():
     kontrol_jendela("inputlabel")
     kepala("label", "INPUT LABEL BAGUS")
     st.markdown(label_ui.CSS, unsafe_allow_html=True)
-    st.markdown(CSS_JENDELA, unsafe_allow_html=True)
+    st.markdown(CSS_JENDELA + CSS_TBL, unsafe_allow_html=True)
     st.html(JS_PILIH, unsafe_allow_javascript=True)
     if st.session_state.get("il_toast"):
         st.toast(st.session_state.pop("il_toast"), icon="✅")
