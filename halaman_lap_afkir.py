@@ -65,10 +65,10 @@ def _rincian_html(d):
     tot_a = tot_b = 0
     for r in d.itertuples():
         a = int(r.kotor)
-        sni = str(r.label).startswith("SNI ")
+        sni = str(r.label) == "SNI"
         pct = a / r.bagus if r.bagus > 0 else float("nan")
         merah = pct > laporan.BATAS_KOTOR if r.bagus > 0 else False
-        h += (f"<tr class='{'sni' if sni else ''}'><td class='t'>{html.escape(str(r.label))}{' (pendamping)' if sni else ''}</td><td>{_n(r.bagus)}</td>"
+        h += (f"<tr class='{'sni' if sni else ''}'><td class='t'>{html.escape(str(r.label))}</td><td>{_n(r.bagus)}</td>"
               f"<td class='{'m' if merah else ''}'>{_n(a)}</td><td class='{'m' if merah else ''}'>{_p(pct)}</td></tr>")
         tot_a += a
         tot_b += r.bagus
@@ -85,7 +85,7 @@ def dlg_hari(df, prn, nama, tgl):
     cat = [c for c in d["catatan"].unique() if str(c).strip()]
     for c in cat:
         st.markdown(f"<div class='cat'>📝 {html.escape(str(c))}</div>", unsafe_allow_html=True)
-    st.caption("% label afkir = afkir kotor ÷ pcs bagus. Total pcs bagus = jumlah semua baris label, label SNI pendamping ikut dihitung (pcs bagus SNI = pcs bagus type induknya). Di atas 0,5% berwarna merah.")
+    st.caption("% label afkir = afkir kotor ÷ pcs bagus. Total pcs bagus = jumlah semua baris label, label SNI ikut dihitung (pcs bagus SNI = jumlah pcs bagus semua type CW). Di atas 0,5% berwarna merah.")
 
 
 def _jenis_dominan(r):

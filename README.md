@@ -199,3 +199,4 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Label Diterima: type yang sudah ada di meja otomatis tampil untuk diisi jumlahnya; "+ Label" hanya untuk type baru.
 - Halaman utama: data tabel dimuat paralel (`data.muat`) sebelum dihitung, sehingga lebih cepat.
 - CHECK LABEL (revisi): satu tabel TYPE | STOK AWAL (akhir hari sebelumnya) | DIINPUT KARYAWAN (bisa dikoreksi foreman) | TOTAL; selalu ada satu baris kosong "+ tambah type"; SNI bisa ditambah sendiri tanpa type induk.
+- SNI = SATU label "SNI" (milik semua type CW yang dicentang di Jenis Label, kecuali CW52J). Bisa dipilih sendiri lewat + Label; otomatis hadir bila ada type CW (seperti CE7 untuk label warna). Data lama "SNI CW633J" dst otomatis disatukan menjadi "SNI" saat dibaca (jumlah baris kembar dijumlahkan). Pembagi % afkir SNI = jumlah pcs bagus semua type CW operator itu hari itu.

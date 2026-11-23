@@ -118,12 +118,18 @@ def punya_sni(lb):
     return lb in _JT["sni"]
 
 
-def nama_sni(lb):
-    return f"{SNI} {lb}"
+def adalah_sni(lb):
+    s = str(lb)
+    return s == SNI or s.startswith(SNI + " ")
+
+
+def nama_sni(lb=None):
+    """SNI adalah SATU label untuk semua type CW (kecuali yang tidak punya SNI); bukan per type."""
+    return SNI
 
 
 def kategori_label(lb):
-    if str(lb).startswith(SNI + " "):
+    if adalah_sni(lb):
         return SNI
     t = jenis_tabel()
     c = t[t["label"] == lb]
@@ -131,12 +137,11 @@ def kategori_label(lb):
 
 
 def kolom_lengkap(daftar):
-    """Label terpilih -> kolom matriks: tiap label yang punya SNI diikuti kolom pendamping 'SNI <label>'."""
-    hasil = []
-    for lb in daftar:
-        hasil.append(lb)
-        if punya_sni(lb):
-            hasil.append(nama_sni(lb))
+    """Label terpilih -> kolom matriks. Bila ada type CW yang punya SNI, kolom 'SNI' hadir otomatis (satu kolom, di ujung);
+    SNI juga boleh dipilih sendiri tanpa type CW."""
+    hasil = [lb for lb in daftar if not adalah_sni(lb)]
+    if any(adalah_sni(lb) for lb in daftar) or any(punya_sni(lb) for lb in hasil):
+        hasil.append(SNI)
     return hasil
 
 
@@ -218,7 +223,7 @@ def simpan(tgl, shift, prn, nama, pabrik, meja, kolom, oleh, ganti_lama=None, ca
         baris.append({"tgl": tgl, "shift": shift, "tgl_posting": posting, "waktu": waktu, "prn": prn, "nama": nama,
                       "pabrik": pabrik, "meja": str(meja), "kategori": kategori_label(t), "type": t,
                       "lengket": l, "garis": g, "kotor": k, "proses": pr, "total": l + g + k + pr, "oleh": oleh,
-                      "induk": t[len(SNI) + 1:] if t.startswith(SNI + " ") else "", "catatan": (catatan or "").strip()})
+                      "induk": "", "catatan": (catatan or "").strip()})
     hapus = None
     lama = None
     if ganti_lama is not None:

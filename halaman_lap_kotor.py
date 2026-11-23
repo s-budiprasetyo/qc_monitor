@@ -59,7 +59,7 @@ def _f(v):
 
 if mode == "Karyawan × Type":
     pv = d.pivot_table(index="nama", columns="label", values="kotor", aggfunc="sum", fill_value=0)
-    pv = pv[sorted(pv.columns, key=lambda x: (str(x).startswith("SNI "), str(x)))]
+    pv = pv[sorted(pv.columns, key=lambda x: (str(x) == "SNI", str(x)))]
     pv["TOTAL"] = pv.sum(axis=1)
     pv = pv.sort_values("TOTAL", ascending=False)
     pv.loc["TOTAL"] = pv.sum()

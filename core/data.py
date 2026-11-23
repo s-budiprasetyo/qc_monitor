@@ -25,11 +25,48 @@ def _tembolok():
 TTL = 60  # detik; tulis() menghapus tembolok tabel yang diubah
 
 
+_KOL_LABEL = {"label_afkir": "type", "label_terima": "label", "label_distribusi": "label", "label_meja": "label", "label_pindah": "label",
+              "label_pindahmeja": "label", "label_hitung": "label"}
+_SUM_SNI = {"label_afkir": (["tgl", "shift", "prn", "pabrik", "meja", "type"], ["lengket", "garis", "kotor", "proses", "total"]),
+            "label_hitung": (["tgl", "waktu", "lokasi", "adjust", "oleh", "label"], ["aktual", "sistem"])}
+
+
+def norm_sni(nama, df):
+    """Label SNI lama bernama per type ("SNI CW633J", ...) disatukan menjadi satu label "SNI" (SNI milik semua type CW).
+    Baris SNI yang jadi kembar (kunci sama) dijumlahkan. Tabel lain tidak disentuh."""
+    k = _KOL_LABEL.get(nama)
+    if not k or df is None or df.empty or k not in df.columns:
+        return df
+    m = df[k].astype(str).str.startswith("SNI ")
+    if not m.any():
+        return df
+    df = df.copy()
+    df.loc[m, k] = "SNI"
+    if "induk" in df.columns:
+        df.loc[m, "induk"] = ""
+    if nama in _SUM_SNI:
+        kunci, angka = _SUM_SNI[nama]
+        kunci = [c for c in kunci if c in df.columns]
+        angka = [c for c in angka if c in df.columns]
+        s = df[k] == "SNI"
+        if s.sum() > 1 and angka:
+            sn, lain = df[s].copy(), df[~s]
+            for c in angka:
+                sn[c] = pd.to_numeric(sn[c], errors="coerce").fillna(0)
+            agg = {c: "sum" for c in angka}
+            agg.update({c: "first" for c in sn.columns if c not in kunci and c not in angka})
+            sn = sn.groupby(kunci, as_index=False, sort=False).agg(agg)[list(df.columns)]
+            for c in angka:
+                sn[c] = sn[c].map(lambda v: str(int(v)) if float(v) == int(v) else str(v))
+            df = pd.concat([lain, sn], ignore_index=True)
+    return df
+
+
 def baca(nama):
     c, sekarang_ = _tembolok(), time.time()
     if nama in c and sekarang_ - c[nama][0] < TTL:
         return c[nama][1].copy()
-    df = store().read(nama)
+    df = norm_sni(nama, store().read(nama))
     if nama.startswith("hasil_") and "trx" not in df.columns:  # data lama sebelum kolom trx ada
         df["trx"] = df["tgl"]
     c[nama] = (sekarang_, df)
@@ -57,7 +94,7 @@ def muat(nama_list, maks=6):
                 continue
             if n.startswith("hasil_") and "trx" not in df.columns:
                 df["trx"] = df["tgl"]
-            c[n] = (time.time(), df)
+            c[n] = (time.time(), norm_sni(n, df))
 
 
 def daftar_bulan():
@@ -107,7 +144,7 @@ def catat_update(nama_file):
 def upsert(nama, baru, kunci, hapus=None):
     """Gabungkan baris baru ke tabel: baris lama dengan kunci yang sama diganti.
     hapus (opsional): DataFrame berisi kolom kunci yang barisnya dihapus dari tabel."""
-    lama = store().read(nama)
+    lama = norm_sni(nama, store().read(nama))
     for c in baru.columns:  # tabel lama yang belum punya kolom baru: isi kosong (bukan NaN, agar angka tidak jadi "4.0")
         if c not in lama.columns:
             lama[c] = ""

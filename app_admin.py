@@ -900,7 +900,7 @@ def _jl_ke_tabel(df):
 def kelola_jenis_label():
     st.caption("Pemetaan **Type SAP + Warna → Label**. Label ini yang muncul di jendela Input Label Afkir dan dipakai mencocokkan "
                "hasil SAP. *Warna SAP* kosong = berlaku untuk semua warna. *Label* kosong = type itu tidak punya label. "
-               "*SNI* dicentang = label itu punya label SNI pendamping. Klik baris kosong paling bawah untuk menambah.")
+               "*SNI* dicentang = type itu memakai label SNI (satu label SNI untuk semua type CW yang dicentang). Klik baris kosong paling bawah untuk menambah.")
     t = label.jenis_tabel()
     tampil = t.assign(sni=t["sni"].str.lower() == "ya").rename(columns=_KOL_JL)
     ed = st.data_editor(tampil, num_rows="dynamic", hide_index=True, width="stretch", key="jl_ed", height=380,

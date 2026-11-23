@@ -179,7 +179,7 @@ def dlg_label():
             st.session_state["w_op"] = nm
         st.session_state["w_pabrik"] = muat["pabrik"]
         st.session_state[f"w_meja_{muat['pabrik']}"] = muat["meja"]
-        st.session_state["w_cols"] = [t for t in muat["kolom"] if not t.startswith(label.SNI + " ")]
+        st.session_state["w_cols"] = _tanpa_sni_ganda(list(muat["kolom"]))
         for t, v in muat["kolom"].items():
             for j, _ in label.JENIS:
                 n = label._int(v.get(j))
@@ -236,14 +236,10 @@ def dlg_label():
         k[0].markdown("<div class='lb-jenis' style='line-height:46px'>JENIS AFKIR</div>", unsafe_allow_html=True)
         for i, t in enumerate(cols):
             with k[i + 1]:
-                sni = t.startswith(label.SNI + " ")
-                if sni:
-                    kecil, besar = "SNI · PENDAMPING", t[len(label.SNI) + 1:]
-                else:
-                    kecil, besar = (label.ket_label(t) or label.kategori_label(t)).upper(), t
+                kecil, besar, sni, boleh = _kepala_kolom(t, induk)
                 st.markdown(f"<div class='lb-th{' lb-sni' if sni else ''}'><small>{kecil}</small><b>{besar}</b></div>",
                             unsafe_allow_html=True)
-                if not sni and not (t == "CE7" and any(label.ket_label(x) for x in induk)):
+                if boleh:
                     with st.container(key=f"lbx_{i}"):
                         if st.button("✕", key=f"lbrm_{i}", help="Hapus label ini"):
                             st.session_state["w_cols"] = [x for x in induk if x != t]
@@ -262,8 +258,7 @@ def dlg_label():
                     # Proses terisi otomatis dari SAP (M+LA+LB+F) untuk type closet CW; tetap bisa ditambah/dikurangi
                     st.session_state[f"w_pinit_{t}"] = (prn, posting)
                     if not edit:
-                        induk_t = t[len(label.SNI) + 1:] if t.startswith(label.SNI + " ") else t
-                        st.session_state[f"w_n_{t}_proses"] = (sap.get(induk_t, 0) if laporan.proses_berlaku(t) else 0) or None
+                        st.session_state[f"w_n_{t}_proses"] = _proses_sap(sap, t) or None
                 v = r[i + 1].number_input(f"{nm} {t}", min_value=0, max_value=9999, step=1, value=None, placeholder="0",
                                           key=f"w_n_{t}_{j}", label_visibility="collapsed")
                 nilai[t][j] = int(v or 0)
@@ -504,18 +499,35 @@ def _lok_ringkas(lk):
     return label.nama_meja(*lk.split("|", 1))
 
 
+def _tanpa_sni_ganda(daftar):
+    """SNI hadir otomatis bila ada type CW; simpan di pilihan hanya bila berdiri sendiri."""
+    if any(label.punya_sni(x) for x in daftar):
+        return [x for x in daftar if not label.adalah_sni(x)]
+    return list(daftar)
+
+
+def _kepala_kolom(t, induk):
+    """(kecil, besar, kelas_sni, boleh_hapus) untuk judul kolom type. SNI tampil sebagai 'SNI' saja; boleh dihapus kecuali bila ada type CW."""
+    if label.adalah_sni(t):
+        return "LABEL", "SNI", True, not any(label.punya_sni(x) for x in induk)
+    warna_wajib = t == "CE7" and any(label.ket_label(x) for x in induk)
+    return (label.ket_label(t) or label.kategori_label(t)).upper(), t, False, not warna_wajib
+
+
+def _proses_sap(sap, t):
+    """Afkir Proses otomatis dari SAP; SNI = jumlah semua type CW."""
+    if label.adalah_sni(t):
+        return sum(v for lb, v in sap.items() if label.punya_sni(lb))
+    return sap.get(t, 0) if laporan.proses_berlaku(t) else 0
+
+
 def _grid_hitung(kp, awal):
     """Jendela isian seperti INPUT LABEL AFKIR: kolom per type label, satu baris jumlah hitungan fisik.
     awal = {label: jumlah} yang sudah tersimpan. Return {label: jumlah} untuk kolom yang dipilih."""
     tipe_kat = label.type_per_kategori()
     kc = f"{kp}_cols"
     if kc not in st.session_state:
-        awal_induk = []
-        for lb in awal:
-            lb = lb[len(label.SNI) + 1:] if lb.startswith(label.SNI + " ") else lb
-            if lb not in awal_induk:
-                awal_induk.append(lb)
-        st.session_state[kc] = awal_induk
+        st.session_state[kc] = _tanpa_sni_ganda(list(dict.fromkeys(awal)))
         for lb, v in awal.items():
             st.session_state[f"{kp}_n_{lb}"] = int(v) or None
     induk = list(st.session_state[kc])
@@ -527,13 +539,9 @@ def _grid_hitung(kp, awal):
         k = st.columns([1] * len(cols) + [1], vertical_alignment="top")
         for i, t in enumerate(cols):
             with k[i]:
-                sni = t.startswith(label.SNI + " ")
-                if sni:
-                    kecil, besar = "SNI · PENDAMPING", t[len(label.SNI) + 1:]
-                else:
-                    kecil, besar = (label.ket_label(t) or label.kategori_label(t)).upper(), t
+                kecil, besar, sni, boleh = _kepala_kolom(t, induk)
                 st.markdown(f"<div class='lb-th{' lb-sni' if sni else ''}'><small>{kecil}</small><b>{besar}</b></div>", unsafe_allow_html=True)
-                if not sni and not (t == "CE7" and any(label.ket_label(x) for x in induk)):
+                if boleh:
                     with st.container(key=f"lbx_{i}"):
                         if st.button("✕", key=f"{kp}_rm_{i}", help="Hapus label ini"):
                             st.session_state[kc] = [x for x in induk if x != t]
@@ -581,7 +589,7 @@ CSS_OPNAME = """<style>
 def _semua_type_pilihan():
     """[(type, kategori)] semua type + versi SNI-nya, berurutan seperti tabel jenis label. Di-cache 10 menit (tabel ini jarang berubah)."""
     t = label.jenis_tabel()
-    hasil, lihat = [], set()
+    hasil, lihat, pos_sni = [], set(), None
     for r in t.itertuples():
         lb = r.label
         if not lb or lb in lihat:
@@ -589,7 +597,9 @@ def _semua_type_pilihan():
         lihat.add(lb)
         hasil.append((lb, r.kategori or "Lainnya"))
         if str(r.sni).lower() == "ya":
-            hasil.append((label.nama_sni(lb), label.SNI))
+            pos_sni = len(hasil)  # SNI satu saja, diletakkan sesudah type CW terakhir yang punya SNI
+    if pos_sni is not None:
+        hasil.insert(pos_sni, (label.SNI, label.SNI))
     return hasil
 
 
@@ -664,9 +674,8 @@ def _baris_opname(pref, sis, nama_lok, meja, ada):
             st.caption("Belum ada baris. Pilih type di atas lalu klik **TAMBAHKAN**.")
         for idb, t in ent:
             r = st.columns([1.2, 1.4, 1], vertical_alignment="center")
-            sni = t.startswith(label.SNI + " ")
-            nm = t[len(label.SNI) + 1:] if sni else t
-            kecil = "SNI" if sni else (label.ket_label(t) or label.kategori_label(t)).upper()
+            nm = t
+            kecil = "LABEL" if label.adalah_sni(t) else (label.ket_label(t) or label.kategori_label(t)).upper()
             r[0].markdown(f"<div class='op-ty'><small>{kecil}</small><b>{nm}</b></div>", unsafe_allow_html=True)
             v = r[1].number_input(f"Hitungan {t} {idb}", min_value=0, max_value=9999999, step=1, value=None, placeholder="0",
                                   key=f"{pref}_n_{idb}", label_visibility="collapsed")
@@ -1090,9 +1099,8 @@ def _baris_cek(pref, cur, awal):
             c.markdown(f"<div class='ck-th' style='text-align:{al}'>{tx}</div>", unsafe_allow_html=True)
         for idb, t in ent:
             r = st.columns(W, vertical_alignment="center")
-            sni = t.startswith(label.SNI + " ")
-            nm = t[len(label.SNI) + 1:] if sni else t
-            kecil = "SNI" if sni else (label.ket_label(t) or label.kategori_label(t)).upper()
+            nm = t
+            kecil = "LABEL" if label.adalah_sni(t) else (label.ket_label(t) or label.kategori_label(t)).upper()
             x = info.get(t)
             if x is None:
                 oleh_t = ""

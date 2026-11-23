@@ -25,7 +25,7 @@ def chips(d):
     h = ""
     for lb in stok.urut_label(d):
         n = d[lb]
-        kls = "min" if n < 0 else ("sni" if str(lb).startswith("SNI ") else ("low" if n < 50 else ""))
+        kls = "min" if n < 0 else ("sni" if label.adalah_sni(lb) else ("low" if n < 50 else ""))
         h += f"<span class='ls-chip {kls}'>{html.escape(str(lb))} ({n:,})</span>".replace(",", ".")
     return h
 
@@ -103,7 +103,7 @@ def form_terima(prn, nama, tgl, oleh, adm=False, kp="lt"):
     if pabrik and meja:
         st.markdown("<div class='ls-lbl'>STOK DI MEJA SEKARANG</div>" + chips(stok.stok_meja(pabrik, meja, tgl)), unsafe_allow_html=True)
     st.markdown("<div class='ls-lbl'>LABEL DITERIMA</div>", unsafe_allow_html=True)
-    st.caption("Klik + Label untuk memilih type. Kolom SNI muncul otomatis di samping type-nya, jumlahnya boleh berbeda.")
+    st.caption("Klik + Label untuk memilih type. Kolom SNI muncul otomatis bila ada type CW; SNI juga boleh dipilih sendiri.")
     import halaman_foreman as _hf  # jendela isian yang sama dengan Input Label Afkir
     st.markdown(_hf.CSS_JENDELA, unsafe_allow_html=True)
     st.html(_hf.JS_PILIH, unsafe_allow_javascript=True)

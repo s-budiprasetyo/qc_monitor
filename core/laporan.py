@@ -2,7 +2,7 @@
 
 - Hari = Tanggal Posting (sama dengan tanggal di SAP).
 - Pcs bagus label = jumlah 'Total' SAP karyawan itu pada hari itu untuk type (+warna) yang dipetakan ke label itu.
-- Label SNI (pendamping): pembagi = pcs bagus label induknya (kolom `induk`), bukan nol dan bukan miliknya sendiri.
+- Label SNI (satu label untuk semua type CW): pembagi = jumlah pcs bagus semua type CW operator itu hari itu.
 - Bagian: 'QC SK' bila meja di pabrik QC SK, selain itu 'QC'.
 - Kotor di atas 0,5% ditandai merah."""
 import io
@@ -22,9 +22,9 @@ PROSES_SAP = ["SAP | Afkir (M) - Berubah", "SAP | Afkir (LA) - Bocor Udara", "SA
 
 def proses_berlaku(lb):
     """Afkir Proses (otomatis dari SAP: M + LA + LB + F) hanya untuk type closet CW. CE6, CE7 (termasuk warna) dan CE9 tidak.
-    Label SNI pendamping memakai nilai Proses type induknya."""
+    Label SNI memakai jumlah Proses semua type CW."""
     t = str(lb).upper()
-    return t[4:].startswith("CW") if t.startswith("SNI ") else t.startswith("CW")
+    return t == "SNI" or t.startswith("CW")
 
 
 def _angka(s):
@@ -81,8 +81,10 @@ def proses_sap(prn, tgl_posting, lb):
     if not prn or not tgl_posting or not proses_berlaku(lb):
         return 0
     b = pcs_bagus(str(tgl_posting)[:7])
-    induk = str(lb)[4:] if str(lb).startswith("SNI ") else lb
-    m = b[(b["prn"] == prn) & (b["tgl"] == tgl_posting) & (b["label"] == induk)]
+    if label.adalah_sni(lb):
+        m = b[(b["prn"] == prn) & (b["tgl"] == tgl_posting) & b["label"].map(label.punya_sni)]
+    else:
+        m = b[(b["prn"] == prn) & (b["tgl"] == tgl_posting) & (b["label"] == lb)]
     return int(m["proses"].sum()) if len(m) else 0
 
 
@@ -110,7 +112,7 @@ def afkir(bulan):
 
 
 def tabel(bulan):
-    """Satu baris per (hari, karyawan, label) dengan pcs bagus SAP. Label SNI memakai pcs bagus label induknya.
+    """Satu baris per (hari, karyawan, label) dengan pcs bagus SAP. Label SNI memakai jumlah pcs bagus semua type CW.
     Karyawan/hari/label yang ada di SAP tetapi belum diinput afkirnya tetap muncul dengan afkir 0 (-> 0%)."""
     a = afkir(bulan)
     b = pcs_bagus(bulan)
@@ -120,9 +122,10 @@ def tabel(bulan):
     n_input = len(a)
     baru = []
     for p, t, lb, nm, bg in zip(b["prn"], b["tgl"], b["label"], b["nama"], b["bagian"]):
-        for nama_lb, induk in [(lb, "")] + ([(label.nama_sni(lb), lb)] if label.punya_sni(lb) else []):
+        for nama_lb in [lb] + ([label.SNI] if label.punya_sni(lb) else []):
             if (p, t, nama_lb) not in ada:
-                baru.append({"tgl": t, "bagian": bg, "prn": p, "nama": nm, "label": nama_lb, "induk": induk, "catatan": "",
+                ada.add((p, t, nama_lb))
+                baru.append({"tgl": t, "bagian": bg, "prn": p, "nama": nm, "label": nama_lb, "induk": "", "catatan": "",
                              **{j: 0 for j in JENIS}})
     if baru:
         a = pd.concat([a, pd.DataFrame(baru)], ignore_index=True)
@@ -130,8 +133,11 @@ def tabel(bulan):
     info = b.drop_duplicates("prn").set_index("prn")
     a["nama"] = [info["nama"].get(p, n) for p, n in zip(a["prn"], a["nama"])]
     a["bagian"] = [info["bagian"].get(p, g) for p, g in zip(a["prn"], a["bagian"])]
-    peta = {(p, t, lb): v for p, t, lb, v in zip(b["prn"], b["tgl"], b["label"], b["bagus"])}
-    pro = {(p, t, lb): v for p, t, lb, v in zip(b["prn"], b["tgl"], b["label"], b["proses"])}
+    peta, pro = {}, {}
+    for p, t, lb, v, pr in zip(b["prn"], b["tgl"], b["label"], b["bagus"], b["proses"]):
+        for k_ in [lb] + ([label.SNI] if label.punya_sni(lb) else []):  # SNI = jumlah semua type CW operator itu hari itu
+            peta[(p, t, k_)] = peta.get((p, t, k_), 0) + v
+            pro[(p, t, k_)] = pro.get((p, t, k_), 0) + pr
     # Proses: nilai hasil input foreman dipakai apa adanya (terisi otomatis dari SAP, boleh diubah); baris tanpa input memakai SAP
     sudah = [i < n_input for i in range(len(a))]
     a["proses"] = [v if ok else (pro.get((p, t, (ind or lb)), 0) if proses_berlaku(lb) else 0)
@@ -195,7 +201,7 @@ def _tulis_sheet(ws, df, judul, kolom_awal=("bagian", "nama", "label"), dengan_t
     kol = awal + ["bagus"] + JENIS
     ws["A1"] = judul
     ws["A1"].font = Font(name="Arial", bold=True, size=13, color="0B3D91")
-    ws["A2"] = ("% label afkir = afkir Kotor ÷ pcs bagus SAP (kolom Total). Label SNI dibagi pcs bagus label induknya. "
+    ws["A2"] = ("% label afkir = afkir Kotor ÷ pcs bagus SAP (kolom Total). Label SNI dibagi jumlah pcs bagus semua type CW. "
                 "Di atas 0,5% diberi warna merah. Lengket, Garis, Proses hanya informasi.")
     ws["A2"].font = Font(name="Arial", italic=True, size=9, color="5B7399")
     h = 4

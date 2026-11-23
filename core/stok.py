@@ -68,14 +68,14 @@ def _lok_pisah(lk):
 
 
 def semua_label():
-    """Semua label yang punya stok: label biasa + pendamping SNI-nya, berurutan seperti tabel jenis label."""
+    """Semua label yang punya stok: label biasa + satu label SNI, berurutan seperti tabel jenis label."""
     t = label.jenis_tabel()
     hasil = []
     for lb in t["label"]:
         if lb and lb not in hasil:
             hasil.append(lb)
-            if label.punya_sni(lb):
-                hasil.append(label.nama_sni(lb))
+    if label.SNI not in hasil and any(label.punya_sni(x) for x in hasil):
+        hasil.append(label.SNI)
     return hasil
 
 
