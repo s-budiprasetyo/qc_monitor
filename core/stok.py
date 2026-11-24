@@ -760,7 +760,7 @@ def _ledger(sampai, abaikan=None):
                 ev.append((r.tgl, 2, "tambah", lk, r.label, -int(sisa), ("SAP", r.nama, "pcs bagus SAP")))
     ev = [e for e in ev if e[0] >= MULAI]  # catatan uji sebelum tanggal mulai tidak ikut dihitung
     ev.sort(key=lambda e: (e[0], e[1]))
-    return ev, tanpa
+    return ev, pd.DataFrame(tanpa, columns=["tgl", "prn", "nama", "label", "n"])
 
 
 def _ledger_c(sampai):
