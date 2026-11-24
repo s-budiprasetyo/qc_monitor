@@ -42,7 +42,7 @@ if bag != "Gabungan QC + SK":
     df = df[df["bagian"] == ("QC SK" if bag == "SK" else "QC")]
 th, bl = int(bulan[:4]), int(bulan[5:])
 akhir = calendar.monthrange(th, bl)[1]
-tg = st.date_input("Rentang tanggal posting", value=(pd.Timestamp(f"{bulan}-01").date(), pd.Timestamp(f"{bulan}-{akhir:02d}").date()),
+tg = st.date_input("Rentang tanggal kerja", value=(pd.Timestamp(f"{bulan}-01").date(), pd.Timestamp(f"{bulan}-{akhir:02d}").date()),
                    min_value=pd.Timestamp(f"{bulan}-01").date(), max_value=pd.Timestamp(f"{bulan}-{akhir:02d}").date(), format="DD/MM/YYYY", key="kt_tgl")
 if isinstance(tg, (tuple, list)) and len(tg) == 2:
     df = df[(df["tgl"] >= tg[0].strftime("%Y-%m-%d")) & (df["tgl"] <= tg[1].strftime("%Y-%m-%d"))]

@@ -66,13 +66,28 @@ def norm_sni(nama, df):
     return df
 
 
+def _lengkapi_trx(nama, df):
+    """Kolom trx (Transaction Date = hari kerja) untuk tabel hasil_*. Data lama yang trx-nya kosong/sama dengan tgl diisi ulang dari
+    kolom asli SAP 'SAP | Transaction Date' bila tersimpan."""
+    if not nama.startswith("hasil_") or df is None:
+        return df
+    if "trx" not in df.columns:
+        df["trx"] = df["tgl"]
+    asli = "SAP | Transaction Date"
+    if asli in df.columns and len(df):
+        t = pd.to_datetime(df[asli].astype(str).str.strip(), errors="coerce").dt.strftime("%Y-%m-%d")
+        pakai = t.notna() & ((df["trx"].astype(str).str.strip() == "") | (df["trx"] == df["tgl"]))
+        df.loc[pakai, "trx"] = t[pakai]
+    df["trx"] = df["trx"].where(df["trx"].astype(str).str.strip() != "", df["tgl"])
+    return df
+
+
 def baca(nama):
     c, sekarang_ = _tembolok(), time.time()
     if nama in c and sekarang_ - c[nama][0] < TTL:
         return c[nama][1].copy()
     df = norm_sni(nama, store().read(nama))
-    if nama.startswith("hasil_") and "trx" not in df.columns:  # data lama sebelum kolom trx ada
-        df["trx"] = df["tgl"]
+    df = _lengkapi_trx(nama, df)
     c[nama] = (sekarang_, df)
     return df.copy()
 
@@ -96,9 +111,7 @@ def muat(nama_list, maks=6):
         for n, df in ex.map(_baca, perlu):
             if df is None:
                 continue
-            if n.startswith("hasil_") and "trx" not in df.columns:
-                df["trx"] = df["tgl"]
-            c[n] = (time.time(), norm_sni(n, df))
+            c[n] = (time.time(), _lengkapi_trx(n, norm_sni(n, df)))
 
 
 def daftar_bulan():

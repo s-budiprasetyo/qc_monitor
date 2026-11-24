@@ -461,7 +461,7 @@ def afkir_hari(prn, tgl):
     a = data.baca("label_afkir")
     out = defaultdict(int)
     if len(a):
-        a = a[(a["prn"] == prn) & ((a["tgl"] == tgl) | (a["tgl_posting"] == tgl))]
+        a = a[(a["prn"] == prn) & (a["tgl"] == tgl)]
         for r in a.itertuples():
             out[(r.pabrik, str(r.meja), r.type)] += sum(_int(getattr(r, j)) for j in laporan.JENIS)
     return dict(out)
@@ -659,7 +659,7 @@ def _pemakaian(sampai):
     """Pcs bagus SAP harian: DataFrame[tgl, prn, label, bagus, nama] (mulai MULAI s/d sampai)."""
     out = []
     for b in pd.period_range(MULAI[:7], sampai[:7], freq="M"):
-        t = laporan.tabel(str(b))
+        t = laporan.tabel(str(b), op100=True)
         if t.empty:
             continue
         t = t[(t["tgl"] >= MULAI) & (t["tgl"] <= sampai)]
@@ -676,8 +676,7 @@ def _peta_meja():
     a = data.baca("label_afkir")
     if len(a):
         for r in a.sort_values(["tgl", "waktu"]).itertuples():
-            peta[(r.prn, r.tgl_posting)] = lok(r.pabrik, str(r.meja))
-            peta[(r.prn, r.tgl)] = peta.get((r.prn, r.tgl), lok(r.pabrik, str(r.meja)))
+            peta[(r.prn, r.tgl)] = lok(r.pabrik, str(r.meja))
     ev = []  # alamat eksplisit: label diterima di meja, atau operator pindah meja (yang terakhir menang)
     m = data.baca("label_meja")
     if len(m):
@@ -726,7 +725,7 @@ def _ledger(sampai, abaikan=None):
     if len(a):
         for r in a.itertuples():
             n = sum(_int(getattr(r, j)) for j in laporan.JENIS)
-            tg = r.tgl_posting or r.tgl
+            tg = r.tgl
             if n and MULAI <= tg <= sampai:
                 ev.append((tg, 2, "tambah", lok(r.pabrik, str(r.meja)), r.type, -n, ("AFKIR", r.nama, f"label afkir (input {r.oleh})")))
     # Pindah meja: pemakaian di meja lama (hasil isian sisa fisik), koreksi bila sisa fisik > stok sistem, dan label yang dibawa
@@ -760,7 +759,28 @@ def _ledger(sampai, abaikan=None):
                 ev.append((r.tgl, 2, "tambah", lk, r.label, -int(sisa), ("SAP", r.nama, "pcs bagus SAP")))
     ev = [e for e in ev if e[0] >= MULAI]  # catatan uji sebelum tanggal mulai tidak ikut dihitung
     ev.sort(key=lambda e: (e[0], e[1]))
+    ev = _sapu_sk(ev)
     return ev, pd.DataFrame(tanpa, columns=["tgl", "prn", "nama", "label", "n"])
+
+
+def _sapu_sk(ev):
+    """SK tidak punya stok sisa di meja: selesai kerja, sisa label (atau kekurangannya) tiap meja SK otomatis kembali ke Foreman SK.
+    Disisipkan sebagai kejadian di akhir tiap hari yang ada kejadiannya (urutan 4). QC tidak disentuh."""
+    sal, out, i, n = defaultdict(int), list(ev), 0, len(ev)
+    while i < n:
+        tgl = ev[i][0]
+        while i < n and ev[i][0] == tgl:
+            e = ev[i]
+            _terap(sal, e[2], e[3], e[4], e[5])
+            i += 1
+        for (lk, lb), v in sorted(sal.items()):
+            if v and not adalah_foreman(lk) and dept_lokasi(lk) == "SK":
+                out.append((tgl, 4, "tambah", lk, lb, -v, ("SAPU_KELUAR", "sistem", "sisa meja SK kembali ke Foreman SK")))
+                out.append((tgl, 4, "tambah", FOREMAN_SK, lb, v, ("SAPU_MASUK", "sistem", f"sisa dari {lok_nama(lk)} (SK)")))
+                sal[(lk, lb)] = 0
+                sal[(FOREMAN_SK, lb)] += v
+    out.sort(key=lambda e: (e[0], e[1]))
+    return out
 
 
 def _ledger_c(sampai):
@@ -842,6 +862,7 @@ def harian(bulan):
 
 _GRUP = {"TERIMA": "MASUK", "TERIMA_MEJA": "MASUK", "PINDAH_MASUK": "MASUK", "DISTR_MASUK": "MASUK", "PM_MASUK": "MASUK",
          "KIRIM_MEJA": "KELUAR", "PINDAH_KELUAR": "KELUAR", "DISTR_KELUAR": "KELUAR", "PM_KELUAR": "KELUAR",
+         "SAPU_MASUK": "MASUK", "SAPU_KELUAR": "KELUAR",
          "SAP": "SAP", "PM_PAKAI": "SAP", "AFKIR": "AFKIR", "SET": "KOREKSI", "PM_KOREKSI": "KOREKSI", "RESET": "KOREKSI"}
 GRUP = ["MASUK", "KELUAR", "SAP", "AFKIR", "KOREKSI"]
 

@@ -34,14 +34,16 @@ def _angka(s):
 _memo = {}
 
 
-def pcs_bagus(bulan):
-    """Versi cepat (disimpan 60 detik) dari _pcs_bagus: dipakai dialog input yang sering memanggilnya."""
+def pcs_bagus(bulan, op100=True):
+    """Versi cepat (disimpan 60 detik) dari _pcs_bagus: dipakai dialog input yang sering memanggilnya.
+    op100=True: hanya baris OP100 (QC OP100 / QCSK OP100) = dasar pemakaian label di stok."""
     import time
-    t = _memo.get(bulan)
+    kunci = (bulan, op100)
+    t = _memo.get(kunci)
     if t and time.time() - t[0] < 60:
         return t[1]
-    d = _pcs_bagus(bulan)
-    _memo[bulan] = (time.time(), d)
+    d = _pcs_bagus(bulan, op100)
+    _memo[kunci] = (time.time(), d)
     return d
 
 
@@ -54,12 +56,16 @@ def sap_hari(prn, tgl_posting):
     return {lb: int(p) for lb, p in zip(m["label"], m["proses"])}
 
 
-def _pcs_bagus(bulan):
+def _pcs_bagus(bulan, op100=True):
     """DataFrame[prn, tgl, label, bagus]: jumlah Total SAP per karyawan/hari/label (hasil efektif, tanggal posting)."""
-    h = logic.hasil_bulan(bulan)
+    h = logic.hasil_bulan(bulan)  # label & stok mengikuti Transaction Date (hari kerja)
     if h.empty or "prn" not in h.columns:
         return pd.DataFrame(columns=["prn", "tgl", "label", "bagus", "proses", "nama", "bagian"])
     h = h.copy()
+    if op100:  # pemakaian label hanya dari OP100 (kolom Lokasi SAP: "QC OP100" / "QCSK OP100")
+        h = h[h["op"].astype(str).str.strip() == "100"].copy()
+        if h.empty:
+            return pd.DataFrame(columns=["prn", "tgl", "label", "bagus", "proses", "nama", "bagian"])
     kp = [c for c in h.columns if re.match(r"^SAP \| Afkir \((M|LA|LB|F)\)", str(c).strip())]
     h["_p"] = sum(_angka(h[c]) for c in kp) if kp else 0
     h["_w"] = h["SAP | Warna"] if "SAP | Warna" in h.columns else ""
@@ -89,7 +95,7 @@ def proses_sap(prn, tgl_posting, lb):
 
 
 def afkir(bulan):
-    """DataFrame[tgl, bagian, prn, nama, label, induk, lengket, garis, kotor, proses] untuk Tanggal Posting di bulan itu."""
+    """DataFrame[tgl, bagian, prn, nama, label, induk, lengket, garis, kotor, proses] untuk tanggal kerja di bulan itu."""
     d = data.baca("label_afkir")
     if d.empty:
         return pd.DataFrame(columns=KOLOM[:2] + ["prn", "nama", "label", "induk"] + JENIS)
@@ -97,25 +103,25 @@ def afkir(bulan):
         d["proses"] = ""
     if "induk" not in d.columns:
         d["induk"] = ""
-    d = d[d["tgl_posting"].astype(str).str[:7] == bulan].copy()
+    d = d[d["tgl"].astype(str).str[:7] == bulan].copy()  # tanggal kerja (Transaction Date)
     for j in JENIS:
         d[j] = _angka(d[j]).astype(int)
     d["bagian"] = d["pabrik"].map(lambda p: "QC SK" if p == "QC SK" else "QC")
     if "catatan" not in d.columns:
         d["catatan"] = ""
     d["catatan"] = d["catatan"].fillna("")
-    d = d.drop(columns=["tgl"]).rename(columns={"tgl_posting": "tgl", "type": "label"})
+    d = d.drop(columns=["tgl_posting"], errors="ignore").rename(columns={"type": "label"})
     g = d.groupby(["tgl", "prn", "nama", "label", "induk"], as_index=False).agg(
         {**{j: "sum" for j in JENIS}, "bagian": lambda s: "QC SK" if (s == "QC SK").any() else "QC",
          "catatan": lambda s: "; ".join(dict.fromkeys(x.strip() for x in s if str(x).strip()))})
     return g
 
 
-def tabel(bulan):
+def tabel(bulan, op100=True):
     """Satu baris per (hari, karyawan, label) dengan pcs bagus SAP. Label SNI memakai jumlah pcs bagus semua type CW.
     Karyawan/hari/label yang ada di SAP tetapi belum diinput afkirnya tetap muncul dengan afkir 0 (-> 0%)."""
     a = afkir(bulan)
-    b = pcs_bagus(bulan)
+    b = pcs_bagus(bulan, op100)
     if a.empty and b.empty:
         return pd.DataFrame(columns=KOLOM)
     ada = {(p, t, lb) for p, t, lb in zip(a["prn"], a["tgl"], a["label"])}

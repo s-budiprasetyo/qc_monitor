@@ -207,7 +207,7 @@ with st.popover("⬇ Unduh Excel"):
     st.download_button("Bulanan (ringkasan + per hari)", laporan.excel_bulanan(df, f"{bagian} · {_bln(bulan)}"),
                        file_name=f"label_afkir_{bagian.replace(' ', '')}_{bulan}.xlsx", key="dl_b",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", width="stretch")
-    hari_pilih = st.selectbox("Harian: pilih tanggal posting", sorted(df["tgl"].unique(), reverse=True), key="dl_tgl")
+    hari_pilih = st.selectbox("Harian: pilih tanggal kerja", sorted(df["tgl"].unique(), reverse=True), key="dl_tgl")
     st.download_button("Harian", laporan.excel_harian(df[df["tgl"] == hari_pilih], f"{bagian} · {hari_pilih}"),
                        file_name=f"label_afkir_{bagian.replace(' ', '')}_{hari_pilih}.xlsx", key="dl_h",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", width="stretch")

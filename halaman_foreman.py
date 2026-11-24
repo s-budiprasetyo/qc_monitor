@@ -215,7 +215,7 @@ def dlg_label():
             _peringatan_ada(ada, nama_pilih, prn, pabrik, meja, _tgl_iso(tgl), shift)
             return
     stok_m = stok.stok_meja(pabrik, meja, _tgl_iso(tgl)) if meja else {}
-    posting = label.tanggal_posting(prn, _tgl_iso(tgl), shift) if prn else ""
+    posting = _tgl_iso(tgl) if prn else ""  # SAP dicocokkan dengan tanggal kerja (Transaction Date)
     sap = laporan.sap_hari(prn, posting) if prn else {}
     kunci_auto = (prn, posting)
     if prn and not edit and st.session_state.get("w_auto") != kunci_auto:

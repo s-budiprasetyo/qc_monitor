@@ -206,3 +206,16 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Laporan Stok Label: tab PER TANGGAL = matriks type x tanggal 1-31 (stok akhir hari, dari satu penelusuran kejadian: stok.harian). Klik kotak -> rincian Foreman/meja + PIC meja (alamat terakhir operator, maks 14 hari) + info ADJUST (sistem -> aktual). Tanggal ber-◆ = ada ADJUST; kotak hijau = type yang di-ADJUST.
 - Stok Label PER TANGGAL: hari libur (jadwal Sabtu/Minggu atau mayoritas X di jadwal, dan tanpa pemakaian SAP/afkir/ADJUST) dikosongkan. Klik kotak -> pop-up RINCIAN: stok awal (sisa hari sebelumnya) -> masuk / keluar / pakai SAP / afkir / koreksi (ADJUST) -> sisa, per Foreman dan meja beserta karyawan, daftar kejadian hari itu, dan pemakaian SAP yang belum terpetakan ke meja. Tombol Sebelumnya/Berikutnya untuk menelusuri hari. Kejadian stok kini membawa keterangan (kategori, karyawan, info) di core/stok.py (_ledger, rincian).
 - Halaman Foreman: menu baru PERBAIKAN DATA (pindah stok meja -> meja lain / tarik ke Foreman; koreksi entri label diterima: type, jumlah, meja, karyawan, atau hapus).
+
+### Tahap 10u – Pemakaian label hanya dari OP100
+- Pengurangan stok label dari SAP memakai **pcs bagus (kolom TOTAL) baris OP100 saja**: Lokasi "QC OP100" (QC) dan "QCSK OP100" (SK). OP lain (mis. OP120) tidak mengurangi stok.
+- Pemakaian afkir = lengket + garis + kotor + proses (semua kategori) pada hari itu.
+- Laporan % afkir/hasil lain tidak berubah (flag `op100` hanya dipakai `core/stok.py`).
+
+### Tahap 10u (lanjutan)
+- **Tanggal hasil kerja = Transaction Date** (`logic.hasil_bulan`, juga riwayat Google Sheet). Berlaku untuk semua bulan (dihitung ulang dari data tersimpan). Label/stok tetap memakai Posting Date (`posting=True`) karena shift dihitung sendiri oleh modul label.
+- **% afkir & pemakaian label**: pcs bagus hanya OP100 (default `op100=True` di `core/laporan.py`).
+- **SK**: sisa label di meja SK (pabrik "QC SK") otomatis kembali ke Foreman SK di akhir tiap hari (`stok._sapu_sk`). QC tetap punya sisa di meja.
+- **Label & stok memakai Transaction Date** (SAP pcs bagus OP100, afkir `label_afkir.tgl`, `sap_hari`, peta meja). `tgl_posting` tetap tersimpan tapi tidak dipakai hitungan.
+- Input label diterima: bila tanggal itu sudah pernah diinput, muncul notice berisi riwayat (jam, jumlah) dan total baru; input baru ditambahkan, bukan mengganti.
+- Data lama yang kolom trx-nya kosong/sama dengan tgl diisi ulang dari kolom asli "SAP | Transaction Date" (`data._lengkapi_trx`).

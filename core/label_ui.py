@@ -102,6 +102,16 @@ def form_terima(prn, nama, tgl, oleh, adm=False, kp="lt"):
     pabrik, meja = pilih_meja(kp, "", prn, tgl)
     if pabrik and meja:
         st.markdown("<div class='ls-lbl'>STOK DI MEJA SEKARANG</div>" + chips(stok.stok_meja(pabrik, meja, tgl)), unsafe_allow_html=True)
+    sudah = stok.meja_terima_daftar(prn, tgl)
+    tot_lama = {}
+    if not sudah.empty:
+        for r in sudah.itertuples():
+            tot_lama[r.label] = tot_lama.get(r.label, 0) + int(r.jumlah)
+        rinci = "; ".join(f"**{lb}** {n:,} pcs".replace(",", ".") + " (" + ", ".join(
+            f"jam {w[:5]}: {int(j):,} pcs".replace(",", ".") for w, j, l2 in zip(sudah["waktu"][::-1], sudah["jumlah"][::-1], sudah["label"][::-1]) if l2 == lb) + ")"
+            for lb, n in tot_lama.items())
+        st.warning(f"Pada tanggal ini label diterima **sudah pernah diinput**: {rinci}. "
+                   "Input baru **ditambahkan** ke jumlah itu (bukan mengganti).")
     st.markdown("<div class='ls-lbl'>LABEL DITERIMA</div>", unsafe_allow_html=True)
     st.caption("Klik + Label untuk memilih type. Kolom SNI muncul otomatis bila ada type CW; SNI juga boleh dipilih sendiri.")
     import halaman_foreman as _hf  # jendela isian yang sama dengan Input Label Afkir
@@ -116,6 +126,9 @@ def form_terima(prn, nama, tgl, oleh, adm=False, kp="lt"):
         st.caption("Type yang sudah ada di meja ini sudah tersedia di bawah; isi jumlahnya saja. Klik + Label hanya untuk type baru.")
     baris = [(k, v) for k, v in _hf._grid_hitung(kp + "_isi", ada_meja).items() if v > 0]
     lengkap = bool(pabrik and meja and baris)
+    for lb, n in baris:
+        if tot_lama.get(lb):
+            st.caption(f"{lb}: sudah {tot_lama[lb]:,} + baru {n:,} = **{tot_lama[lb] + n:,} pcs** hari ini".replace(",", "."))
     if not (pabrik and meja):
         st.caption("Pilih pabrik dan nomor meja dulu — tanpa alamat meja, stok tidak bisa dipetakan.")
     if st.button("SIMPAN", type="primary", width="stretch", key=f"{kp}_simpan", disabled=not lengkap):

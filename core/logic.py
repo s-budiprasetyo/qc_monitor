@@ -180,9 +180,9 @@ def hasil_pindah():
     return set(zip(t["prn"], t["tgl"]))
 
 
-def hasil_bulan(bulan):
-    """Hasil kerja efektif untuk satu bulan: tanggal = Posting Date, kecuali baris yang dipindahkan admin ke
-    tanggal kerja (Transaction Date). Baris dari bulan tetangga ikut bila dipindahkan ke bulan ini."""
+def hasil_bulan(bulan, posting=False):
+    """Hasil kerja efektif untuk satu bulan. Tanggal = TRANSACTION DATE (hari kerja sebenarnya), dipakai monitor/hasil kerja.
+    posting=True: tanggal = Posting Date (hanya untuk label/stok, yang menghitung shift sendiri)."""
     k, a = data.baca("karyawan"), data.baca("alias")
     peta = calc.peta_nama(k, a)
     th, bl = int(bulan[:4]), int(bulan[5:])
@@ -190,13 +190,15 @@ def hasil_bulan(bulan):
     ada = set(data.daftar_bulan())
     bagian = [data.baca(f"hasil_{b}") for b in tetangga if b in ada]
     if not bagian:
-        return data.baca(f"hasil_{bulan}")
-    h = pd.concat(bagian, ignore_index=True).fillna("")
+        h = data.baca(f"hasil_{bulan}").fillna("")
+        if h.empty:
+            return h
+    else:
+        h = pd.concat(bagian, ignore_index=True).fillna("")
     h["prn"] = h["nama_sap"].map(peta)
-    pindah = hasil_pindah()
-    if pindah:
-        m = [(p, t) in pindah for p, t in zip(h["prn"], h["trx"])]
-        h.loc[m, "tgl"] = h.loc[m, "trx"]
+    if not posting:
+        trx = h["trx"].astype(str).str.strip()
+        h["tgl"] = trx.where(trx != "", h["tgl"])
     return h[h["tgl"].str[:7] == bulan].reset_index(drop=True)
 
 
@@ -391,7 +393,7 @@ def masalah_bulan(bulan):
             cache[bln] = (jadwal_peta(bln), hari_libur_default(bln))
         jadwal, default = cache[bln]
         n = nama.get(p, p)
-        tambah = f" (hasilnya tercatat di tanggal posting {d[8:]}-{d[5:7]})" if d != t else ""
+        tambah = ""
         if p in rs and t >= rs[p]:
             ket, jenis = "ada hasil kerja padahal tercatat resign", "resign"
         elif (p, t) in abs_ and abs_[(p, t)] != "R":
@@ -425,8 +427,8 @@ def laporan_riwayat():
         if h.empty:
             continue
         h["tgl_posting"] = h["tgl"]
-        m = [(p, x) in pindah for p, x in zip(h["prn"], h["trx"])]
-        h.loc[m, "tgl"] = h.loc[m, "trx"]
+        trx = h["trx"].astype(str).str.strip()
+        h["tgl"] = trx.where(trx != "", h["tgl"])
         harian, _ = harian_bulan(b)
         pers = {(p, d): v for p, d, v in zip(harian["prn"], harian["tgl"], harian["persen"])}
         mm = h.merge(t, on=["grup", "type", "op"], how="left")
@@ -445,7 +447,7 @@ def laporan_riwayat():
                 status = "TARGET" if round(hari) >= 100 else "TIDAK TARGET"
             ket = ""
             if r.trx and r.trx != r.tgl_posting:
-                ket = "dipindah ke tanggal kerja" if r.tgl == r.trx else "tanggal posting beda dengan tanggal kerja"
+                ket = "tanggal posting beda dengan tanggal kerja (hasil dihitung di tanggal kerja)"
             hitung.append([r.tgl, r.trx, nama.get(r.prn, "") if pd.notna(r.prn) else "",
                            r.prn if pd.notna(r.prn) else "", float(r.target) if ada else "",
                            round(r.periksa / r.target * 100, 1) if ada and pd.notna(r.periksa) else "",
