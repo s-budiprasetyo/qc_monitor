@@ -109,7 +109,110 @@ def _warna(num, kol):
     return f
 
 
-t0, t1, t2 = st.tabs(["DI MANA SAJA", "TOTAL PER LABEL", "PER MEJA"])
+BULAN_ID = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+
+
+def _lok_baca(lk):
+    return "Foreman" if lk == stok.FOREMAN else stok.lok_nama(lk)
+
+
+def _tab_harian():
+    """Matriks TYPE x tanggal 1..31: stok label akhir hari. Klik kotak -> rincian posisi (Foreman / meja + PIC) dan hasil ADJUST."""
+    mulai = pd.Period(stok.MULAI[:7], freq="M")
+    sekarang = pd.Period(hari_ini.strftime("%Y-%m"), freq="M")
+    opsi = [str(p) for p in pd.period_range(mulai, sekarang, freq="M")]
+    awal = tgl.strftime("%Y-%m")
+    bln = st.selectbox("Bulan", opsi, index=opsi.index(awal) if awal in opsi else len(opsi) - 1, key="st_bln",
+                       format_func=lambda b: f"{BULAN_ID[int(b[5:])]} {b[:4]}")
+    hari, adj = stok.harian(bln)
+    p = pd.Period(bln, freq="M")
+    jml = p.days_in_month
+    peta, adj_hari, adj_sel = {}, set(), set()
+    for tg, sal in hari.items():
+        d_ = int(tg[8:])
+        for (lk, lb), n in sal.items():
+            if n and stok.dept_cocok(lk, dept):
+                peta[(lb, d_)] = peta.get((lb, d_), 0) + n
+    for tg, x in adj.items():
+        for (lk, lb) in x:
+            if stok.dept_cocok(lk, dept):
+                adj_hari.add(int(tg[8:]))
+                adj_sel.add((lb, int(tg[8:])))
+    tipe = stok.urut_label({lb for (lb, _d) in peta})
+    if not tipe:
+        st.info("Belum ada stok label pada bulan ini.")
+        return
+    kol = {d_: f"{d_}◆" if d_ in adj_hari else str(d_) for d_ in range(1, jml + 1)}
+    maks = int(hari_ini.strftime("%d")) if bln == hari_ini.strftime("%Y-%m") else jml
+    angka = pd.DataFrame({kol[d_]: [peta.get((lb, d_), 0) if d_ <= maks else None for lb in tipe] for d_ in range(1, jml + 1)})
+    teks = angka.copy()
+    for c in teks.columns:
+        teks[c] = angka[c].map(lambda v: "" if pd.isna(v) else (_f(v) if v else "–"))
+    teks.insert(0, "TYPE", tipe)
+
+    def _gaya(df):
+        g = pd.DataFrame("", index=df.index, columns=df.columns)
+        for j, d_ in enumerate(range(1, jml + 1)):
+            c = kol[d_]
+            for i, lb in enumerate(tipe):
+                v = angka.iloc[i, j]
+                if pd.isna(v):
+                    continue
+                if (lb, d_) in adj_sel:
+                    g.loc[i, c] = "background-color:#dff3e4;font-weight:800;color:#14532d"
+                elif v < 0:
+                    g.loc[i, c] = "color:#b3261e;font-weight:800"
+                elif v == 0:
+                    g.loc[i, c] = "color:#b6c0d4"
+        g["TYPE"] = "font-weight:800;color:#0b3d91"
+        return g
+    st.caption("Klik satu kotak untuk melihat rincian posisinya. ◆ pada tanggal = ada hasil ADJUST hari itu; kotak hijau = type yang di-ADJUST (angkanya sudah hasil hitung aktual).")
+    ev = st.dataframe(teks.style.apply(_gaya, axis=None), hide_index=True, width="stretch", height=min(48 + 35 * len(teks), 640),
+                      on_select="rerun", selection_mode="single-cell", key="st_grid",
+                      column_config={"TYPE": st.column_config.TextColumn("TYPE", pinned=True, width="small"),
+                                     **{kol[d_]: st.column_config.TextColumn(kol[d_], alignment="right", width=62) for d_ in range(1, jml + 1)}})
+    sel = (ev.selection.cells if ev and ev.selection else None) or []
+    if not sel:
+        return
+    bar, nm = sel[0]
+    if nm == "TYPE" or bar is None or int(bar) >= len(tipe):
+        return
+    lb, d_ = tipe[int(bar)], int(str(nm).replace("◆", ""))
+    tg = f"{bln}-{d_:02d}"
+    if tg not in hari:
+        st.caption("Belum ada data untuk tanggal itu.")
+        return
+    pic = stok.pic_meja(tg)
+    baris = []
+    for (lk, l2), n in hari[tg].items():
+        if l2 != lb or not stok.dept_cocok(lk, dept) or (n == 0 and (lk, lb) not in adj.get(tg, {})):
+            continue
+        a = adj.get(tg, {}).get((lk, lb))
+        baris.append((lk, _lok_baca(lk), ", ".join(pic.get(lk, [])) if not stok.adalah_foreman(lk) else "–", n,
+                      f"✔ ADJUST: sistem {_f(a[0])} → aktual {_f(a[1])}" if a else ""))
+    for (lk, l2), a in adj.get(tg, {}).items():
+        if l2 == lb and stok.dept_cocok(lk, dept) and not any(b[0] == lk for b in baris):
+            baris.append((lk, _lok_baca(lk), ", ".join(pic.get(lk, [])) if not stok.adalah_foreman(lk) else "–", 0,
+                          f"✔ ADJUST: sistem {_f(a[0])} → aktual {_f(a[1])}"))
+
+    def _u(b):
+        lk = b[0]
+        if stok.adalah_foreman(lk):
+            return (0, 0, 0)
+        pb, mj = stok._lok_pisah(lk)
+        return (1, list(label.PABRIK).index(pb) if pb in label.PABRIK else 9, int(mj) if str(mj).isdigit() else 999)
+    baris.sort(key=_u)
+    tot = sum(b[3] for b in baris)
+    st.markdown(f"**RINCIAN {html.escape(lb)} · {d_:02d}-{bln[5:]}-{bln[:4]}** (stok akhir hari) — total **{_f(tot)}** pcs")
+    rd = pd.DataFrame({"POSISI": [b[1] for b in baris], "PIC MEJA (hari itu)": [b[2] for b in baris],
+                       "STOK": [_f(b[3]) for b in baris], "KETERANGAN": [b[4] for b in baris]})
+    st.dataframe(rd, hide_index=True, width="stretch", height=min(48 + 35 * len(rd), 420),
+                 column_config={"STOK": st.column_config.TextColumn("STOK", alignment="right", width="small")})
+
+
+tH, t0, t1, t2 = st.tabs(["PER TANGGAL", "DI MANA SAJA", "TOTAL PER LABEL", "PER MEJA"])
+with tH:
+    _tab_harian()
 with t0:
     st.caption("Setiap type label: total stok dan sebarannya (Foreman dan meja).")
     ring = []

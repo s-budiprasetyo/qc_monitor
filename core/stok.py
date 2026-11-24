@@ -13,7 +13,7 @@ import os
 import time
 import uuid
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 
@@ -669,14 +669,8 @@ def _peta_meja():
     return peta
 
 
-def saldo(sampai=None, abaikan=None):
-    """({(lokasi, label): saldo}, DataFrame pemakaian tanpa meja) sampai akhir hari `sampai`."""
-    sampai = sampai or hari_ini()
-    if time.time() - _memo["t"] > 20:
-        _memo["d"] = {}
-        _memo["t"] = time.time()
-    if abaikan is None and sampai in _memo["d"]:
-        return _memo["d"][sampai]
+def _ledger(sampai, abaikan=None):
+    """Daftar kejadian stok terurut (tgl, urutan, jenis, lokasi, label, nilai) dan pemakaian SAP yang belum terpetakan ke meja."""
     data.muat(["label_terima", "label_distribusi", "label_meja", "label_pindah", "label_kosong", "label_hitung", "label_afkir", "label_pindahmeja",
                "karyawan", "alias"] + [f"hasil_{b}" for b in pd.period_range(MULAI[:7], sampai[:7], freq="M")])
     ev = []  # (tgl, urutan, jenis, lokasi, label, nilai)
@@ -745,21 +739,92 @@ def saldo(sampai=None, abaikan=None):
                 ev.append((r.tgl, 2, "tambah", lk, r.label, -int(sisa)))
     ev = [e for e in ev if e[0] >= MULAI]  # catatan uji sebelum tanggal mulai tidak ikut dihitung
     ev.sort(key=lambda e: (e[0], e[1]))
+    return ev, tanpa
+
+
+def _terap(sal, jenis, lk, lb, v):
+    if jenis == "reset":
+        for k in [k for k in sal if k[0].startswith(lk + "|")]:
+            sal[k] = 0
+    elif jenis == "set":
+        sal[(lk, lb)] = v
+    else:
+        sal[(lk, lb)] += v
+
+
+def saldo(sampai=None, abaikan=None):
+    """({(lokasi, label): saldo}, DataFrame pemakaian tanpa meja) sampai akhir hari `sampai`."""
+    sampai = sampai or hari_ini()
+    if time.time() - _memo["t"] > 20:
+        _memo["d"] = {}
+        _memo["t"] = time.time()
+    if abaikan is None and sampai in _memo["d"]:
+        return _memo["d"][sampai]
+    ev, tanpa = _ledger(sampai, abaikan)
     sal = defaultdict(int)
     for tgl, _o, jenis, lk, lb, v in ev:
         if tgl > sampai:
             break
-        if jenis == "reset":
-            for k in [k for k in sal if k[0].startswith(lk + "|")]:
-                sal[k] = 0
-        elif jenis == "set":
-            sal[(lk, lb)] = v
-        else:
-            sal[(lk, lb)] += v
+        _terap(sal, jenis, lk, lb, v)
     hasil = (dict(sal), pd.DataFrame(tanpa, columns=["tgl", "prn", "nama", "label", "n"]))
     if abaikan is None:
         _memo["d"][sampai] = hasil
     return hasil
+
+
+def harian(bulan):
+    """Stok akhir TIAP HARI dalam bulan 'YYYY-MM' (sampai hari ini), dari satu kali penelusuran kejadian.
+    Return ({tgl: {(lokasi, label): saldo}}, {tgl: {(lokasi, label): (sistem_sebelum_adjust, hasil_hitung_aktual)}})."""
+    kunci = ("harian", bulan)
+    if time.time() - _memo["t"] > 20:
+        _memo["d"] = {}
+        _memo["t"] = time.time()
+    if kunci in _memo["d"]:
+        return _memo["d"][kunci]
+    p = pd.Period(bulan, freq="M")
+    akhir = min(p.end_time.date().isoformat(), hari_ini())
+    hari = [d.date().isoformat() for d in pd.date_range(p.start_time.date(), akhir)]
+    hasil, adj = {}, defaultdict(dict)
+    if hari:
+        ev, _t = _ledger(akhir)
+        sal, i = defaultdict(int), 0
+        for tgl, _o, jenis, lk, lb, v in ev:
+            if tgl > akhir:
+                break
+            while i < len(hari) and hari[i] < tgl:
+                hasil[hari[i]] = dict(sal)
+                i += 1
+            if jenis == "set":
+                adj[tgl][(lk, lb)] = (sal.get((lk, lb), 0), v)
+            _terap(sal, jenis, lk, lb, v)
+        while i < len(hari):
+            hasil[hari[i]] = dict(sal)
+            i += 1
+    out = (hasil, dict(adj))
+    _memo["d"][kunci] = out
+    return out
+
+
+def pic_meja(tgl, hari_mundur=14):
+    """{lokasi meja: [nama operator]}: operator yang memegang meja itu pada tanggal tgl = alamat terakhirnya (maks hari_mundur hari ke belakang).
+    Bila alamat itu bukan dari tanggal tgl sendiri, nama diberi tanggalnya, mis. 'BUDI (21/11)'."""
+    nama = {}
+    for tb in ("label_afkir", "label_meja", "label_pindahmeja"):
+        d = data.baca(tb)
+        if len(d) and "nama" in d.columns:
+            for p_, n_ in zip(d["prn"], d["nama"]):
+                if n_:
+                    nama[p_] = n_
+    batas = (date.fromisoformat(tgl) - timedelta(days=hari_mundur)).isoformat()
+    terakhir = {}  # prn -> (tanggal, lokasi)
+    for (prn, t), lk in _peta_meja().items():
+        if batas <= t <= tgl and (prn not in terakhir or t > terakhir[prn][0]):
+            terakhir[prn] = (t, lk)
+    out = defaultdict(list)
+    for prn, (t, lk) in sorted(terakhir.items(), key=lambda x: nama.get(x[0], x[0])):
+        n_ = nama.get(prn) or prn
+        out[lk].append(n_ if t == tgl else f"{n_} ({t[8:]}/{t[5:7]})")
+    return dict(out)
 
 
 def stok_lokasi(lokasi, sampai=None, abaikan=None):
