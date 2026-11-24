@@ -1252,6 +1252,122 @@ def dlg_check_label():
             st.rerun(scope="fragment")
 
 
+def _isi_semua(isi):
+    for k, v in isi.items():
+        st.session_state[k] = v
+
+
+def _tab_pindah_stok(oleh):
+    """Foreman memindahkan stok label dari satu meja ke meja lain, atau menariknya kembali ke stok Foreman."""
+    tgl = _tgl_iso(st.date_input("Tanggal pemindahan", value=label.hari_ini(), max_value=label.hari_ini(), format="DD/MM/YYYY", key="pf_tgl"))
+    dp, dm = label_ui.pilih_meja("pf_a", "DARI", wajib=True, bawaan=(None, None))
+    tuj = st.segmented_control("Tujuan", ["Meja lain", "Stok Foreman"], default="Meja lain", key="pf_tuj", label_visibility="collapsed") or "Meja lain"
+    ke = stok.FOREMAN
+    if tuj == "Meja lain":
+        kp, km = label_ui.pilih_meja("pf_b", "KE", wajib=True, bawaan=(None, None))
+        ke = (kp, km) if kp and km else None
+    if not (dp and dm):
+        st.caption("Pilih meja asal dulu.")
+        return
+    sis = {lb: n for lb, n in stok.stok_meja(dp, dm, tgl).items() if n > 0}
+    if not sis:
+        st.info(f"Tidak ada stok label positif di {dp} · Meja {dm} sampai tanggal ini.")
+        return
+    W = [1.5, 1, 1.2]
+    keys = {}
+    hasil = []
+    with st.container(key="tb_tbl"):
+        _kepala_tbl(W, ("TYPE", "STOK DI MEJA", "DIPINDAHKAN"), ("left", "right", "left"))
+        for lb in stok.urut_label(sis):
+            r = st.columns(W, vertical_alignment="center")
+            r[0].markdown(_sel_ty(lb), unsafe_allow_html=True)
+            r[1].markdown(f"<div class='tb-n'>{_ang(sis[lb])}</div>", unsafe_allow_html=True)
+            k = f"pf_n_{dp}_{dm}_{lb}"
+            keys[k] = sis[lb]
+            v = r[2].number_input(f"Pindah {lb}", min_value=0, max_value=int(sis[lb]), step=1, value=None, placeholder="0", key=k, label_visibility="collapsed")
+            if v:
+                hasil.append((lb, int(v)))
+    st.button("Pindahkan semua stok", key="pf_semua", on_click=_isi_semua, args=(keys,), width="stretch")
+    tujuan_t = "stok Foreman" if ke == stok.FOREMAN else (f"{ke[0]} · Meja {ke[1]}" if ke else "…")
+    st.caption(f"Dari {dp} · Meja {dm} ke {tujuan_t}. Pemindahan tercatat atas nama {oleh} dan muncul di rincian stok per tanggal.")
+    if st.button("SIMPAN PEMINDAHAN", type="primary", width="stretch", key="pf_simpan", disabled=not hasil or not ke):
+        galat = stok.pindah_simpan(tgl, dp, dm, ke, hasil, oleh)
+        if galat:
+            st.error(galat)
+        else:
+            for k in keys:
+                st.session_state.pop(k, None)
+            st.session_state["pf_toast"] = f"{len(hasil)} type dipindahkan ke {tujuan_t}."
+            st.rerun(scope="fragment")
+
+
+def _tab_koreksi_terima(oleh):
+    """Perbaiki entri 'label diterima' yang salah ketik oleh karyawan: type, jumlah, meja, atau nama penerima."""
+    tgl = _tgl_iso(st.date_input("Tanggal label diterima", value=label.hari_ini(), max_value=label.hari_ini(), format="DD/MM/YYYY", key="pk_tgl"))
+    d = stok.meja_terima_daftar(tgl=tgl)
+    if d.empty:
+        st.info("Belum ada label diterima di meja pada tanggal ini.")
+        return
+    opsi = {r.id: f"{r.pabrik} · Meja {r.meja} · {r.label} · {_ang(r.jumlah)} · {r.nama or r.oleh} ({str(r.waktu)[:5]})" for r in d.itertuples()}
+    pil = st.selectbox("Pilih entri yang salah", list(opsi), index=None, format_func=opsi.get, placeholder="Pilih entri label diterima…", key=f"pk_id_{tgl}")
+    if not pil:
+        st.caption("Pilih entri, lalu ubah type, jumlah, meja, atau karyawan penerimanya.")
+        return
+    r = d[d["id"] == pil].iloc[0]
+    kar = data.baca("karyawan")
+    kar = kar[kar["nama_web"].astype(str) != ""] if len(kar) else kar
+    nama_opsi = sorted(set(kar["nama_web"].astype(str))) if len(kar) else []
+    if r["nama"] and r["nama"] not in nama_opsi:
+        nama_opsi.append(r["nama"])
+    tipe = stok.semua_label()
+    c1, c2 = st.columns(2)
+    lb = c1.selectbox("Type", tipe, index=tipe.index(r["label"]) if r["label"] in tipe else None, key=f"pk_l_{pil}")
+    jml = c2.number_input("Jumlah (pcs)", min_value=-9999999, max_value=9999999, step=1, value=int(r["jumlah"]), key=f"pk_j_{pil}")
+    pab = list(label.PABRIK)
+    c3, c4 = st.columns(2)
+    pb = c3.selectbox("Pabrik", pab, index=pab.index(r["pabrik"]) if r["pabrik"] in pab else None, key=f"pk_p_{pil}")
+    mj_opsi = label.meja_daftar(pb) if pb else []
+    mj = c4.selectbox("Meja", mj_opsi, index=mj_opsi.index(str(r["meja"])) if str(r["meja"]) in [str(x) for x in mj_opsi] else None,
+                      format_func=lambda m: f"Meja {m}", key=f"pk_m_{pil}_{pb}")
+    nm = st.selectbox("Karyawan penerima", nama_opsi, index=nama_opsi.index(r["nama"]) if r["nama"] in nama_opsi else None, key=f"pk_n_{pil}")
+    prn = r["prn"]
+    if nm and nm != r["nama"] and len(kar):
+        x = kar[kar["nama_web"].astype(str) == nm]
+        prn = x.iloc[0]["prn"] if len(x) else prn
+    st.caption(f"Diinput {r['nama'] or r['oleh']} pukul {str(r['waktu'])[:5]}. Perubahan tercatat di riwayat atas nama {oleh}.")
+    b1, b2 = st.columns([2, 1])
+    if b1.button("SIMPAN PERUBAHAN", type="primary", width="stretch", key="pk_simpan"):
+        galat = stok.meja_terima_koreksi(pil, lb, jml, pb, mj, prn, nm or r["nama"], oleh)
+        if galat:
+            st.error(galat)
+        else:
+            st.session_state["pf_toast"] = "Entri label diterima diperbaiki."
+            st.rerun(scope="fragment")
+    sure = b2.checkbox("Yakin hapus", key=f"pk_y_{pil}")
+    if b2.button("HAPUS ENTRI", width="stretch", key="pk_hapus", disabled=not sure):
+        stok.meja_terima_hapus(pil, oleh)
+        st.session_state["pf_toast"] = "Entri dihapus."
+        st.rerun(scope="fragment")
+
+
+@st.dialog("PERBAIKAN DATA LABEL", width="large")
+def dlg_perbaikan():
+    kontrol_jendela("inputlabel")
+    kepala("label", "PERBAIKAN DATA LABEL")
+    st.markdown(label_ui.CSS + CSS_JENDELA + CSS_TBL, unsafe_allow_html=True)
+    if st.session_state.get("pf_toast"):
+        st.toast(st.session_state.pop("pf_toast"), icon="✅")
+    oleh = akses.pelaku()
+    mode = st.segmented_control("Perbaikan", ["Pindah / tarik stok meja", "Koreksi label diterima"], default="Pindah / tarik stok meja",
+                                key="pf_mode", label_visibility="collapsed") or "Pindah / tarik stok meja"
+    if mode.startswith("Pindah"):
+        st.caption("Pindahkan stok label dari satu meja ke meja berikutnya, atau tarik kembali ke stok Foreman.")
+        _tab_pindah_stok(oleh)
+    else:
+        st.caption("Karyawan salah ketik type, jumlah, atau memilih meja yang keliru? Perbaiki entri label diterimanya di sini.")
+        _tab_koreksi_terima(oleh)
+
+
 def _hub():
     """Roda gigi bergaya Jarvis (komponen yang sama dengan halaman admin): ikon menu mengitari roda, sinar menunjuk menu aktif."""
     try:
@@ -1266,6 +1382,7 @@ def _hub():
             "check": ("CHECK LABEL", "Label keluar ke karyawan per meja, cek stok meja", "check", dlg_check_label, "Fungsi", "Per meja"),
             "opname": ("STOK OPNAME LABEL", "Hitung fisik label per lokasi, pabrik, dan meja", "calc", dlg_opname, "Status", ket_op),
             "selisih": ("SELISIH STOK OPNAME", "Bandingkan stok sistem dengan hitungan fisik, lalu ADJUST", "bars", dlg_selisih, "Status", ket_op),
+            "perbaikan": ("PERBAIKAN DATA", "Pindah stok antar meja, tarik ke Foreman, koreksi label diterima", "wrench", dlg_perbaikan, "Fungsi", "Koreksi"),
             "operator": ("DAFTAR OPERATOR", "Daftarkan operator untuk Input Label Afkir", "user", dlg_operator, "Fungsi", "Akun operator")}
     daftar = [{"id": k, "label": v[0], "sub": v[1], "icon": v[2], "status_label": v[4], "status": v[5], "disabled": False}
               for k, v in MENU.items()]

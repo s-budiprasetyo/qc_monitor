@@ -258,6 +258,27 @@ def meja_terima_hapus(id_, oleh):
     _bersih()
 
 
+def meja_terima_koreksi(id_, label_baru, jumlah, pabrik, meja, prn, nama, oleh):
+    """Perbaiki satu entri 'label diterima' di meja (karyawan salah ketik type/jumlah/meja/nama). Return galat (str) atau None."""
+    d = data.baca("label_meja")
+    x = d[d["id"] == id_]
+    if x.empty:
+        return "Entri tidak ditemukan."
+    if not label_baru or not pabrik or not meja:
+        return "Type, pabrik, dan meja wajib diisi."
+    if _int(jumlah) == 0:
+        return "Jumlah tidak boleh 0 (gunakan Hapus bila entri memang salah)."
+    r = x.iloc[0].to_dict()
+    sebelum = f"{r['label']} {_int(r['jumlah'])} @ {r['pabrik']}|{r['meja']} ({r.get('nama', '')})"
+    r.update({"label": label_baru, "jumlah": str(_int(jumlah)), "pabrik": pabrik, "meja": str(meja), "prn": prn, "nama": nama})
+    data.upsert("label_meja", pd.DataFrame([r], columns=list(d.columns)), ["id"])
+    sesudah = f"{label_baru} {_int(jumlah)} @ {pabrik}|{meja} ({nama})"
+    catat_riwayat("koreksi label diterima", f"{r['tgl']}|{id_}", sebelum, sesudah, oleh, r["tgl"])
+    data.catat_update("STOK LABEL")
+    _bersih()
+    return None
+
+
 def meja_terakhir(prn, sampai=None):
     """(pabrik, meja) terakhir operator itu (dari penerimaan label atau input label afkir) sebelum/sampai tanggal."""
     sampai = sampai or hari_ini()
@@ -675,29 +696,29 @@ def _ledger(sampai, abaikan=None):
                "karyawan", "alias"] + [f"hasil_{b}" for b in pd.period_range(MULAI[:7], sampai[:7], freq="M")])
     ev = []  # (tgl, urutan, jenis, lokasi, label, nilai)
     for r in data.baca("label_terima").itertuples():
-        ev.append((r.tgl, 1, "tambah", foreman_dept(getattr(r, "dept", "") or "QC"), r.label, _int(r.jumlah)))
+        ev.append((r.tgl, 1, "tambah", foreman_dept(getattr(r, "dept", "") or "QC"), r.label, _int(r.jumlah), ("TERIMA", r.oleh, "label diterima dari packing")))
     for r in data.baca("label_distribusi").itertuples():
         n = _int(r.jumlah)
-        ev.append((r.tgl, 1, "tambah", foreman_dept(r.dari), r.label, -n))
-        ev.append((r.tgl, 1, "tambah", foreman_dept(r.ke), r.label, n))
+        ev.append((r.tgl, 1, "tambah", foreman_dept(r.dari), r.label, -n, ("DISTR_KELUAR", r.oleh, f"distribusi ke {r.ke}")))
+        ev.append((r.tgl, 1, "tambah", foreman_dept(r.ke), r.label, n, ("DISTR_MASUK", r.oleh, f"distribusi dari {r.dari}")))
     for r in data.baca("label_meja").itertuples():
         n = _int(r.jumlah)
-        ev.append((r.tgl, 1, "tambah", foreman_dept(dept_pabrik(r.pabrik)), r.label, -n))
-        ev.append((r.tgl, 1, "tambah", lok(r.pabrik, str(r.meja)), r.label, n))
+        ev.append((r.tgl, 1, "tambah", foreman_dept(dept_pabrik(r.pabrik)), r.label, -n, ("KIRIM_MEJA", r.oleh, f"keluar ke {lok_nama(lok(r.pabrik, str(r.meja)))} ({r.nama})")))
+        ev.append((r.tgl, 1, "tambah", lok(r.pabrik, str(r.meja)), r.label, n, ("TERIMA_MEJA", r.nama or r.oleh, "label diterima di meja")))
     for r in data.baca("label_pindah").itertuples():
         n = _int(r.jumlah)
-        ev.append((r.tgl, 1, "tambah", lok(r.dari_pabrik, str(r.dari_meja)), r.label, -n))
         ke = foreman_dept(dept_pabrik(r.dari_pabrik)) if not r.ke_pabrik else lok(r.ke_pabrik, str(r.ke_meja))
-        ev.append((r.tgl, 1, "tambah", ke, r.label, n))
+        ev.append((r.tgl, 1, "tambah", lok(r.dari_pabrik, str(r.dari_meja)), r.label, -n, ("PINDAH_KELUAR", r.oleh, f"dipindah ke {lok_nama(ke)}")))
+        ev.append((r.tgl, 1, "tambah", ke, r.label, n, ("PINDAH_MASUK", r.oleh, f"dipindah dari {lok_nama(lok(r.dari_pabrik, str(r.dari_meja)))}")))
     for r in data.baca("label_kosong").itertuples():
-        ev.append((r.tgl, 0, "reset", r.pabrik, "", 0))
+        ev.append((r.tgl, 0, "reset", r.pabrik, "", 0, ("RESET", getattr(r, "oleh", ""), "meja dikosongkan")))
     h = data.baca("label_hitung")
     if len(h):
         h = h[h["adjust"] == "ya"].copy()
         if "lokasi" not in h.columns:
             h["lokasi"] = ""
         for r in h.sort_values(["tgl", "waktu"]).itertuples():
-            ev.append((r.tgl, 3, "set", r.lokasi or FOREMAN, r.label, _int(r.aktual)))
+            ev.append((r.tgl, 3, "set", r.lokasi or FOREMAN, r.label, _int(r.aktual), ("SET", r.oleh, "hasil hitung aktual (ADJUST)")))
     pem = _pemakaian(sampai)
     peta = _peta_meja()
     # afkir: dibebankan ke meja tempat afkir itu diinput (setiap baris input foreman punya pabrik dan meja sendiri)
@@ -707,7 +728,7 @@ def _ledger(sampai, abaikan=None):
             n = sum(_int(getattr(r, j)) for j in laporan.JENIS)
             tg = r.tgl_posting or r.tgl
             if n and MULAI <= tg <= sampai:
-                ev.append((tg, 2, "tambah", lok(r.pabrik, str(r.meja)), r.type, -n))
+                ev.append((tg, 2, "tambah", lok(r.pabrik, str(r.meja)), r.type, -n, ("AFKIR", r.nama, f"label afkir (input {r.oleh})")))
     # Pindah meja: pemakaian di meja lama (hasil isian sisa fisik), koreksi bila sisa fisik > stok sistem, dan label yang dibawa
     pakai = defaultdict(int)  # (prn, tgl, label) -> pemakaian yang sudah dibebankan ke meja lama
     for r in data.baca("label_pindahmeja").itertuples():
@@ -717,13 +738,13 @@ def _ledger(sampai, abaikan=None):
         ke = lok(r.ke_pabrik, str(r.ke_meja))
         used, bawa, kor = _int(r.bagus), _int(getattr(r, "bawa", 0)), _int(getattr(r, "koreksi", 0))
         if used:
-            ev.append((r.tgl, 2, "tambah", dari, r.label, -used))
+            ev.append((r.tgl, 2, "tambah", dari, r.label, -used, ("PM_PAKAI", r.nama, "pcs bagus di meja lama (pindah meja)")))
             pakai[(r.prn, r.tgl, r.label)] += used
         if kor:
-            ev.append((r.tgl, 2, "tambah", dari, r.label, kor))
+            ev.append((r.tgl, 2, "tambah", dari, r.label, kor, ("PM_KOREKSI", r.nama, "koreksi sisa fisik saat pindah meja")))
         if bawa:
-            ev.append((r.tgl, 2, "tambah", dari, r.label, -bawa))
-            ev.append((r.tgl, 2, "tambah", ke, r.label, bawa))
+            ev.append((r.tgl, 2, "tambah", dari, r.label, -bawa, ("PM_KELUAR", r.nama, f"dibawa ke {lok_nama(ke)}")))
+            ev.append((r.tgl, 2, "tambah", ke, r.label, bawa, ("PM_MASUK", r.nama, f"dibawa dari {lok_nama(dari)}")))
     # pcs bagus SAP: per (operator, hari, label); sisanya (di luar pemakaian meja lama) dibebankan ke meja terakhir operator itu hari itu
     tanpa = []
     for r in pem.itertuples():
@@ -736,10 +757,21 @@ def _ledger(sampai, abaikan=None):
             if lk is None:
                 tanpa.append({"tgl": r.tgl, "prn": r.prn, "nama": r.nama, "label": r.label, "n": int(sisa)})
             else:
-                ev.append((r.tgl, 2, "tambah", lk, r.label, -int(sisa)))
+                ev.append((r.tgl, 2, "tambah", lk, r.label, -int(sisa), ("SAP", r.nama, "pcs bagus SAP")))
     ev = [e for e in ev if e[0] >= MULAI]  # catatan uji sebelum tanggal mulai tidak ikut dihitung
     ev.sort(key=lambda e: (e[0], e[1]))
     return ev, tanpa
+
+
+def _ledger_c(sampai):
+    """_ledger yang di-memo 20 detik (dipakai tampilan harian dan rincian)."""
+    if time.time() - _memo["t"] > 20:
+        _memo["d"] = {}
+        _memo["t"] = time.time()
+    k = ("ledger", sampai)
+    if k not in _memo["d"]:
+        _memo["d"][k] = _ledger(sampai)
+    return _memo["d"][k]
 
 
 def _terap(sal, jenis, lk, lb, v):
@@ -762,7 +794,7 @@ def saldo(sampai=None, abaikan=None):
         return _memo["d"][sampai]
     ev, tanpa = _ledger(sampai, abaikan)
     sal = defaultdict(int)
-    for tgl, _o, jenis, lk, lb, v in ev:
+    for tgl, _o, jenis, lk, lb, v, *_k in ev:
         if tgl > sampai:
             break
         _terap(sal, jenis, lk, lb, v)
@@ -773,8 +805,8 @@ def saldo(sampai=None, abaikan=None):
 
 
 def harian(bulan):
-    """Stok akhir TIAP HARI dalam bulan 'YYYY-MM' (sampai hari ini), dari satu kali penelusuran kejadian.
-    Return ({tgl: {(lokasi, label): saldo}}, {tgl: {(lokasi, label): (sistem_sebelum_adjust, hasil_hitung_aktual)}})."""
+    """Stok akhir TIAP HARI (setelah pemakaian) dalam bulan 'YYYY-MM' sampai hari ini, dari satu kali penelusuran kejadian.
+    Return (saldo {tgl: {(lokasi, label): n}}, adjust {tgl: {(lokasi, label): (sistem_sebelum, aktual)}}, aktif {tgl yang ada pemakaian SAP/afkir})."""
     kunci = ("harian", bulan)
     if time.time() - _memo["t"] > 20:
         _memo["d"] = {}
@@ -784,11 +816,12 @@ def harian(bulan):
     p = pd.Period(bulan, freq="M")
     akhir = min(p.end_time.date().isoformat(), hari_ini())
     hari = [d.date().isoformat() for d in pd.date_range(p.start_time.date(), akhir)]
-    hasil, adj = {}, defaultdict(dict)
+    hasil, adj, aktif = {}, defaultdict(dict), set()
     if hari:
-        ev, _t = _ledger(akhir)
+        ev, tanpa = _ledger_c(hari_ini())
+        aktif |= set(tanpa["tgl"]) if len(tanpa) else set()
         sal, i = defaultdict(int), 0
-        for tgl, _o, jenis, lk, lb, v in ev:
+        for tgl, _o, jenis, lk, lb, v, *k in ev:
             if tgl > akhir:
                 break
             while i < len(hari) and hari[i] < tgl:
@@ -796,13 +829,46 @@ def harian(bulan):
                 i += 1
             if jenis == "set":
                 adj[tgl][(lk, lb)] = (sal.get((lk, lb), 0), v)
+            if k and k[0][0] in ("SAP", "AFKIR", "PM_PAKAI", "SET"):
+                aktif.add(tgl)
             _terap(sal, jenis, lk, lb, v)
         while i < len(hari):
             hasil[hari[i]] = dict(sal)
             i += 1
-    out = (hasil, dict(adj))
+    out = (hasil, dict(adj), aktif)
     _memo["d"][kunci] = out
     return out
+
+
+_GRUP = {"TERIMA": "MASUK", "TERIMA_MEJA": "MASUK", "PINDAH_MASUK": "MASUK", "DISTR_MASUK": "MASUK", "PM_MASUK": "MASUK",
+         "KIRIM_MEJA": "KELUAR", "PINDAH_KELUAR": "KELUAR", "DISTR_KELUAR": "KELUAR", "PM_KELUAR": "KELUAR",
+         "SAP": "SAP", "PM_PAKAI": "SAP", "AFKIR": "AFKIR", "SET": "KOREKSI", "PM_KOREKSI": "KOREKSI", "RESET": "KOREKSI"}
+GRUP = ["MASUK", "KELUAR", "SAP", "AFKIR", "KOREKSI"]
+
+
+def rincian(tgl, lb):
+    """Telusur satu type label pada satu hari: stok awal (akhir hari sebelumnya) per lokasi, kejadian hari itu (masuk, keluar, pemakaian SAP,
+    afkir, koreksi/ADJUST) beserta karyawannya, dan stok akhir. Return dict(awal, akhir, kejadian[(lokasi, grup, nama, info, jumlah)], tanpa)."""
+    ev, tanpa = _ledger_c(hari_ini())
+    sal, awal, kej = defaultdict(int), None, []
+    for tg, _o, jenis, lk, l2, v, *k in ev:
+        if tg > tgl:
+            break
+        if tg == tgl and awal is None:
+            awal = {kk: vv for kk, vv in sal.items() if kk[1] == lb}
+        if tg == tgl:
+            kat, nama, info = k[0] if k else ("", "", "")
+            if jenis == "reset":
+                for kk in [kk for kk in sal if kk[0].startswith(lk + "|") and kk[1] == lb and sal[kk]]:
+                    kej.append((kk[0], "KOREKSI", nama, info, -sal[kk]))
+            elif l2 == lb:
+                kej.append((lk, _GRUP.get(kat, "KOREKSI"), nama, info, (v - sal.get((lk, l2), 0)) if jenis == "set" else v))
+        _terap(sal, jenis, lk, l2, v)
+    akhir = {kk: vv for kk, vv in sal.items() if kk[1] == lb}
+    if awal is None:
+        awal = dict(akhir)
+    tp = tanpa[(tanpa["tgl"] == tgl) & (tanpa["label"] == lb)] if len(tanpa) else tanpa
+    return {"awal": awal, "akhir": akhir, "kejadian": kej, "tanpa": tp}
 
 
 def pic_meja(tgl, hari_mundur=14):
