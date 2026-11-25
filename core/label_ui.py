@@ -30,6 +30,34 @@ def chips(d):
     return h
 
 
+def _tabel_stok_meja(pabrik, meja, tgl):
+    """Stok awal (sisa kemarin sore), menerima hari ini, dan stok saat ini per type di meja."""
+    try:
+        r = stok.meja_ringkas(pabrik, meja, tgl)
+    except Exception:
+        return chips(stok.stok_meja(pabrik, meja, tgl))
+    r = {lb: d for lb, d in r.items() if d["awal"] or d["sisa"] or d["terima"]}
+    if not r:
+        return "<span class='ls-nt'>Belum ada stok label di meja ini.</span>"
+    f = lambda v: f"{int(v):,}".replace(",", ".")
+    baris = ""
+    for lb in stok.urut_label(r):
+        d = r[lb]
+        ket = []
+        if d["keluar"]:
+            ket.append(f"keluar {f(-d['keluar'])}" if d["keluar"] < 0 else f"+{f(d['keluar'])}")
+        if d["pakai"]:
+            ket.append(f"terpakai {f(-d['pakai'])}")
+        if d["kor"]:
+            ket.append(f"koreksi {f(d['kor'])}")
+        warna = "#b3261e" if d["sisa"] < 0 else "#0b3d91"
+        baris += (f"<tr><td style='text-align:left;font-weight:800'>{html.escape(str(lb))}</td><td>{f(d['awal'])}</td><td>{('+' + f(d['terima'])) if d['terima'] else '–'}</td>"
+                  f"<td style='font-weight:800;color:{warna}'>{f(d['sisa'])}</td><td style='text-align:left;color:#7b8fb0;font-size:11.5px'>{', '.join(ket)}</td></tr>")
+    return ("<table style='width:100%;border-collapse:collapse;font-size:13px;text-align:right'><tr style='color:#5b7399;font-size:11px;letter-spacing:.4px'>"
+            "<th style='text-align:left'>TYPE</th><th>STOK AWAL<br><span style='font-weight:500'>(sisa kemarin)</span></th><th>MENERIMA<br><span style='font-weight:500'>(hari ini)</span></th>"
+            "<th>STOK SAAT INI</th><th style='text-align:left'>&nbsp;</th></tr>" + baris + "</table>")
+
+
 def tgl_id(t):
     return f"{t[8:]}-{t[5:7]}-{t[:4]}"
 
@@ -101,7 +129,7 @@ def form_terima(prn, nama, tgl, oleh, adm=False, kp="lt"):
     st.markdown(CSS, unsafe_allow_html=True)
     pabrik, meja = pilih_meja(kp, "", prn, tgl)
     if pabrik and meja:
-        st.markdown("<div class='ls-lbl'>STOK DI MEJA SEKARANG</div>" + chips(stok.stok_meja(pabrik, meja, tgl)), unsafe_allow_html=True)
+        st.markdown("<div class='ls-lbl'>STOK LABEL DI MEJA INI</div>" + _tabel_stok_meja(pabrik, meja, tgl), unsafe_allow_html=True)
     sudah = stok.meja_terima_daftar(prn, tgl)
     tot_lama = {}
     if not sudah.empty:

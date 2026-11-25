@@ -233,3 +233,8 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - **Notifikasi Stok** (menu baru di roda Foreman): pemakaian SAP di meja QC yang melebihi stok meja. (1) Ada meja QC lain yang punya type itu → SETUJUI mencatat Pindah Label meja asal → meja ini. (2) Tidak ada meja yang punya stok → SETUJUI mencatat label diterima meja dari Foreman. ABAIKAN menyimpan keputusan di tabel `label_notif`. SK tidak dihitung (sisa meja SK otomatis kembali ke Foreman SK).
 
 - 10x: notifikasi kini dihitung per meja per hari dari saldo akhir hari (pemakaian SAP + afkir, setelah ADJUST opname), muncul juga sebagai banner di halaman Foreman. Header tabel Rekapan Pemakaian tidak lagi tertimpa kolom TYPE saat di-scroll.
+
+## Tahap 10y — Laporan stok per meja, afkir proses SAP, info stok di input label
+- **Afkir aktif di ledger stok**: selain label afkir input foreman, *afkir proses dari SAP* (M+LA+LB+F, type CW/CE9 beserta CE7/SNI pendamping) untuk karyawan/hari/type yang belum punya baris input afkir kini ikut mengurangi stok meja (dibebankan ke meja operator hari itu). Berlaku di semua laporan stok, notifikasi, opname, dan Excel karena semuanya memakai ledger yang sama.
+- **Stok Label → PER MEJA**: matriks MEJA + TYPE × tanggal 1..31 (stok akhir hari). Klik kotak → rincian: PIC, stok awal, menerima, dipindah keluar, pakai SAP, afkir, sisa, daftar kejadian; tombol ◀ Sebelumnya / Berikutnya ▶. Filter bulan, pabrik, meja.
+- **Input label (halaman utama)**: tabel stok meja: stok awal (sisa kemarin), menerima hari ini, stok saat ini + keterangan terpakai/keluar.

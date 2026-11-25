@@ -294,6 +294,154 @@ def _tab_harian():
         _dlg_rincian(lb, tg, dept)
 
 
+def _tampil_meja_info(tg, lk, lb):
+    """Satu meja, satu type, satu hari: PIC, stok awal, menerima, pakai SAP, afkir, koreksi, sisa."""
+    r = stok.rincian(tg, lb)
+    aw = r["awal"].get((lk, lb), 0)
+    sisa = r["akhir"].get((lk, lb), 0)
+    g = {x: 0 for x in stok.GRUP}
+    for k in r["kejadian"]:
+        if k[0] == lk:
+            g[k[1]] += k[4]
+    pic = stok.pic_meja(tg).get(lk, [])
+    return r, aw, sisa, g, pic
+
+
+@st.dialog("RINCIAN STOK MEJA", width="large")
+def _dlg_meja(lk, lb, tg0):
+    tg = st.session_state.get("pm_tg", tg0)
+    if st.session_state.get("pm_dasar") != (lk, lb, tg0):
+        st.session_state["pm_dasar"] = (lk, lb, tg0)
+        tg = tg0
+    d_ = date.fromisoformat(tg)
+    n1, n2, n3 = st.columns([1, 3, 1], vertical_alignment="center")
+    if n1.button("◀ Sebelumnya", key="pm_prev", width="stretch", disabled=d_ <= date.fromisoformat(stok.MULAI)):
+        st.session_state["pm_tg"] = (d_ - timedelta(days=1)).isoformat()
+        st.rerun(scope="fragment")
+    n2.markdown(f"<div style='text-align:center'><span style='font-size:1.4rem;font-weight:800;color:#0b3d91'>{html.escape(_lok_baca(lk))} · {html.escape(lb)}</span><br>"
+                f"<b>{d_.strftime('%d-%m-%Y')}</b></div>", unsafe_allow_html=True)
+    if n3.button("Berikutnya ▶", key="pm_next", width="stretch", disabled=d_ >= hari_ini):
+        st.session_state["pm_tg"] = (d_ + timedelta(days=1)).isoformat()
+        st.rerun(scope="fragment")
+    r, aw, sisa, g, pic = _tampil_meja_info(tg, lk, lb)
+    st.markdown(f"**PIC meja:** {', '.join(pic) if pic else '– (belum ada operator tercatat di meja ini)'}")
+    sv = lambda v: ("+" if v > 0 else "") + _f(v)
+    kot = [("STOK AWAL", _f(aw), ""), ("MENERIMA", sv(g["MASUK"]), ""), ("DIPINDAH KELUAR", sv(g["KELUAR"]), ""), ("PAKAI SAP", sv(g["SAP"]), ""),
+           ("AFKIR", sv(g["AFKIR"]), ""), ("SISA AKHIR", _f(sisa), "color:#b3261e" if sisa < 0 else "")]
+    st.markdown("<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:.6rem 0'>" + "".join(
+        f"<div style='background:#fff;border:1px solid #d6e4f8;border-radius:12px;padding:10px 12px'><div style='font-size:10.5px;font-weight:800;color:#5b7399;letter-spacing:.5px'>{jd}</div>"
+        f"<div style='font-size:21px;font-weight:800;color:#0b3d91;{gy}'>{v}</div></div>" for jd, v, gy in kot) + "</div>", unsafe_allow_html=True)
+    if g["KOREKSI"]:
+        st.caption(f"Koreksi/ADJUST hari itu: {sv(g['KOREKSI'])}")
+    if sisa < 0:
+        st.error("MINUS. Telusuri kejadian di bawah; bila karyawan menyimpan label, ambil dari meja lain, atau salah input, perbaiki lewat Perbaikan Data / Notifikasi Stok di halaman Foreman.")
+    kj = [k for k in r["kejadian"] if k[0] == lk]
+    if kj:
+        st.markdown("**KEJADIAN HARI ITU**")
+        y = pd.DataFrame({"KEJADIAN": [_NAMA_GRUP[k[1]] + " · " + k[3] for k in kj], "KARYAWAN / PENGINPUT": [k[2] or "–" for k in kj],
+                          "JUMLAH": [sv(k[4]) for k in kj]})
+        st.dataframe(y, hide_index=True, width="stretch", height=min(62 + 36 * len(y), 320),
+                     column_config={"JUMLAH": st.column_config.TextColumn("JUMLAH", alignment="right", width="small")})
+    else:
+        st.caption("Tidak ada pergerakan pada hari ini; stok awal = sisa akhir.")
+    tp = r["tanpa"]
+    if len(tp):
+        st.caption("Pemakaian SAP/afkir berikut belum terpetakan ke meja mana pun: " + "; ".join(f"{n} {_f(v)} pcs" for n, v in zip(tp["nama"], tp["n"])))
+    st.caption("SISA akhir hari = STOK AWAL hari berikutnya.")
+
+
+def _tab_meja():
+    """Matriks MEJA + TYPE x tanggal 1..31 (stok akhir hari). Klik kotak -> rincian meja itu pada hari itu (PIC, awal, menerima, SAP, afkir, sisa)."""
+    mulai = pd.Period(stok.MULAI[:7], freq="M")
+    sekarang = pd.Period(hari_ini.strftime("%Y-%m"), freq="M")
+    opsi = [str(p) for p in pd.period_range(mulai, sekarang, freq="M")]
+    awal = tgl.strftime("%Y-%m")
+    c1, c2, c3 = st.columns([1.3, 2, 1.2], vertical_alignment="bottom")
+    bln = c1.selectbox("Bulan", opsi, index=opsi.index(awal) if awal in opsi else len(opsi) - 1, key="pm_bln",
+                       format_func=lambda b: f"{BULAN_ID[int(b[5:])]} {b[:4]}")
+    pab = [p for p in label.PABRIK if not dept or stok.dept_pabrik(p) == dept]
+    pil = c2.segmented_control("Pabrik", ["Semua"] + pab, default="Semua", key="pm_pab", label_visibility="collapsed") or "Semua"
+    hari, adj, aktif = stok.harian(bln)
+    akt = stok.aktivitas_bulan(bln)
+    pos = set()
+    for tg, sal in hari.items():
+        for (lk, lb), n in sal.items():
+            if n:
+                pos.add((lk, lb))
+    pos |= {(lk, lb) for _t, lk, lb in akt}
+    pos = {(lk, lb) for lk, lb in pos if not stok.adalah_foreman(lk) and stok.dept_cocok(lk, dept)}
+    if pil != "Semua":
+        pos = {(lk, lb) for lk, lb in pos if stok._lok_pisah(lk)[0] == pil}
+    mejas = sorted({lk for lk, _l in pos}, key=lambda lk: (list(label.PABRIK).index(stok._lok_pisah(lk)[0]) if stok._lok_pisah(lk)[0] in label.PABRIK else 9,
+                                                         int(stok._lok_pisah(lk)[1]) if str(stok._lok_pisah(lk)[1]).isdigit() else 999))
+    pm = c3.selectbox("Meja", ["Semua meja"] + mejas, key="pm_meja", format_func=lambda x: x if x == "Semua meja" else _lok_baca(x))
+    if pm != "Semua meja":
+        pos = {(lk, lb) for lk, lb in pos if lk == pm}
+        mejas = [pm]
+    if not pos:
+        st.info("Belum ada stok atau pergerakan label di meja pada bulan ini.")
+        return
+    baris = []
+    for lk in mejas:
+        for lb in stok.urut_label({l2 for k2, l2 in pos if k2 == lk}):
+            baris.append((lk, lb))
+    libur = _hari_libur(bln, aktif)
+    jml = pd.Period(bln, freq="M").days_in_month
+    maks = int(hari_ini.strftime("%d")) if bln == hari_ini.strftime("%Y-%m") else jml
+    angka = pd.DataFrame({str(d_): [(hari.get(f"{bln}-{d_:02d}", {}).get((lk, lb), 0) if d_ <= maks and d_ not in libur else None) for lk, lb in baris]
+                          for d_ in range(1, jml + 1)})
+    teks = angka.copy()
+    for c in teks.columns:
+        teks[c] = angka[c].map(lambda v: "" if pd.isna(v) else (_f(v) if v else "–"))
+    teks.insert(0, "TYPE", [lb for _k, lb in baris])
+    teks.insert(0, "MEJA", [_lok_baca(lk) for lk, _l in baris])
+
+    def _gaya(df):
+        g = pd.DataFrame("", index=df.index, columns=df.columns)
+        for j, d_ in enumerate(range(1, jml + 1)):
+            for i, (lk, lb) in enumerate(baris):
+                v = angka.iloc[i, j]
+                if pd.isna(v):
+                    if d_ in libur:
+                        g.loc[i, str(d_)] = "background-color:#f1f3f8"
+                elif (f"{bln}-{d_:02d}", lk, lb) in akt:
+                    g.loc[i, str(d_)] = ("color:#b3261e;font-weight:800;" if v < 0 else "font-weight:800;") + "background-color:#eef4ff"
+                elif v < 0:
+                    g.loc[i, str(d_)] = "color:#b3261e;font-weight:800"
+                elif v == 0:
+                    g.loc[i, str(d_)] = "color:#b6c0d4"
+        g["MEJA"] = "font-weight:800;color:#0b3d91"
+        g["TYPE"] = "font-weight:800;color:#0b3d91"
+        return g
+    st.caption("Angka = stok akhir hari di meja itu (setelah pemakaian SAP dan afkir). Kotak biru = ada pergerakan hari itu. Merah = minus. Klik satu kotak untuk rincian: PIC, stok awal, menerima, SAP, afkir, sisa.")
+    ev = st.dataframe(teks.style.apply(_gaya, axis=None), hide_index=True, width="stretch", height=min(48 + 35 * len(teks), 640),
+                      on_select="rerun", selection_mode="single-cell", key="pm_grid",
+                      column_config={"MEJA": st.column_config.TextColumn("MEJA", pinned=True, width="medium"),
+                                     "TYPE": st.column_config.TextColumn("TYPE", pinned=True, width="small"),
+                                     **{str(d_): st.column_config.TextColumn(str(d_), alignment="right", width=58) for d_ in range(1, jml + 1)}})
+    sel = (ev.selection.cells if ev and ev.selection else None) or []
+    if not sel:
+        return
+    bar, nm = sel[0]
+    if nm in ("MEJA", "TYPE") or bar is None or int(bar) >= len(baris):
+        return
+    lk, lb = baris[int(bar)]
+    d_ = int(nm)
+    tg = f"{bln}-{d_:02d}"
+    if d_ > maks or tg not in hari:
+        st.caption("Belum ada data untuk tanggal itu.")
+        return
+    tanda = (lk, lb, tg)
+    if st.session_state.get("pm_buka") != tanda:
+        st.session_state["pm_buka"] = tanda
+        st.session_state.pop("pm_tg", None)
+        _dlg_meja(lk, lb, tg)
+    elif st.button(f"🔍 Buka rincian {_lok_baca(lk)} · {lb} · {d_:02d}-{bln[5:]}-{bln[:4]}", key="pm_lagi"):
+        st.session_state.pop("pm_tg", None)
+        _dlg_meja(lk, lb, tg)
+
+
+
 tH, t0, t1, t2 = st.tabs(["PER TANGGAL", "DI MANA SAJA", "TOTAL PER LABEL", "PER MEJA"])
 with tH:
     _tab_harian()
@@ -324,16 +472,17 @@ with t1:
                  height=min(80 + 36 * len(tam), 680),
                  column_config={k: st.column_config.TextColumn(k, alignment="right") for k in ["Stok Foreman", "Stok di meja", "Total"]})
 with t2:
-    if permeja.empty:
-        st.info("Belum ada stok di meja.")
-    else:
-        pil = st.segmented_control("Pabrik", ["Semua"] + [p for p in label.PABRIK if not dept or stok.dept_pabrik(p) == dept], default="Semua", key="st_pab", label_visibility="collapsed") or "Semua"
-        d = permeja if pil == "Semua" else permeja[permeja["pabrik"] == pil]
-        num = pd.DataFrame({"Pabrik": d["pabrik"], "Meja": d["meja"].astype(str), "Label": d["label"], "Stok": d["stok"]})
-        tam = num.copy()
-        tam["Stok"] = num["Stok"].map(_f)
-        st.dataframe(tam.style.apply(_warna(num, ["Stok"])), hide_index=True, width="stretch", height=min(80 + 36 * len(tam), 680),
-                     column_config={"Stok": st.column_config.TextColumn("Stok", alignment="right")})
+    _tab_meja()
+    with st.expander(f"Posisi stok per meja pada {tgl.strftime('%d-%m-%Y')} (daftar)"):
+        if permeja.empty:
+            st.info("Belum ada stok di meja.")
+        else:
+            d = permeja
+            num = pd.DataFrame({"Pabrik": d["pabrik"], "Meja": d["meja"].astype(str), "Label": d["label"], "Stok": d["stok"]})
+            tam = num.copy()
+            tam["Stok"] = num["Stok"].map(_f)
+            st.dataframe(tam.style.apply(_warna(num, ["Stok"])), hide_index=True, width="stretch", height=min(80 + 36 * len(tam), 480),
+                         column_config={"Stok": st.column_config.TextColumn("Stok", alignment="right")})
 if tanpa is not None and len(tanpa):
     n_ = int(tanpa["n"].sum()) if "n" in tanpa.columns else 0
     st.caption(f"Pemakaian SAP/afkir {n_:,} pcs belum bisa dipetakan ke meja (operator belum punya alamat meja pada hari itu) — "

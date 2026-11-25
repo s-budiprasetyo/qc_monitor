@@ -815,8 +815,8 @@ def _pemakaian(sampai):
         if t.empty:
             continue
         t = t.copy()
-        out.append(t[["tgl", "prn", "label", "bagus", "nama"]])
-    return pd.concat(out, ignore_index=True) if out else pd.DataFrame(columns=["tgl", "prn", "label", "bagus", "nama"])
+        out.append(t[["tgl", "prn", "label", "bagus", "nama", "proses"]])
+    return pd.concat(out, ignore_index=True) if out else pd.DataFrame(columns=["tgl", "prn", "label", "bagus", "nama", "proses"])
 
 
 def _peta_meja():
@@ -893,8 +893,18 @@ def _ledger(sampai, abaikan=None):
         if bawa:
             ev.append((r.tgl, 2, "tambah", dari, r.label, -bawa, ("PM_KELUAR", r.nama, f"dibawa ke {lok_nama(ke)}")))
             ev.append((r.tgl, 2, "tambah", ke, r.label, bawa, ("PM_MASUK", r.nama, f"dibawa dari {lok_nama(dari)}")))
-    # pcs bagus SAP: per (operator, hari, label); sisanya (di luar pemakaian meja lama) dibebankan ke meja terakhir operator itu hari itu
     tanpa = []
+    # afkir proses dari SAP (M+LA+LB+F) untuk karyawan/hari/type yang TIDAK punya baris input afkir foreman: tetap memakai label (CW, CE9, serta CE7/SNI pendampingnya)
+    sudah_input = {(r.prn, r.tgl, r.type) for r in a.itertuples()} if len(a) else set()
+    for r in pem.itertuples():
+        pr = _int(getattr(r, "proses", 0))
+        if pr > 0 and (r.prn, r.tgl, r.label) not in sudah_input and abaikan != (r.prn, r.tgl):
+            lk = peta.get((r.prn, r.tgl))
+            if lk is None:
+                tanpa.append({"tgl": r.tgl, "prn": r.prn, "nama": r.nama, "label": r.label, "n": pr})
+            else:
+                ev.append((r.tgl, 2, "tambah", lk, r.label, -pr, ("AFKIR", r.nama, "afkir proses dari SAP (belum ada input afkir foreman)", r.prn)))
+    # pcs bagus SAP: per (operator, hari, label); sisanya (di luar pemakaian meja lama) dibebankan ke meja terakhir operator itu hari itu
     for r in pem.itertuples():
         bagus = _int(r.bagus)
         if bagus <= 0 or abaikan == (r.prn, r.tgl):
@@ -1009,6 +1019,12 @@ def harian(bulan):
     return out
 
 
+def aktivitas_bulan(bulan):
+    """{(tgl, lokasi, label)} yang punya pergerakan (masuk/keluar/SAP/afkir/koreksi) pada bulan 'YYYY-MM' (untuk menampilkan baris laporan per meja)."""
+    ev, _t = _ledger_c(hari_ini())
+    return {(tgl, lk, lb) for tgl, _o, jenis, lk, lb, v, *k in ev if tgl[:7] == bulan and jenis in ("tambah", "set") and (v or jenis == "set")}
+
+
 _GRUP = {"TERIMA": "MASUK", "TERIMA_MEJA": "MASUK", "PINDAH_MASUK": "MASUK", "DISTR_MASUK": "MASUK", "PM_MASUK": "MASUK",
          "KIRIM_MEJA": "KELUAR", "PINDAH_KELUAR": "KELUAR", "DISTR_KELUAR": "KELUAR", "PM_KELUAR": "KELUAR",
          "SAPU_MASUK": "MASUK", "SAPU_KELUAR": "KELUAR",
@@ -1071,6 +1087,41 @@ def stok_lokasi(lokasi, sampai=None, abaikan=None):
 
 def stok_meja(pabrik, meja, sampai=None):
     return stok_lokasi(lok(pabrik, str(meja)), sampai)
+
+
+def meja_ringkas(pabrik, meja, tgl):
+    """Per type di satu meja pada tanggal tgl: {label: dict(awal=sisa akhir hari sebelumnya, terima=masuk hari itu, keluar, pakai=SAP+afkir, sisa=stok akhir hari)}.
+    Satu kali penelusuran kejadian (memo)."""
+    lk = lok(pabrik, str(meja))
+    ev, _t = _ledger_c(hari_ini())
+    sal, awal, out = defaultdict(int), None, {}
+    for tg, _o, jenis, lk2, lb, v, *k in ev:
+        if tg > tgl:
+            break
+        if tg == tgl and awal is None:
+            awal = {kk[1]: vv for kk, vv in sal.items() if kk[0] == lk}
+        if tg == tgl and lk2 == lk and lb and jenis in ("tambah", "set"):
+            g = _GRUP.get(k[0][0], "KOREKSI") if k else "KOREKSI"
+            d = out.setdefault(lb, {"terima": 0, "keluar": 0, "pakai": 0, "kor": 0})
+            dv = (v - sal.get((lk2, lb), 0)) if jenis == "set" else v
+            if g == "MASUK":
+                d["terima"] += dv
+            elif g == "KELUAR":
+                d["keluar"] += dv
+            elif g in ("SAP", "AFKIR"):
+                d["pakai"] += dv
+            else:
+                d["kor"] += dv
+        _terap(sal, jenis, lk2, lb, v)
+    akhir = {kk[1]: vv for kk, vv in sal.items() if kk[0] == lk}
+    if awal is None:
+        awal = dict(akhir)
+    hasil = {}
+    for lb in set(awal) | set(akhir) | set(out):
+        d = out.get(lb, {"terima": 0, "keluar": 0, "pakai": 0, "kor": 0})
+        if awal.get(lb, 0) or akhir.get(lb, 0) or any(d.values()):
+            hasil[lb] = {"awal": awal.get(lb, 0), **d, "sisa": akhir.get(lb, 0)}
+    return hasil
 
 
 def stok_foreman(sampai=None, dept="QC"):
