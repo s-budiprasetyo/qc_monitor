@@ -1442,8 +1442,8 @@ def _kartu_notif(n, oleh):
     k = n["id"].replace(" ", "_")
     with st.container(border=True, key=f"nt_{k}"):
         if n["jenis"] == "ambil_meja":
-            st.markdown(f"**{tg} · {n['nama']}** memakai **{_ang(n['kurang'])} pcs {n['label']}** di {p} · Meja {m}, tetapi meja itu tidak punya stok "
-                        f"{n['label']}. Label itu ada di meja lain, kemungkinan **diambil tanpa Pindah Label**.")
+            st.markdown(f"**{tg} · {n['nama']}** memakai lebih dari stok **{n['label']}** di {p} · Meja {m} (**kurang {_ang(n['kurang'])} pcs**). "
+                        f" Label itu ada di meja lain, kemungkinan **diambil tanpa Pindah Label**.")
             opsi = [a for a, _s in n["sumber"]]
             ss = dict(n["sumber"])
             asal = st.selectbox("Diambil dari meja", opsi, format_func=lambda a: f"{stok.lok_nama(a)} (stok {_ang(ss[a])})", key=f"nta_{k}")
@@ -1452,8 +1452,8 @@ def _kartu_notif(n, oleh):
                                   key=f"ntj_{k}", help="Yang terpakai dipotong; sisanya tetap di meja ini.")
             st.caption("SETUJUI = label dianggap pindah dari meja asal ke meja ini, terpakai, sisanya ikut di meja ini.")
         else:
-            st.markdown(f"**{tg} · {n['nama']}** memakai **{_ang(n['kurang'])} pcs {n['label']}** di {p} · Meja {m}, tetapi tidak ada meja yang punya stok "
-                        f"{n['label']}. Kemungkinan **diambil dari Foreman** tanpa tercatat (stok Foreman saat ini {_ang(n['foreman'])}).")
+            st.markdown(f"**{tg} · {n['nama']}** memakai lebih dari stok **{n['label']}** di {p} · Meja {m} (**kurang {_ang(n['kurang'])} pcs**), dan tidak ada meja lain yang punya stoknya. "
+                        f" Kemungkinan **diambil dari Foreman** tanpa tercatat (stok Foreman saat ini {_ang(n['foreman'])}).")
             asal = None
             jml = st.number_input("Jumlah diterima dari Foreman (pcs)", min_value=1, max_value=9999999, step=1, value=int(n["kurang"]), key=f"ntj_{k}",
                                   help="Isi lebih besar bila Foreman memberi lebih dari yang terpakai; sisanya tetap di meja ini.")
@@ -1563,6 +1563,12 @@ def tampil(halaman_admin=None):
         st.toast(st.session_state.pop("pg_toast"), icon="✅")
 
     _hub()
+    nt = _notif_hitung()
+    if nt:
+        with st.container(border=True):
+            c = st.columns([4, 1.4], vertical_alignment="center")
+            c[0].markdown(f"⚠️ **{len(nt)} stok label minus** karena pemakaian melebihi stok meja — perlu persetujuan Foreman.")
+            c[1].button("Tinjau", key="nt_buka", type="primary", width="stretch", on_click=dlg_notif_stok)
     st.write("")
     a, b, c = st.columns([2, 2, 1], vertical_alignment="center")
     tgl = a.date_input("Tanggal", key="pg_tgl", format="DD/MM/YYYY")

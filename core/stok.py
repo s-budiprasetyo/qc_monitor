@@ -682,34 +682,48 @@ def opname_koreksi(tgl, lokasi, perubahan, oleh):
 
 
 # ---------------------------------------------------------------- notifikasi stok minus (butuh persetujuan foreman)
-def _id_notif(tgl, lk, lb, prn):
-    return f"{tgl}|{lk}|{lb}|{prn}"
+def _id_notif(tgl, lk, lb, prn=""):
+    return f"{tgl}|{lk}|{lb}"
 
 
 def notif_stok(sampai=None):
-    """Pemakaian SAP di meja QC yang melebihi stok sistem meja itu (minus), dipecah dua kasus:
-    'ambil_meja'  = ada meja QC lain yang masih punya type itu (operator mengambil dari meja lain tanpa Pindah Label);
-    'dari_foreman'= tidak ada meja yang punya stok (operator mengambil dari Foreman tanpa tercatat).
+    """Meja QC yang saldo type labelnya MINUS di akhir hari karena pemakaian (pcs bagus SAP + afkir) hari itu, setelah ADJUST opname hari itu.
+    'ambil_meja'  = ada meja QC lain yang masih punya type itu (diambil dari meja lain tanpa Pindah Label);
+    'dari_foreman'= tidak ada meja yang punya stok (diambil dari Foreman tanpa tercatat).
     Return daftar dict(id, tgl, jenis, lokasi, label, prn, nama, kurang, sumber[(lokasi, stok)], foreman). Yang sudah diputuskan foreman tidak ikut."""
     sampai = sampai or hari_ini()
     ev, _t = _ledger_c(sampai)
     sudah = data.baca("label_notif")
     putus = set(sudah["id"]) if len(sudah) else set()
-    sal, out = defaultdict(int), []
-    for tgl, _o, jenis, lk, lb, v, *k in ev:
-        if tgl > sampai:
-            break
-        if jenis == "tambah" and k and k[0][0] == "SAP" and v < 0 and not adalah_foreman(lk) and dept_lokasi(lk) == "QC":
-            n = -v
-            kurang = n - max(sal.get((lk, lb), 0), 0)
-            prn = k[0][3] if len(k[0]) > 3 else ""
-            nid = _id_notif(tgl, lk, lb, prn)
-            if kurang > 0 and nid not in putus:
-                sumber = sorted(((l2, s) for (l2, b2), s in sal.items() if b2 == lb and s > 0 and l2 != lk and not adalah_foreman(l2) and dept_lokasi(l2) == "QC"),
-                                key=lambda x: -x[1])
-                out.append({"id": nid, "tgl": tgl, "jenis": "ambil_meja" if sumber else "dari_foreman", "lokasi": lk, "label": lb, "prn": prn,
-                            "nama": k[0][1], "kurang": int(kurang), "sumber": sumber, "foreman": int(sal.get((FOREMAN, lb), 0))})
-        _terap(sal, jenis, lk, lb, v)
+    sal, out, pakai = defaultdict(int), [], {}
+    i, n = 0, len(ev)
+    while i < n and ev[i][0] <= sampai:
+        tgl = ev[i][0]
+        pakai = defaultdict(lambda: [0, {}])  # (lokasi, label) -> [pemakaian hari itu, {(prn, nama): pcs SAP}]
+        while i < n and ev[i][0] == tgl:
+            _t0, o, jenis, lk, lb, v, *k = ev[i]
+            i += 1
+            if o == 4:  # sapu SK: bukan urusan notifikasi QC
+                _terap(sal, jenis, lk, lb, v)
+                continue
+            if jenis == "tambah" and k and v < 0 and k[0][0] in ("SAP", "AFKIR", "PM_PAKAI") and not adalah_foreman(lk) and dept_lokasi(lk) == "QC":
+                pk = pakai[(lk, lb)]
+                pk[0] += -v
+                if k[0][0] == "SAP":
+                    kk = (k[0][3] if len(k[0]) > 3 else "", k[0][1])
+                    pk[1][kk] = pk[1].get(kk, 0) + -v
+            _terap(sal, jenis, lk, lb, v)
+        for (lk, lb), (tot, siapa) in pakai.items():
+            bal = sal.get((lk, lb), 0)
+            kurang = min(-bal, tot) if bal < 0 else 0
+            nid = _id_notif(tgl, lk, lb)
+            if kurang <= 0 or nid in putus:
+                continue
+            prn, nama = max(siapa, key=siapa.get) if siapa else ("", "")
+            sumber = sorted(((l2, s_) for (l2, b2), s_ in sal.items() if b2 == lb and s_ > 0 and l2 != lk and not adalah_foreman(l2) and dept_lokasi(l2) == "QC"),
+                            key=lambda x: -x[1])
+            out.append({"id": nid, "tgl": tgl, "jenis": "ambil_meja" if sumber else "dari_foreman", "lokasi": lk, "label": lb, "prn": prn,
+                        "nama": nama, "kurang": int(kurang), "sumber": sumber, "foreman": int(sal.get((FOREMAN, lb), 0))})
     return out
 
 

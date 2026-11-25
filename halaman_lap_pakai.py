@@ -18,9 +18,9 @@ st.markdown("""
 .lp-sub{color:#5b7399;font-size:14px;margin-bottom:.9rem}
 .peringatan{background:#fff7e0;border:1px solid #f0d88a;border-radius:12px;padding:10px 14px;font-size:13px;color:#6b5200;margin:.4rem 0}
 table.rp{border-collapse:collapse;font-size:12.5px;width:100%}
-table.rp th{background:#1a5fc8;color:#fff;padding:6px 7px;border:1px solid #b8c7dd;text-align:center;font-size:11.5px;position:sticky;top:0}
+table.rp th{background:#1a5fc8;color:#fff;padding:6px 7px;border:1px solid #b8c7dd;text-align:center;font-size:11.5px;position:sticky;top:0;z-index:3}
 table.rp td{padding:4px 7px;border:1px solid #d6e0ef;text-align:right;white-space:nowrap}
-table.rp td.t{text-align:left;font-weight:700;position:sticky;left:0;background:#fff}
+table.rp td.t{text-align:left;font-weight:700;position:sticky;left:0;background:#fff;z-index:1}
 table.rp td.n{text-align:center;color:#7b8fb0}
 table.rp tr.ce7 td{background:#fff9e5}
 table.rp tr.sni td{background:#fff7ec;color:#7a5a1e}
