@@ -37,13 +37,14 @@ KOLOM = {
     "label_pindahmeja": ["id", "tgl", "waktu", "prn", "nama", "dari_pabrik", "dari_meja", "ke_pabrik", "ke_meja", "label", "bagus", "oleh", "sisa", "bawa", "koreksi"],  # operator pindah meja: sisa fisik di meja lama, dibawa ke meja baru; bagus = pemakaian di meja lama (dihitung), koreksi = selisih stok sistem lebih kecil dari sisa fisik
     "label_kosong": ["id", "tgl", "waktu", "pabrik", "oleh"],  # tombol Kosongkan Label Meja
     "label_riwayat": ["waktu", "tgl", "oleh", "jenis", "kunci", "sebelum", "sesudah"],  # riwayat perubahan/hapus input label
+    "label_notif": ["id", "tgl", "oleh", "waktu", "status"],  # notifikasi stok minus yang diputuskan foreman (abaikan / disetujui)
     "operator": ["prn", "kode_opr", "oleh", "waktu"],  # Daftar Operator: siapa yang bisa dipilih di Monitoring Label
     "meja_abaikan": ["tgl", "shift", "pabrik", "meja", "oleh", "waktu"],  # meja yang tidak perlu dicek (diabaikan foreman)
     # Pemetaan jenis label (master): type SAP + warna -> label. label kosong = type itu tidak punya label (diabaikan).
     # warna kosong = berlaku untuk semua warna; sni = "ya" bila label itu punya label pendamping SNI.
     "rencana_qc": ["bulan", "pabrik", "dept", "type", "periksa", "bagus", "file", "waktu"],  # rencana produksi bulanan blok QUALITY CONTROL per pabrik
     "rencana_harian": ["bulan", "pabrik", "dept", "type", "tgl", "jumlah"],  # rencana harian per type (QC & KAMA)
-    "sisa_body": ["tgl", "shift", "dept", "type", "jumlah", "file", "waktu"],  # sisa body (kolom PERIKSA) dari file Stok Opname harian QC TK
+    "sisa_body": ["tgl", "shift", "dept", "type", "jumlah", "file", "waktu", "pl", "perbaikan", "cek_ulang", "gerinda", "tdk_set", "tap", "kirim"],  # sisa body (kolom PERIKSA) dari file Stok Opname harian QC TK
     "jenis_label": ["kategori", "label", "type_sap", "warna", "sni", "ket"],
 }
 TAB_LAPORAN = ("HASIL KERJA KARYAWAN", "ALASAN TIDAK TARGET")

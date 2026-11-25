@@ -4,7 +4,10 @@ import re
 import pandas as pd
 from core import data, rencana
 
-KOLOM = ["tgl", "shift", "dept", "type", "jumlah", "file", "waktu"]
+EKSTRA = ["pl", "perbaikan", "cek_ulang", "gerinda", "tdk_set", "tap", "kirim"]  # kolom stok body per OP (laporan pemakaian label)
+KOLOM = ["tgl", "shift", "dept", "type", "jumlah", "file", "waktu"] + EKSTRA
+_HEADER = {"PL": "pl", "PERBAIKAN": "perbaikan", "CEK ULANG": "cek_ulang", "GERINDA": "gerinda", "TAP": "tap", "KIRIM": "kirim",
+           "TDK SET CR": "tdk_set", "TIDAK SET CR": "tdk_set", "TDK SET": "tdk_set", "TIDAK SET": "tdk_set"}
 DEPT = {"QC": "QC TK", "SK-FF": "SK Firstfiring", "SK-RF": "SK Refiring"}
 _SUFIKS = re.compile(r"\((?:P\d|HPC|BC|MESIN)\)|\s+(?:HPC|BC)$", re.I)
 
@@ -37,10 +40,15 @@ def baca_file(f, nama=""):
     bln = [b.lower() for b in rencana.BULAN].index(mb.group(1).lower()) + 1
     tgl = f"{int(mb.group(2)):04d}-{bln:02d}-{int(mt.group(1)):02d}"
     kol = baris0 = None
+    kol_x = {}
     for r in range(1, 15):
         for c in ws[r]:
-            if isinstance(c.value, str) and c.value.strip().upper() == "PERIKSA":
-                kol, baris0 = c.column, r
+            if isinstance(c.value, str):
+                h = re.sub(r"\s+", " ", c.value.strip().upper())
+                if h == "PERIKSA":
+                    kol, baris0 = c.column, r
+                elif h in _HEADER and _HEADER[h] not in kol_x:
+                    kol_x[_HEADER[h]] = c.column
     if kol is None:
         raise ValueError("Kolom PERIKSA tidak ditemukan.")
     rows = []
@@ -50,16 +58,19 @@ def baca_file(f, nama=""):
             break
         if not isinstance(b, str) or not b.strip():
             continue
-        rows.append({"type": kunci(b), "jumlah": _angka(ws.cell(r, kol).value)})
+        rows.append({"type": kunci(b), "jumlah": _angka(ws.cell(r, kol).value),
+                     **{k: _angka(ws.cell(r, c).value) for k, c in kol_x.items()}})
     if not rows:
         raise ValueError("Tidak ada baris type.")
     d = pd.DataFrame(rows).groupby("type", sort=False, as_index=False).sum()
-    d["jumlah"] = d["jumlah"].round().astype(int)
+    for k in ["jumlah"] + EKSTRA:
+        d[k] = d[k].round().astype(int) if k in d.columns else 0
     return tgl, ms.group(1).upper(), d
 
 
 def simpan(tgl, shift, d, nama_file, dept="QC"):
-    b = pd.DataFrame({"tgl": tgl, "shift": shift, "dept": dept, "type": d["type"], "jumlah": d["jumlah"], "file": nama_file, "waktu": data.sekarang()})
+    b = pd.DataFrame({"tgl": tgl, "shift": shift, "dept": dept, "type": d["type"], "jumlah": d["jumlah"], "file": nama_file, "waktu": data.sekarang(),
+                      **{k: (d[k] if k in d.columns else 0) for k in EKSTRA}})
     lama = _baca()
     hapus = lama[(lama["tgl"] == tgl) & (lama["shift"] == shift) & (lama["dept"] == dept)] if len(lama) else None
     data.upsert("sisa_body", b[KOLOM], ["tgl", "shift", "dept", "type"], hapus=hapus[["tgl", "shift", "dept", "type"]] if hapus is not None and len(hapus) else None)
@@ -102,3 +113,33 @@ def untuk(tgl, dept="QC"):
     d = d[(d["tgl"] == t) & (d["shift"] == s) & (d["dept"] == dept)].copy()
     d["jumlah"] = pd.to_numeric(d["jumlah"], errors="coerce").fillna(0).astype(int)
     return d.groupby("type")["jumlah"].sum().to_dict(), (t, s)
+
+
+def akhir_bulan(bulan, dept_kode):
+    """Stok body akhir bulan per OP: file terbaru (tanggal lalu shift SORE>PAGI) pada atau sebelum akhir bulan.
+    dept_kode: 'QC' atau 'SK' (SK = Firstfiring + Refiring). Return ({type: {op: n}}, info [(dept, tgl, shift)], lengkap)
+    op: op100 (PERIKSA+PL), op105, op110, op115, op120, op107, op166. lengkap False = file lama (hanya kolom PERIKSA tersimpan)."""
+    akhir = f"{bulan}-31"
+    out, info, lengkap = {}, [], True
+    for dept in (["QC"] if dept_kode == "QC" else ["SK-FF", "SK-RF"]):
+        g = daftar(dept)
+        if g.empty:
+            continue
+        g = g[g["tgl"] <= akhir]
+        g = g[g["tgl"].str[:7] == bulan] if (g["tgl"].str[:7] == bulan).any() else g.iloc[0:0]
+        if g.empty:
+            continue
+        t, s = g.iloc[0]["tgl"], g.iloc[0]["shift"]
+        info.append((dept, t, s))
+        d = _baca()
+        d = d[(d["tgl"] == t) & (d["shift"] == s) & (d["dept"] == dept)].copy()
+        if not all(c in d.columns for c in EKSTRA) or not d[EKSTRA].astype(str).apply(lambda s: s.str.strip().ne("")).any().any():
+            lengkap = False  # file lama: hanya kolom PERIKSA yang tersimpan
+        for k in ["jumlah"] + EKSTRA:
+            d[k] = pd.to_numeric(d[k], errors="coerce").fillna(0).astype(int) if k in d.columns else 0
+        for r in d.itertuples():
+            x = out.setdefault(r.type, {})
+            for op, v in (("op100", r.jumlah + r.pl), ("op105", r.perbaikan), ("op110", r.gerinda), ("op115", r.cek_ulang),
+                          ("op120", r.tap), ("op107", r.tdk_set), ("op166", r.kirim)):
+                x[op] = x.get(op, 0) + int(v)
+    return out, info, lengkap

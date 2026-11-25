@@ -15,6 +15,7 @@ halaman = st.navigation(
         st.Page("halaman_lap_afkir.py", title="% Afkir Label", icon=":material/percent:", url_path="afkir", default=True),
         st.Page("halaman_lap_kotor.py", title="Afkir Kotor (pcs)", icon=":material/delete_sweep:", url_path="kotor"),
         st.Page("halaman_lap_stok.py", title="Stok Label", icon=":material/inventory_2:", url_path="stok"),
+        st.Page("halaman_lap_pakai.py", title="Rekapan Pemakaian", icon=":material/summarize:", url_path="pemakaian"),
         st.Page("halaman_lap_kolab.py", title="Kolaborasi", icon=":material/join_inner:", url_path="kolaborasi"),
     ]},
     position="top",

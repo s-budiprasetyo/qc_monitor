@@ -522,8 +522,8 @@ def dlg_stokbody():
     kontrol_jendela("stokbody")
     kepala("box", "STOK BODY")
     from core import sisabody
-    st.caption("Upload file **Stok Opname harian** (PAGI / SORE): QC TK, SK Firstfiring, atau SK Refiring (pilih jenis di bawah). Yang dibaca: kolom **PERIKSA** (OP 100 siap periksa) per type. "
-               "Dipakai sebagai kolom **SISA BODY** pada rekap hitung label: file terbaru pada atau sebelum tanggal hitung. "
+    st.caption("Upload file **Stok Opname harian** (PAGI / SORE): QC TK, SK Firstfiring, atau SK Refiring (pilih jenis di bawah). Yang dibaca per type: **PERIKSA + PL** (OP100), PERBAIKAN (OP105), GERINDA (OP110), CEK ULANG (OP115), TAP (OP120), TDK SET CR (OP107) dan KIRIM (OP166). "
+               "PERIKSA dipakai sebagai **SISA BODY** pada rekap hitung label (file terbaru pada atau sebelum tanggal hitung); semua kolom dipakai di laporan Rekapan Pemakaian (file terakhir tiap bulan). "
                "Upload ulang tanggal + shift yang sama = menggantikan.")
     jenis = st.segmented_control("Jenis file", ["QC TK", "SK Firstfiring", "SK Refiring"], default="QC TK", key="sb_jenis") or "QC TK"
     kode = {"QC TK": "QC", "SK Firstfiring": "SK-FF", "SK Refiring": "SK-RF"}[jenis]

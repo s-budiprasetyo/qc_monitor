@@ -1301,8 +1301,25 @@ def _tab_pindah_stok(oleh):
             st.rerun(scope="fragment")
 
 
+def _tampil_dampak(kunci):
+    """Tampilkan perubahan stok (sebelum -> sesudah) hasil koreksi terakhir, lalu hapus dari session."""
+    dm = st.session_state.pop(kunci, None)
+    if dm is None:
+        return
+    if not dm:
+        st.warning("Koreksi tersimpan, tetapi **tidak ada saldo stok yang berubah**. Biasanya karena opname ADJUST di tanggal sesudahnya "
+                   "sudah menetapkan stok (menimpa koreksi), atau perubahannya saling meniadakan. Cek tab **Koreksi stok opname**.")
+        return
+    baris = "".join(f"<tr><td>{stok.lok_nama(lk)}</td><td>{_sel_ty(lb)}</td><td class='n'>{_ang(a)}</td><td class='n'><b>{_ang(b)}</b></td></tr>"
+                    for lk, lb, a, b in dm[:30])
+    st.success("Stok berubah setelah koreksi:")
+    st.markdown("<div class='sx2'><table class='lb'><tr><th>Lokasi</th><th>Type</th><th class='n'>Sebelum</th><th class='n'>Sesudah</th></tr>"
+                f"{baris}</table></div>", unsafe_allow_html=True)
+
+
 def _tab_koreksi_terima(oleh):
     """Perbaiki entri 'label diterima' yang salah ketik oleh karyawan: type, jumlah, meja, atau nama penerima."""
+    _tampil_dampak("pk_dampak")
     tgl = _tgl_iso(st.date_input("Tanggal label diterima", value=label.hari_ini(), max_value=label.hari_ini(), format="DD/MM/YYYY", key="pk_tgl"))
     d = stok.meja_terima_daftar(tgl=tgl)
     if d.empty:
@@ -1335,12 +1352,25 @@ def _tab_koreksi_terima(oleh):
         x = kar[kar["nama_web"].astype(str) == nm]
         prn = x.iloc[0]["prn"] if len(x) else prn
     st.caption(f"Diinput {r['nama'] or r['oleh']} pukul {str(r['waktu'])[:5]}. Perubahan tercatat di riwayat atas nama {oleh}.")
+    try:
+        lks = {stok.lok(r["pabrik"], str(r["meja"])), stok.foreman_dept(stok.dept_pabrik(r["pabrik"]))}
+        if pb and mj:
+            lks |= {stok.lok(pb, str(mj)), stok.foreman_dept(stok.dept_pabrik(pb))}
+        tm = stok.timpa_opname(r["tgl"], lks, {r["label"], lb} - {None})
+        if tm:
+            st.warning("Ada opname ADJUST sesudah tanggal ini yang menetapkan stok: " + "; ".join(
+                f"{t[8:]}/{t[5:7]} {stok.lok_nama(lk)} {l2}={_ang(a)}" for t, lk, l2, a in tm[:6]) +
+                ". Koreksi ini **tidak mengubah stok sesudah tanggal itu**; sesuaikan angkanya di tab Koreksi stok opname bila perlu.")
+    except Exception:
+        pass
     b1, b2 = st.columns([2, 1])
     if b1.button("SIMPAN PERUBAHAN", type="primary", width="stretch", key="pk_simpan"):
+        sbl = stok._ringkas_saldo()
         galat = stok.meja_terima_koreksi(pil, lb, jml, pb, mj, prn, nm or r["nama"], oleh)
         if galat:
             st.error(galat)
         else:
+            st.session_state["pk_dampak"] = stok.selisih_saldo(sbl, stok._ringkas_saldo())
             st.session_state["pf_toast"] = "Entri label diterima diperbaiki."
             st.rerun(scope="fragment")
     sure = b2.checkbox("Yakin hapus", key=f"pk_y_{pil}")
@@ -1348,6 +1378,118 @@ def _tab_koreksi_terima(oleh):
         stok.meja_terima_hapus(pil, oleh)
         st.session_state["pf_toast"] = "Entri dihapus."
         st.rerun(scope="fragment")
+
+
+def _tab_koreksi_opname(oleh):
+    """Ubah jumlah hitung aktual satu type pada opname yang sudah diinput (salah ketik angka)."""
+    _tampil_dampak("po_dampak")
+    tg = stok.opname_tanggal()
+    if not tg:
+        st.info("Belum ada hasil stok opname.")
+        return
+    tgl = st.selectbox("Tanggal opname", tg, format_func=lambda t: f"{t[8:]}/{t[5:7]}/{t[:4]}", key="po_tgl")
+    status = stok.opname_status(tgl)
+    lks = sorted(status, key=lambda x: (not stok.adalah_foreman(x), x))
+    lk = st.selectbox("Lokasi", lks, format_func=stok.lok_nama, key=f"po_lk_{tgl}")
+    if not lk:
+        return
+    baris = stok.opname_baris(tgl, lk)
+    st.caption(f"{stok.lok_nama(lk)} · {'sudah di-ADJUST' if status.get(lk) else 'belum di-ADJUST'}. Ubah angka aktual yang salah, lalu simpan.")
+    W = [1.5, 1, 1.2]
+    ubah = {}
+    with st.container(key="tb_tbl"):
+        _kepala_tbl(W, ("TYPE", "SAAT ITU", "AKTUAL (PCS)"), ("left", "right", "left"))
+        for lb in stok.urut_label(baris):
+            a, sx = baris[lb]
+            r = st.columns(W, vertical_alignment="center")
+            r[0].markdown(_sel_ty(lb), unsafe_allow_html=True)
+            r[1].markdown(f"<div class='tb-n'>{_ang(a)}</div>", unsafe_allow_html=True)
+            v = r[2].number_input(f"Aktual {lb}", min_value=0, max_value=9999999, step=1, value=int(a), key=f"po_n_{tgl}_{lk}_{lb}", label_visibility="collapsed")
+            if int(v) != int(a):
+                ubah[lb] = int(v)
+    with st.expander("Tambah type yang belum ada di opname ini"):
+        tipe = [t for t in stok.semua_label() if t not in baris]
+        c1, c2 = st.columns(2)
+        lb_b = c1.selectbox("Type", tipe, index=None, placeholder="Pilih type…", key=f"po_tb_{tgl}_{lk}")
+        n_b = c2.number_input("Aktual (pcs)", min_value=0, max_value=9999999, step=1, value=0, key=f"po_nb_{tgl}_{lk}")
+        if lb_b:
+            ubah[lb_b] = int(n_b)
+    if ubah:
+        st.caption("Akan diubah: " + ", ".join(f"{k} → {_ang(v)}" for k, v in ubah.items()))
+    if st.button("SIMPAN KOREKSI OPNAME", type="primary", width="stretch", key="po_simpan", disabled=not ubah):
+        sbl = stok._ringkas_saldo()
+        galat = stok.opname_koreksi(tgl, lk, ubah, oleh)
+        if galat:
+            st.error(galat)
+        else:
+            for lb in list(ubah):
+                st.session_state.pop(f"po_n_{tgl}_{lk}_{lb}", None)
+            st.session_state["po_dampak"] = stok.selisih_saldo(sbl, stok._ringkas_saldo())
+            st.session_state["pf_toast"] = "Jumlah opname dikoreksi."
+            st.rerun(scope="fragment")
+
+
+def _notif_hitung():
+    try:
+        return stok.notif_stok()
+    except Exception:
+        return []
+
+
+def _kartu_notif(n, oleh):
+    p, m = n["lokasi"].split("|", 1)
+    tg = f"{n['tgl'][8:]}/{n['tgl'][5:7]}"
+    k = n["id"].replace(" ", "_")
+    with st.container(border=True, key=f"nt_{k}"):
+        if n["jenis"] == "ambil_meja":
+            st.markdown(f"**{tg} · {n['nama']}** memakai **{_ang(n['kurang'])} pcs {n['label']}** di {p} · Meja {m}, tetapi meja itu tidak punya stok "
+                        f"{n['label']}. Label itu ada di meja lain, kemungkinan **diambil tanpa Pindah Label**.")
+            opsi = [a for a, _s in n["sumber"]]
+            ss = dict(n["sumber"])
+            asal = st.selectbox("Diambil dari meja", opsi, format_func=lambda a: f"{stok.lok_nama(a)} (stok {_ang(ss[a])})", key=f"nta_{k}")
+            mx = int(ss.get(asal, n["kurang"]))
+            jml = st.number_input("Jumlah dipindah ke meja ini (pcs)", min_value=1, max_value=max(mx, 1), step=1, value=min(n["kurang"], max(mx, 1)),
+                                  key=f"ntj_{k}", help="Yang terpakai dipotong; sisanya tetap di meja ini.")
+            st.caption("SETUJUI = label dianggap pindah dari meja asal ke meja ini, terpakai, sisanya ikut di meja ini.")
+        else:
+            st.markdown(f"**{tg} · {n['nama']}** memakai **{_ang(n['kurang'])} pcs {n['label']}** di {p} · Meja {m}, tetapi tidak ada meja yang punya stok "
+                        f"{n['label']}. Kemungkinan **diambil dari Foreman** tanpa tercatat (stok Foreman saat ini {_ang(n['foreman'])}).")
+            asal = None
+            jml = st.number_input("Jumlah diterima dari Foreman (pcs)", min_value=1, max_value=9999999, step=1, value=int(n["kurang"]), key=f"ntj_{k}",
+                                  help="Isi lebih besar bila Foreman memberi lebih dari yang terpakai; sisanya tetap di meja ini.")
+            st.caption("SETUJUI = stok Foreman terdistribusi ke meja ini sebanyak jumlah di atas.")
+        c = st.columns(2)
+        if c[0].button("SETUJUI", type="primary", key=f"nts_{k}", width="stretch"):
+            g = stok.notif_setujui(n, jml, asal, oleh)
+            if g:
+                st.error(g)
+            else:
+                st.session_state["pf_toast"] = "Disetujui dan dicatat."
+                st.rerun(scope="fragment")
+        if c[1].button("ABAIKAN", key=f"nti_{k}", width="stretch"):
+            stok.notif_putuskan(n["id"], "abaikan", oleh)
+            st.rerun(scope="fragment")
+
+
+@st.dialog("NOTIFIKASI STOK LABEL", width="large")
+def dlg_notif_stok():
+    kontrol_jendela("inputlabel")
+    kepala("label", "NOTIFIKASI STOK LABEL")
+    st.markdown(label_ui.CSS + CSS_JENDELA + CSS_TBL, unsafe_allow_html=True)
+    if st.session_state.get("pf_toast"):
+        st.toast(st.session_state.pop("pf_toast"), icon="✅")
+    oleh = akses.pelaku()
+    daftar = _notif_hitung()
+    if not daftar:
+        st.success("Tidak ada stok minus yang perlu persetujuan. ✅")
+        return
+    st.caption(f"{len(daftar)} pemakaian label melebihi stok meja. Setujui bila memang label berpindah, atau abaikan bila bukan. "
+               "Setiap persetujuan tercatat sebagai pemindahan / label diterima atas nama Anda.")
+    daftar = sorted(daftar, key=lambda n: n["tgl"], reverse=True)
+    for n in daftar[:25]:
+        _kartu_notif(n, oleh)
+    if len(daftar) > 25:
+        st.caption(f"+{len(daftar) - 25} notifikasi lebih lama ditampilkan setelah yang di atas diselesaikan.")
 
 
 @st.dialog("PERBAIKAN DATA LABEL", width="large")
@@ -1358,14 +1500,17 @@ def dlg_perbaikan():
     if st.session_state.get("pf_toast"):
         st.toast(st.session_state.pop("pf_toast"), icon="✅")
     oleh = akses.pelaku()
-    mode = st.segmented_control("Perbaikan", ["Pindah / tarik stok meja", "Koreksi label diterima"], default="Pindah / tarik stok meja",
+    mode = st.segmented_control("Perbaikan", ["Pindah / tarik stok meja", "Koreksi label diterima", "Koreksi stok opname"], default="Pindah / tarik stok meja",
                                 key="pf_mode", label_visibility="collapsed") or "Pindah / tarik stok meja"
     if mode.startswith("Pindah"):
         st.caption("Pindahkan stok label dari satu meja ke meja berikutnya, atau tarik kembali ke stok Foreman.")
         _tab_pindah_stok(oleh)
-    else:
+    elif mode.startswith("Koreksi label"):
         st.caption("Karyawan salah ketik type, jumlah, atau memilih meja yang keliru? Perbaiki entri label diterimanya di sini.")
         _tab_koreksi_terima(oleh)
+    else:
+        st.caption("Salah mengisi jumlah hitung aktual di stok opname? Ubah jumlah type tertentu di sini.")
+        _tab_koreksi_opname(oleh)
 
 
 def _hub():
@@ -1375,6 +1520,8 @@ def _hub():
         t_op = t_op[0] if t_op else None
     except Exception:
         t_op = None
+    n_nt = len(_notif_hitung())
+    ket_nt = f"{n_nt} perlu persetujuan" if n_nt else "Tidak ada"
     ket_op = f"Opname terakhir: {t_op[8:10]}/{t_op[5:7]}/{t_op[:4]}" if t_op else "Belum ada opname"
     MENU = {"afkir": ("INPUT LABEL AFKIR", "Catat label kotor per karyawan, pabrik, dan meja", "tag", _buka_jendela, "Fungsi", "Input harian"),
             "bagus": ("INPUT LABEL BAGUS", "Catat label bagus yang diterima foreman", "box", dlg_label_bagus, "Fungsi", "Barang masuk"),
@@ -1382,7 +1529,8 @@ def _hub():
             "check": ("CHECK LABEL", "Label keluar ke karyawan per meja, cek stok meja", "check", dlg_check_label, "Fungsi", "Per meja"),
             "opname": ("STOK OPNAME LABEL", "Hitung fisik label per lokasi, pabrik, dan meja", "calc", dlg_opname, "Status", ket_op),
             "selisih": ("SELISIH STOK OPNAME", "Bandingkan stok sistem dengan hitungan fisik, lalu ADJUST", "bars", dlg_selisih, "Status", ket_op),
-            "perbaikan": ("PERBAIKAN DATA", "Pindah stok antar meja, tarik ke Foreman, koreksi label diterima", "wrench", dlg_perbaikan, "Fungsi", "Koreksi"),
+            "notif": ("NOTIFIKASI STOK", "Label dipakai tanpa stok di meja: setujui perpindahan / distribusi", "bell", dlg_notif_stok, "Notifikasi", ket_nt),
+            "perbaikan": ("PERBAIKAN DATA", "Pindah stok antar meja, koreksi label diterima, koreksi stok opname", "wrench", dlg_perbaikan, "Fungsi", "Koreksi"),
             "operator": ("DAFTAR OPERATOR", "Daftarkan operator untuk Input Label Afkir", "user", dlg_operator, "Fungsi", "Akun operator")}
     daftar = [{"id": k, "label": v[0], "sub": v[1], "icon": v[2], "status_label": v[4], "status": v[5], "disabled": False}
               for k, v in MENU.items()]

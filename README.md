@@ -219,3 +219,15 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - **Label & stok memakai Transaction Date** (SAP pcs bagus OP100, afkir `label_afkir.tgl`, `sap_hari`, peta meja). `tgl_posting` tetap tersimpan tapi tidak dipakai hitungan.
 - Input label diterima: bila tanggal itu sudah pernah diinput, muncul notice berisi riwayat (jam, jumlah) dan total baru; input baru ditambahkan, bukan mengganti.
 - Data lama yang kolom trx-nya kosong/sama dengan tgl diisi ulang dari kolom asli "SAP | Transaction Date" (`data._lengkapi_trx`).
+
+### Tahap 10v – Laporan Rekapan Pemakaian Label
+- Menu baru di app Laporan: **Rekapan Pemakaian** (`halaman_lap_pakai.py`, `core/rekap_pakai.py`, `core/rekap_pakai_xlsx.py`). QC / SK / Gabungan; halaman menampilkan kolom E–U; Excel (satu bulan atau setahun) berisi semua kolom dengan rumus nyambung + sheet REKAPAN PER BULAN.
+- Sumber: G rencana (QC blok QC, SK Firstfiring), H/Y hitung aktual (label_hitung), I label_terima, J SAP OP100 'Total', K = SAP M+LA+LB+F (CW & CE9), L/M/N input afkir foreman, O–S SAP 'Afkir Total' per OP (105/110/115/120/107), AG–AM stok body akhir bulan.
+- Stok Body: parser membaca PERIKSA+PL, PERBAIKAN, GERINDA, CEK ULANG, TDK SET CR, TAP, KIRIM (OP107 = TDK SET CR, IJP → JP). **Upload ulang file akhir bulan** agar kolom baru tersimpan.
+- Januari–Oktober: `assets/rekap_pakai_riwayat.json` (dari file REKAPAN lama, gabungan QC+SK).
+- Aturan: CE7 = CE7 + warna; SNI = CW kecuali CW52J; label warna di SAP kini juga mengurangi CE7 (`laporan.pasangan`); afkir proses berlaku untuk CW dan CE9.
+
+## Tahap 10w — Koreksi stok & notifikasi stok minus (halaman Foreman)
+- **Perbaikan Data → Koreksi label diterima**: sesudah simpan tampil tabel *stok sebelum → sesudah*. Bila ada opname ADJUST bertanggal sesudah entri itu yang menetapkan stok (menimpa), muncul peringatan. Catatan: koreksi hanya memindahkan sebaran stok (Foreman ⇄ meja / antar type); total stok per type hanya berubah oleh pemakaian SAP, opname, atau label diterima dari packing.
+- **Perbaikan Data → Koreksi stok opname** (baru): ubah jumlah aktual satu type pada opname yang sudah diinput (juga yang sudah di-ADJUST), tambah type yang terlewat. Tercatat di riwayat.
+- **Notifikasi Stok** (menu baru di roda Foreman): pemakaian SAP di meja QC yang melebihi stok meja. (1) Ada meja QC lain yang punya type itu → SETUJUI mencatat Pindah Label meja asal → meja ini. (2) Tidak ada meja yang punya stok → SETUJUI mencatat label diterima meja dari Foreman. ABAIKAN menyimpan keputusan di tabel `label_notif`. SK tidak dihitung (sisa meja SK otomatis kembali ke Foreman SK).

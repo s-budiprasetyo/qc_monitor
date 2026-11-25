@@ -279,6 +279,35 @@ def meja_terima_koreksi(id_, label_baru, jumlah, pabrik, meja, prn, nama, oleh):
     return None
 
 
+def _ringkas_saldo(tgl=None):
+    s, _ = saldo(tgl)
+    return {k: v for k, v in s.items() if v}
+
+
+def selisih_saldo(sebelum, sesudah):
+    """Daftar [(lokasi, label, sebelum, sesudah)] yang saldonya berubah."""
+    out = []
+    for k in sorted(set(sebelum) | set(sesudah)):
+        a, b = sebelum.get(k, 0), sesudah.get(k, 0)
+        if a != b:
+            out.append((k[0], k[1], a, b))
+    return out
+
+
+def timpa_opname(tgl, lokasi_daftar, label_daftar):
+    """Hasil ADJUST opname bertanggal >= tgl yang menimpa saldo (lokasi, label) tertentu -> koreksi sebelum tanggal itu tidak mengubah stok sesudahnya.
+    Return [(tgl_opname, lokasi, label, aktual)]."""
+    h = data.baca("label_hitung")
+    if h.empty:
+        return []
+    if "lokasi" not in h.columns:
+        h["lokasi"] = ""
+    h["lokasi"] = h["lokasi"].replace("", FOREMAN)
+    h = h[(h["adjust"] == "ya") & (h["tgl"] >= tgl) & h["lokasi"].isin(list(lokasi_daftar)) & h["label"].isin(list(label_daftar))]
+    h = h.sort_values(["tgl", "waktu"]).drop_duplicates(["tgl", "lokasi", "label"], keep="last")
+    return [(r.tgl, r.lokasi, r.label, _int(r.aktual)) for r in h.itertuples()]
+
+
 def meja_terakhir(prn, sampai=None):
     """(pabrik, meja) terakhir operator itu (dari penerimaan label atau input label afkir) sebelum/sampai tanggal."""
     sampai = sampai or hari_ini()
@@ -608,6 +637,112 @@ def opname_adjust(tgl, oleh, lokasi_daftar=None):
     return n
 
 
+def opname_koreksi(tgl, lokasi, perubahan, oleh):
+    """Ubah jumlah hitung aktual type tertentu pada opname tanggal tgl di satu lokasi. perubahan = {label: aktual_baru}.
+    Semua baris hitung (sebelum maupun sesudah ADJUST) untuk type itu diubah; type yang belum ada ditambahkan. Return galat (str) atau None."""
+    perubahan = {lb: _int(a) for lb, a in perubahan.items() if lb}
+    if not perubahan:
+        return "Tidak ada perubahan."
+    if any(a < 0 for a in perubahan.values()):
+        return "Jumlah aktual tidak boleh negatif."
+    d = data.baca("label_hitung")
+    if "lokasi" not in d.columns:
+        d["lokasi"] = ""
+    lk = d["lokasi"].replace("", FOREMAN)
+    sudah = opname_status(tgl).get(lokasi)
+    if sudah is None:
+        return "Opname lokasi itu pada tanggal tersebut tidak ditemukan."
+    ubah, baru, sebelum, sesudah = [], [], [], []
+    waktu = datetime.now(data.WIB).strftime("%H:%M:%S.%f")
+    for i, (lb, a) in enumerate(sorted(perubahan.items())):
+        m = (d["tgl"] == tgl) & (lk == lokasi) & (d["label"] == lb)
+        if m.any():
+            lama = _int(d[m].sort_values("waktu").iloc[-1]["aktual"])
+            if lama == a:
+                continue
+            x = d[m].copy()
+            x["aktual"] = str(a)
+            ubah.append(x)
+            sebelum.append(f"{lb}={lama}")
+        else:
+            sx = stok_lokasi(lokasi, tgl).get(lb, 0)
+            baru.append({"tgl": tgl, "waktu": f"{waktu}-{i:02d}", "label": lb, "aktual": str(a), "sistem": str(sx),
+                         "adjust": "ya" if sudah else "", "oleh": oleh, "lokasi": lokasi})
+            sebelum.append(f"{lb}=(belum ada)")
+        sesudah.append(f"{lb}={a}")
+    if not sesudah:
+        return "Tidak ada jumlah yang berubah."
+    kol = list(d.columns)
+    bagian = ubah + ([pd.DataFrame(baru, columns=kol)] if baru else [])
+    data.upsert("label_hitung", pd.concat(bagian, ignore_index=True)[kol], ["tgl", "waktu", "label", "lokasi"])
+    catat_riwayat("koreksi stok opname", f"{tgl}|{lokasi}", ", ".join(sebelum)[:300], ", ".join(sesudah)[:300], oleh, tgl)
+    data.catat_update("STOK LABEL")
+    _bersih()
+    return None
+
+
+# ---------------------------------------------------------------- notifikasi stok minus (butuh persetujuan foreman)
+def _id_notif(tgl, lk, lb, prn):
+    return f"{tgl}|{lk}|{lb}|{prn}"
+
+
+def notif_stok(sampai=None):
+    """Pemakaian SAP di meja QC yang melebihi stok sistem meja itu (minus), dipecah dua kasus:
+    'ambil_meja'  = ada meja QC lain yang masih punya type itu (operator mengambil dari meja lain tanpa Pindah Label);
+    'dari_foreman'= tidak ada meja yang punya stok (operator mengambil dari Foreman tanpa tercatat).
+    Return daftar dict(id, tgl, jenis, lokasi, label, prn, nama, kurang, sumber[(lokasi, stok)], foreman). Yang sudah diputuskan foreman tidak ikut."""
+    sampai = sampai or hari_ini()
+    ev, _t = _ledger_c(sampai)
+    sudah = data.baca("label_notif")
+    putus = set(sudah["id"]) if len(sudah) else set()
+    sal, out = defaultdict(int), []
+    for tgl, _o, jenis, lk, lb, v, *k in ev:
+        if tgl > sampai:
+            break
+        if jenis == "tambah" and k and k[0][0] == "SAP" and v < 0 and not adalah_foreman(lk) and dept_lokasi(lk) == "QC":
+            n = -v
+            kurang = n - max(sal.get((lk, lb), 0), 0)
+            prn = k[0][3] if len(k[0]) > 3 else ""
+            nid = _id_notif(tgl, lk, lb, prn)
+            if kurang > 0 and nid not in putus:
+                sumber = sorted(((l2, s) for (l2, b2), s in sal.items() if b2 == lb and s > 0 and l2 != lk and not adalah_foreman(l2) and dept_lokasi(l2) == "QC"),
+                                key=lambda x: -x[1])
+                out.append({"id": nid, "tgl": tgl, "jenis": "ambil_meja" if sumber else "dari_foreman", "lokasi": lk, "label": lb, "prn": prn,
+                            "nama": k[0][1], "kurang": int(kurang), "sumber": sumber, "foreman": int(sal.get((FOREMAN, lb), 0))})
+        _terap(sal, jenis, lk, lb, v)
+    return out
+
+
+def notif_putuskan(nid, status, oleh):
+    """Catat keputusan foreman (abaikan) supaya notifikasi itu tidak muncul lagi."""
+    tgl = nid.split("|", 1)[0]
+    d = pd.DataFrame([{"id": nid, "tgl": tgl, "oleh": oleh, "waktu": datetime.now(data.WIB).strftime("%Y-%m-%d %H:%M:%S"), "status": status}],
+                     columns=["id", "tgl", "oleh", "waktu", "status"])
+    data.upsert("label_notif", d, ["id"])
+    data.catat_update("STOK LABEL")
+    _bersih()
+
+
+def notif_setujui(n, jumlah, asal, oleh):
+    """Setujui notifikasi n (dict dari notif_stok). ambil_meja: catat pemindahan meja asal -> meja ini sejumlah `jumlah` (sisa tetap di meja ini).
+    dari_foreman: catat label diterima meja ini dari Foreman sejumlah `jumlah`. Return galat (str) atau None."""
+    jumlah = _int(jumlah)
+    if jumlah <= 0:
+        return "Jumlah harus lebih dari 0."
+    pabrik, meja = n["lokasi"].split("|", 1)
+    if n["jenis"] == "ambil_meja":
+        if not asal or "|" not in asal:
+            return "Pilih meja asal label."
+        ap, am = asal.split("|", 1)
+        g = pindah_simpan(n["tgl"], ap, am, (pabrik, meja), [(n["label"], jumlah)], oleh, n["prn"])
+    else:
+        g = meja_terima_simpan(n["tgl"], n["prn"] or PRN_FOREMAN, n["nama"], pabrik, meja, [(n["label"], jumlah)], oleh)
+    if g:
+        return g
+    catat_riwayat("setujui notifikasi stok", n["id"], "", f"{n['jenis']} {n['label']} {jumlah}" + (f" dari {asal}" if asal else ""), oleh, n["tgl"])
+    return None
+
+
 def adjust_terakhir(dept=None):
     """Adjust stok opname terakhir untuk dept (QC | SK | None): {'tgl': tanggal hitung, 'waktu': kapan diproses, 'oleh', 'lokasi': [..]} atau None."""
     r = data.baca("label_riwayat")
@@ -756,7 +891,7 @@ def _ledger(sampai, abaikan=None):
             if lk is None:
                 tanpa.append({"tgl": r.tgl, "prn": r.prn, "nama": r.nama, "label": r.label, "n": int(sisa)})
             else:
-                ev.append((r.tgl, 2, "tambah", lk, r.label, -int(sisa), ("SAP", r.nama, "pcs bagus SAP")))
+                ev.append((r.tgl, 2, "tambah", lk, r.label, -int(sisa), ("SAP", r.nama, "pcs bagus SAP", r.prn)))
     ev = [e for e in ev if e[0] >= MULAI]  # catatan uji sebelum tanggal mulai tidak ikut dihitung
     ev.sort(key=lambda e: (e[0], e[1]))
     ev = _sapu_sk(ev)
@@ -878,7 +1013,7 @@ def rincian(tgl, lb):
         if tg == tgl and awal is None:
             awal = {kk: vv for kk, vv in sal.items() if kk[1] == lb}
         if tg == tgl:
-            kat, nama, info = k[0] if k else ("", "", "")
+            kat, nama, info = k[0][:3] if k else ("", "", "")
             if jenis == "reset":
                 for kk in [kk for kk in sal if kk[0].startswith(lk + "|") and kk[1] == lb and sal[kk]]:
                     kej.append((kk[0], "KOREKSI", nama, info, -sal[kk]))

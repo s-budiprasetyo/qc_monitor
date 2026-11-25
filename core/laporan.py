@@ -21,10 +21,20 @@ PROSES_SAP = ["SAP | Afkir (M) - Berubah", "SAP | Afkir (LA) - Bocor Udara", "SA
 
 
 def proses_berlaku(lb):
-    """Afkir Proses (otomatis dari SAP: M + LA + LB + F) hanya untuk type closet CW. CE6, CE7 (termasuk warna) dan CE9 tidak.
+    """Afkir Proses (otomatis dari SAP: M + LA + LB + F) hanya untuk type closet CW dan CE9. CE6 dan CE7 (termasuk warna) tidak.
     Label SNI memakai jumlah Proses semua type CW."""
     t = str(lb).upper()
-    return t == "SNI" or t.startswith("CW")
+    return t == "SNI" or t.startswith("CW") or t == "CE9"
+
+
+def pasangan(lb):
+    """Label yang ikut terpakai bersama lb: label warna selalu disertai CE7, type CW (kecuali CW52J) disertai SNI."""
+    ikut = [lb]
+    if label.ket_label(lb) and lb != "CE7":
+        ikut.append("CE7")
+    if label.punya_sni(lb):
+        ikut.append(label.SNI)
+    return ikut
 
 
 def _angka(s):
@@ -128,7 +138,7 @@ def tabel(bulan, op100=True):
     n_input = len(a)
     baru = []
     for p, t, lb, nm, bg in zip(b["prn"], b["tgl"], b["label"], b["nama"], b["bagian"]):
-        for nama_lb in [lb] + ([label.SNI] if label.punya_sni(lb) else []):
+        for nama_lb in pasangan(lb):
             if (p, t, nama_lb) not in ada:
                 ada.add((p, t, nama_lb))
                 baru.append({"tgl": t, "bagian": bg, "prn": p, "nama": nm, "label": nama_lb, "induk": "", "catatan": "",
@@ -141,7 +151,7 @@ def tabel(bulan, op100=True):
     a["bagian"] = [info["bagian"].get(p, g) for p, g in zip(a["prn"], a["bagian"])]
     peta, pro = {}, {}
     for p, t, lb, v, pr in zip(b["prn"], b["tgl"], b["label"], b["bagus"], b["proses"]):
-        for k_ in [lb] + ([label.SNI] if label.punya_sni(lb) else []):  # SNI = jumlah semua type CW operator itu hari itu
+        for k_ in pasangan(lb):  # SNI = jumlah semua type CW operator itu hari itu; CE7 = CE7 + semua warna
             peta[(p, t, k_)] = peta.get((p, t, k_), 0) + v
             pro[(p, t, k_)] = pro.get((p, t, k_), 0) + pr
     # Proses: nilai hasil input foreman dipakai apa adanya (terisi otomatis dari SAP, boleh diubah); baris tanpa input memakai SAP
