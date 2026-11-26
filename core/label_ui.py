@@ -30,13 +30,19 @@ def chips(d):
     return h
 
 
-def _tabel_stok_meja(pabrik, meja, tgl):
-    """Stok awal (sisa kemarin sore), menerima hari ini, dan stok saat ini per type di meja."""
+def _tabel_stok_meja(pabrik, meja, tgl, tambah=None):
+    """Stok awal (sisa kemarin sore), menerima hari ini, dan stok saat ini per type di meja.
+    tambah = {label: jumlah} yang sedang diisi tetapi belum disimpan: ikut dihitung (ditandai hijau) dan type baru langsung muncul."""
     try:
         r = stok.meja_ringkas(pabrik, meja, tgl)
     except Exception:
         return chips(stok.stok_meja(pabrik, meja, tgl))
-    r = {lb: d for lb, d in r.items() if d["awal"] or d["sisa"] or d["terima"]}
+    tambah = {lb: n for lb, n in (tambah or {}).items() if n}
+    r = {lb: dict(d) for lb, d in r.items() if d["awal"] or d["sisa"] or d["terima"]}
+    for lb, n in tambah.items():
+        d = r.setdefault(lb, {"awal": 0, "terima": 0, "sisa": 0, "keluar": 0, "pakai": 0, "kor": 0})
+        d["terima"] += n
+        d["sisa"] += n
     if not r:
         return "<span class='ls-nt'>Belum ada stok label di meja ini.</span>"
     f = lambda v: f"{int(v):,}".replace(",", ".")
@@ -50,7 +56,9 @@ def _tabel_stok_meja(pabrik, meja, tgl):
             ket.append(f"terpakai {f(-d['pakai'])}")
         if d["kor"]:
             ket.append(f"koreksi {f(d['kor'])}")
-        warna = "#b3261e" if d["sisa"] < 0 else "#0b3d91"
+        warna = "#b3261e" if d["sisa"] < 0 else ("#1b7a3d" if lb in tambah else "#0b3d91")
+        if lb in tambah:
+            ket.append("belum disimpan")
         baris += (f"<tr><td style='text-align:left;font-weight:800'>{html.escape(str(lb))}</td><td>{f(d['awal'])}</td><td>{('+' + f(d['terima'])) if d['terima'] else '–'}</td>"
                   f"<td style='font-weight:800;color:{warna}'>{f(d['sisa'])}</td><td style='text-align:left;color:#7b8fb0;font-size:11.5px'>{', '.join(ket)}</td></tr>")
     return ("<table style='width:100%;border-collapse:collapse;font-size:13px;text-align:right'><tr style='color:#5b7399;font-size:11px;letter-spacing:.4px'>"
@@ -157,25 +165,25 @@ def _baris_foreman(pabrik, meja, tgl, kp):
     return [(lb, int(dasar[lb]["awal"]), int(dasar[lb]["sisa"]), int(dasar[lb]["terima"])) for lb in stok.urut_label(dasar)]
 
 
-def _tambah_type(kp, ada):
-    """Baris '+ Tambah type': membuka daftar type yang bisa diketik; type terpilih menjadi baris baru."""
-    kb = f"{kp}_tb"
+def _tambah_type(kp, ada, daftar="tipe", n="tb"):
+    """Tombol '+ Tambah type': membuka pilihan SATU type (bisa diketik); setelah dipilih daftar menutup sendiri dan type menjadi baris baru."""
+    kb = f"{kp}_{n}"
     if not st.session_state.get(kb):
-        if st.button("+ Tambah type", key=f"{kp}_tbtn", type="tertiary"):
+        if st.button("+ Tambah type", key=f"{kp}_{n}btn", type="tertiary"):
             st.session_state[kb] = True
             st.rerun(scope="fragment")
         return
     opsi = [t for t in stok.semua_label() if t not in ada]
 
     def _pilih():
-        v = st.session_state.get(f"{kp}_tbpilih")
+        v = st.session_state.get(f"{kp}_{n}pilih")
         if v:
-            st.session_state[f"{kp}_tipe"] = list(st.session_state.get(f"{kp}_tipe", [])) + [v]
+            st.session_state[f"{kp}_{daftar}"] = list(st.session_state.get(f"{kp}_{daftar}", [])) + [v]
         st.session_state[kb] = False
-        st.session_state.pop(f"{kp}_tbpilih", None)
+        st.session_state.pop(f"{kp}_{n}pilih", None)
     c = st.columns([4, 1.2], vertical_alignment="center")
-    c[0].selectbox("Tambah type", opsi, index=None, placeholder="Ketik type label…", key=f"{kp}_tbpilih", on_change=_pilih, label_visibility="collapsed")
-    if c[1].button("Batal", key=f"{kp}_tbbatal"):
+    c[0].selectbox("Tambah type", opsi, index=None, placeholder="Ketik / pilih satu type…", key=f"{kp}_{n}pilih", on_change=_pilih, label_visibility="collapsed")
+    if c[1].button("Batal", key=f"{kp}_{n}batal"):
         st.session_state[kb] = False
         st.rerun(scope="fragment")
 
@@ -207,15 +215,24 @@ def _tabel_terima_foreman(pabrik, meja, tgl, kp):
     return out
 
 
-def _panel_meja_lain(pabrik, meja, tgl, kp):
-    """Dari meja lain: pilih type, tabel MEJA·PABRIK | STOK | DIAMBIL | SISA per type. Return [(lokasi_asal, label, diambil)]."""
-    st.markdown("<div class='ls-lbl'>TYPE LABEL YANG DITERIMA</div>", unsafe_allow_html=True)
-    tipe = st.multiselect("Type label", stok.semua_label(), key=f"{kp}_mltipe", placeholder="Ketik/pilih type label…", label_visibility="collapsed")
+def _panel_meja_lain(pabrik, meja, tgl, kp, tempat):
+    """Dari meja lain: tambah type satu per satu, tabel MEJA·PABRIK | STOK | DIAMBIL | SISA per type.
+    `tempat` = wadah di atas halaman yang diisi tabel stok meja ini (ikut berubah sesuai isian DIAMBIL).
+    Return ([(lokasi_asal, label, diambil)], daftar meja asal)."""
     kt = f"{kp}_mltbl"
+    tipe = list(st.session_state.get(f"{kp}_mltipe", []))
     ambil, total, sumber_semua = [], {}, []
     for it, lb in enumerate(tipe):
         sumber = stok.stok_di_meja_lain(lb, tgl, (pabrik, meja))
-        st.markdown(f"<div class='ls-lbl' style='font-size:13px'>{html.escape(str(lb))} · label ini ada di meja:</div>", unsafe_allow_html=True)
+        with st.container(key=f"{kt}_h{it}"):
+            st.markdown(_CSS_TBL.format(k=f"{kt}_h{it}"), unsafe_allow_html=True)
+            c = st.columns([4, 1.3], vertical_alignment="center")
+            c[0].markdown(f"<div class='ls-lbl' style='font-size:13px'>{html.escape(str(lb))} · label ini ada di meja:</div>", unsafe_allow_html=True)
+            if c[1].button("Hapus", key=f"{kp}_mlhapus_{it}", help="Batalkan type ini", width="stretch"):
+                st.session_state[f"{kp}_mltipe"] = [t for t in tipe if t != lb]
+                for k_ in [k for k in st.session_state if str(k).startswith(f"{kp}_ml_{pabrik}_{meja}_{lb}_")]:
+                    st.session_state.pop(k_, None)
+                st.rerun(scope="fragment")
         if not sumber:
             st.info(f"Tidak ada meja lain yang punya stok {lb}. Bila labelnya dari Foreman, pilih 'Foreman' di atas.")
             continue
@@ -237,11 +254,10 @@ def _panel_meja_lain(pabrik, meja, tgl, kp):
                     ambil.append((lk, lb, d))
                     total[lb] = total.get(lb, 0) + d
                 sumber_semua.append(lk)
-    if total:
-        skr = stok.stok_meja(pabrik, meja, tgl)
-        st.markdown("<div class='tt-tot'><span class='ls-nt'>Setelah disimpan, stok meja ini</span><br>" + "<br>".join(
-            f"<b>{html.escape(str(lb))}: {_f(skr.get(lb, 0))} → {_f(skr.get(lb, 0) + n)}</b> <span class='ls-nt'>(+{_f(n)} diambil dari meja lain)</span>"
-            for lb, n in total.items()) + "</div>", unsafe_allow_html=True)
+    _tambah_type(kp, tipe, daftar="mltipe", n="mltb")
+    with tempat:
+        st.markdown("<div class='ls-lbl'>STOK LABEL DI MEJA INI" + (" — sudah termasuk yang akan diterima" if total else " SEKARANG") + "</div>"
+                    + _tabel_stok_meja(pabrik, meja, tgl, total), unsafe_allow_html=True)
     return ambil, list(dict.fromkeys(sumber_semua))
 
 
@@ -309,8 +325,9 @@ def form_terima(prn, nama, tgl, oleh, adm=False, kp="lt"):
                 st.toast("Label diterima tersimpan.", icon="✅")
                 st.rerun(scope="fragment")
     else:
-        st.markdown("<div class='ls-lbl'>STOK LABEL DI MEJA INI SEKARANG</div>" + _tabel_stok_meja(pabrik, meja, tgl), unsafe_allow_html=True)
-        ambil, lain = _panel_meja_lain(pabrik, meja, tgl, kp)
+        tempat = st.container()
+        st.markdown("<div class='ls-lbl'>LABEL YANG DITERIMA — tambah type satu per satu, lalu isi kolom DIAMBIL</div>", unsafe_allow_html=True)
+        ambil, lain = _panel_meja_lain(pabrik, meja, tgl, kp, tempat)
         st.caption("Label di rak dan tidak tahu dari meja berapa? Cukup pilih type; sistem menunjukkan meja yang punya stoknya. Isi DIAMBIL hanya pada meja yang labelnya kamu ambil.")
         _lapor(prn, nama, tgl, pabrik, meja, kp, lain)
         if st.button("SIMPAN PERPINDAHAN", type="primary", width="stretch", key=f"{kp}_simpan_ml", disabled=not ambil):
