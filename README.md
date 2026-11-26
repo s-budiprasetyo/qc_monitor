@@ -252,3 +252,7 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 
 ## Tahap 10z3 — Stok per meja disederhanakan
 - Stok Label → PER MEJA: baris = meja saja, kolom = tanggal; angka = total pcs semua type di meja pada akhir hari (merah bila ada type yang minus). Klik angka → tabel TYPE, STOK AWAL, DITERIMA, PAKAI SAP, AFKIR, SISA, PIC + baris TOTAL, dengan tombol ◀ Sebelumnya / Berikutnya ▶ antar tanggal.
+
+## Tahap 10z4 — Halaman Afkir Label
+- Judul **Afkir Label**; rentang tanggal dihapus (periode bulan sudah ada). Pilihan pabrik: Pabrik 1, Pabrik 2, SK, Gabungan; pilihan jenis: Label Kotor, Lengket, Garis, Proses, Total.
+- Tabel: TYPE × tanggal 1..N × TOTAL (+ baris TOTAL). Klik angka → siapa yang mengafkirkan dan berapa pcs (tabel Total: nama jenis afkir dan jumlahnya). Klik TOTAL → rincian sebulan. Proses dari SAP ikut bila belum diinput foreman. Pabrik ditentukan dari alamat meja karyawan hari itu; tanpa alamat hanya muncul di Gabungan.
