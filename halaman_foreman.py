@@ -486,7 +486,7 @@ def _urut():
 
 
 def _ang(n):
-    return f"{int(n):,}".replace(",", ".")
+    return f"{int(float(n)):,}".replace(",", ".")
 
 
 def _kepala_tbl(W, judul, rata):
@@ -1436,6 +1436,46 @@ def _notif_hitung():
         return []
 
 
+def _lapor_hitung():
+    try:
+        return stok.lapor_buka()
+    except Exception:
+        return []
+
+
+def _kartu_lapor(n, oleh):
+    """Laporan karyawan: stok meja tidak sama dengan sistem. Foreman cek fisik meja, lalu koreksi stok atau selesai."""
+    lk = stok.lok(n["pabrik"], str(n["meja"]))
+    sis_kini = int(stok.stok_lokasi(lk).get(n["label"], 0))
+    tg = f"{str(n['tgl'])[8:]}/{str(n['tgl'])[5:7]}"
+    sel = int(float(n["aktual"] or 0)) - int(float(n["sistem"] or 0))
+    k = str(n["id"])
+    with st.container(border=True, key=f"lp_{k}"):
+        st.markdown(f"**{stok.lok_nama(lk)}** · **{n['label']}** &nbsp; <span style='background:#fff1cf;color:#7a5200;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:800'>Laporan karyawan</span>",
+                    unsafe_allow_html=True)
+        st.caption(f"{tg} · dilaporkan {n['nama'] or n['prn']}")
+        c = st.columns(3)
+        c[0].metric("Menurut sistem (saat lapor)", _ang(n["sistem"]))
+        c[1].metric("Yang ada (kata karyawan)", _ang(n["aktual"]))
+        c[2].metric("Selisih", _ang(sel))
+        if n["catatan"]:
+            st.caption(f"Catatan: {n['catatan']}")
+        st.caption(f"Stok sistem sekarang: **{_ang(sis_kini)}**. Cek fisik meja, isi jumlah yang benar, lalu koreksi.")
+        jml = st.number_input("Jumlah sebenarnya di meja (pcs)", min_value=0, max_value=9999999, step=1, value=int(float(n["aktual"] or 0)), key=f"lpj_{k}")
+        b = st.columns(2)
+        if b[0].button("KOREKSI STOK", type="primary", key=f"lpk_{k}", width="stretch",
+                       help="Stok meja disamakan dengan jumlah di atas (dicatat sebagai hitung opname + ADJUST hari ini)."):
+            g = stok.lapor_selesai(k, oleh, aktual=jml)
+            if g:
+                st.error(g)
+            else:
+                st.session_state["pf_toast"] = "Stok dikoreksi."
+                st.rerun(scope="fragment")
+        if b[1].button("SELESAI (TANPA KOREKSI)", key=f"lps_{k}", width="stretch"):
+            stok.lapor_selesai(k, oleh)
+            st.rerun(scope="fragment")
+
+
 def _kartu_notif(n, oleh):
     p, m = n["lokasi"].split("|", 1)
     tg = f"{n['tgl'][8:]}/{n['tgl'][5:7]}"
@@ -1479,10 +1519,20 @@ def dlg_notif_stok():
     if st.session_state.get("pf_toast"):
         st.toast(st.session_state.pop("pf_toast"), icon="✅")
     oleh = akses.pelaku()
+    lapor = _lapor_hitung()
+    if lapor:
+        st.markdown(f"**LAPORAN KARYAWAN ({len(lapor)})**")
+        st.caption("Karyawan melihat stok meja di sistem tidak sama dengan label yang ada. Cek meja itu, lalu koreksi bila memang berbeda.")
+        for n in lapor[:25]:
+            _kartu_lapor(n, oleh)
     daftar = _notif_hitung()
     if not daftar:
-        st.success("Tidak ada stok minus yang perlu persetujuan. ✅")
+        if not lapor:
+            st.success("Tidak ada notifikasi stok yang perlu ditinjau. ✅")
         return
+    if lapor:
+        st.markdown("---")
+        st.markdown(f"**STOK MINUS ({len(daftar)})**")
     st.caption(f"{len(daftar)} pemakaian label melebihi stok meja. Setujui bila memang label berpindah, atau abaikan bila bukan. "
                "Setiap persetujuan tercatat sebagai pemindahan / label diterima atas nama Anda.")
     daftar = sorted(daftar, key=lambda n: n["tgl"], reverse=True)
@@ -1520,8 +1570,8 @@ def _hub():
         t_op = t_op[0] if t_op else None
     except Exception:
         t_op = None
-    n_nt = len(_notif_hitung())
-    ket_nt = f"{n_nt} perlu persetujuan" if n_nt else "Tidak ada"
+    n_nt = len(_notif_hitung()) + len(_lapor_hitung())
+    ket_nt = f"{n_nt} perlu ditinjau" if n_nt else "Tidak ada"
     ket_op = f"Opname terakhir: {t_op[8:10]}/{t_op[5:7]}/{t_op[:4]}" if t_op else "Belum ada opname"
     MENU = {"afkir": ("INPUT LABEL AFKIR", "Catat label kotor per karyawan, pabrik, dan meja", "tag", _buka_jendela, "Fungsi", "Input harian"),
             "bagus": ("INPUT LABEL BAGUS", "Catat label bagus yang diterima foreman", "box", dlg_label_bagus, "Fungsi", "Barang masuk"),
@@ -1529,7 +1579,7 @@ def _hub():
             "check": ("CHECK LABEL", "Label keluar ke karyawan per meja, cek stok meja", "check", dlg_check_label, "Fungsi", "Per meja"),
             "opname": ("STOK OPNAME LABEL", "Hitung fisik label per lokasi, pabrik, dan meja", "calc", dlg_opname, "Status", ket_op),
             "selisih": ("SELISIH STOK OPNAME", "Bandingkan stok sistem dengan hitungan fisik, lalu ADJUST", "bars", dlg_selisih, "Status", ket_op),
-            "notif": ("NOTIFIKASI STOK", "Label dipakai tanpa stok di meja: setujui perpindahan / distribusi", "bell", dlg_notif_stok, "Notifikasi", ket_nt),
+            "notif": ("NOTIFIKASI STOK", "Stok minus dan laporan karyawan: setujui, cek meja, koreksi", "bell", dlg_notif_stok, "Notifikasi", ket_nt),
             "perbaikan": ("PERBAIKAN DATA", "Pindah stok antar meja, koreksi label diterima, koreksi stok opname", "wrench", dlg_perbaikan, "Fungsi", "Koreksi"),
             "operator": ("DAFTAR OPERATOR", "Daftarkan operator untuk Input Label Afkir", "user", dlg_operator, "Fungsi", "Akun operator")}
     daftar = [{"id": k, "label": v[0], "sub": v[1], "icon": v[2], "status_label": v[4], "status": v[5], "disabled": False}
@@ -1564,10 +1614,16 @@ def tampil(halaman_admin=None):
 
     _hub()
     nt = _notif_hitung()
-    if nt:
+    lp = _lapor_hitung()
+    if nt or lp:
         with st.container(border=True):
             c = st.columns([4, 1.4], vertical_alignment="center")
-            c[0].markdown(f"⚠️ **{len(nt)} stok label minus** karena pemakaian melebihi stok meja — perlu persetujuan Foreman.")
+            ket_ = []
+            if nt:
+                ket_.append(f"**{len(nt)} stok label minus** (pemakaian melebihi stok meja)")
+            if lp:
+                ket_.append(f"**{len(lp)} laporan karyawan** (stok meja tidak sesuai)")
+            c[0].markdown("⚠️ " + " dan ".join(ket_) + " — perlu ditinjau Foreman.")
             c[1].button("Tinjau", key="nt_buka", type="primary", width="stretch", on_click=dlg_notif_stok)
     st.write("")
     a, b, c = st.columns([2, 2, 1], vertical_alignment="center")

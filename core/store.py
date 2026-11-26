@@ -37,6 +37,7 @@ KOLOM = {
     "label_pindahmeja": ["id", "tgl", "waktu", "prn", "nama", "dari_pabrik", "dari_meja", "ke_pabrik", "ke_meja", "label", "bagus", "oleh", "sisa", "bawa", "koreksi"],  # operator pindah meja: sisa fisik di meja lama, dibawa ke meja baru; bagus = pemakaian di meja lama (dihitung), koreksi = selisih stok sistem lebih kecil dari sisa fisik
     "label_kosong": ["id", "tgl", "waktu", "pabrik", "oleh"],  # tombol Kosongkan Label Meja
     "label_riwayat": ["waktu", "tgl", "oleh", "jenis", "kunci", "sebelum", "sesudah"],  # riwayat perubahan/hapus input label
+    "label_lapor": ["id", "tgl", "waktu", "prn", "nama", "pabrik", "meja", "label", "sistem", "aktual", "catatan", "status", "oleh", "waktu_selesai"],  # laporan karyawan: stok meja tidak sama dengan sistem (menunggu dicek foreman)
     "label_notif": ["id", "tgl", "oleh", "waktu", "status"],  # notifikasi stok minus yang diputuskan foreman (abaikan / disetujui)
     "operator": ["prn", "kode_opr", "oleh", "waktu"],  # Daftar Operator: siapa yang bisa dipilih di Monitoring Label
     "meja_abaikan": ["tgl", "shift", "pabrik", "meja", "oleh", "waktu"],  # meja yang tidak perlu dicek (diabaikan foreman)

@@ -124,49 +124,204 @@ def isi_jumlah(kp, awal=None, minimal=1, maksimal=999999, judul="Pilih type labe
 
 
 # ------------------------------------------------------------------ label diterima operator
+_CSS_TBL = """<style>
+.st-key-{k} [data-testid='stHorizontalBlock']{{flex-wrap:nowrap!important;gap:.4rem!important}}
+.st-key-{k} [data-testid='stColumn']{{min-width:0!important}}
+.tt-th{{font-size:.66rem;font-weight:800;color:#5b7399;letter-spacing:.4px}}
+.tt-th.r,.tt-n{{text-align:right}}
+.tt-ty b{{font-size:1rem;color:#0b3d91}} .tt-ty small{{display:block;color:#7b8fb0;font-size:.68rem;line-height:1.1}}
+.tt-n{{font-size:1rem;font-weight:700;color:#1c2a44}} .tt-n.ok{{color:#1b7a3d;font-weight:800}} .tt-n.min{{color:#b3261e;font-weight:800}}
+.tt-tot{{border:1px solid #d6e4f8;border-radius:12px;background:#f8fbff;padding:8px 12px;margin:6px 0}}
+.tt-tot b{{color:#0b3d91;font-size:1.15rem}}
+</style>"""
+
+
+def _f(v):
+    return f"{int(v):,}".replace(",", ".")
+
+
+def _baris_foreman(pabrik, meja, tgl, kp):
+    """Baris tabel Dari Foreman: type yang ada di meja ini + type yang ditambahkan karyawan. [(label, awal, sisa_sekarang, terima_hari_ini)]."""
+    try:
+        r = stok.meja_ringkas(pabrik, meja, tgl)
+    except Exception:
+        r = {}
+    dasar = {lb: d for lb, d in r.items() if d["awal"] or d["sisa"] or d["terima"]}
+    tambah = list(st.session_state.get(f"{kp}_tipe", []))
+    induk = [t for t in tambah if not label.adalah_sni(t)]
+    if any(label.ket_label(x) for x in induk) and "CE7" not in induk:
+        induk.insert(0, "CE7")
+    induk += [t for t in tambah if label.adalah_sni(t)]
+    for t in label.kolom_lengkap(induk):
+        dasar.setdefault(t, {"awal": 0, "sisa": 0, "terima": 0})
+    return [(lb, int(dasar[lb]["awal"]), int(dasar[lb]["sisa"]), int(dasar[lb]["terima"])) for lb in stok.urut_label(dasar)]
+
+
+def _tambah_type(kp, ada):
+    """Baris '+ Tambah type': membuka daftar type yang bisa diketik; type terpilih menjadi baris baru."""
+    kb = f"{kp}_tb"
+    if not st.session_state.get(kb):
+        if st.button("+ Tambah type", key=f"{kp}_tbtn", type="tertiary"):
+            st.session_state[kb] = True
+            st.rerun(scope="fragment")
+        return
+    opsi = [t for t in stok.semua_label() if t not in ada]
+
+    def _pilih():
+        v = st.session_state.get(f"{kp}_tbpilih")
+        if v:
+            st.session_state[f"{kp}_tipe"] = list(st.session_state.get(f"{kp}_tipe", [])) + [v]
+        st.session_state[kb] = False
+        st.session_state.pop(f"{kp}_tbpilih", None)
+    c = st.columns([4, 1.2], vertical_alignment="center")
+    c[0].selectbox("Tambah type", opsi, index=None, placeholder="Ketik type label…", key=f"{kp}_tbpilih", on_change=_pilih, label_visibility="collapsed")
+    if c[1].button("Batal", key=f"{kp}_tbbatal"):
+        st.session_state[kb] = False
+        st.rerun(scope="fragment")
+
+
+def _tabel_terima_foreman(pabrik, meja, tgl, kp):
+    """Tabel stok meja yang langsung bisa diisi: TYPE | AWAL | TERIMA (ketik) | SEKARANG (otomatis). Return [(label, jumlah)] yang terisi."""
+    kt = f"{kp}_tbl"
+    st.markdown(_CSS_TBL.format(k=kt), unsafe_allow_html=True)
+    rows = _baris_foreman(pabrik, meja, tgl, kp)
+    W = [1.25, 0.8, 1.05, 1.0]
+    out = []
+    with st.container(key=kt):
+        h = st.columns(W)
+        for c, t, rr in zip(h, ["TYPE", "AWAL", "TERIMA", "SEKARANG"], ["", " r", " r", " r"]):
+            c.markdown(f"<div class='tt-th{rr}'>{t}</div>", unsafe_allow_html=True)
+        for lb, awal, sisa, terima in rows:
+            c = st.columns(W, vertical_alignment="center")
+            ket = f"+{_f(terima)} hari ini" if terima else ""
+            c[0].markdown(f"<div class='tt-ty'><b>{html.escape(str(lb))}</b><small>{ket}</small></div>", unsafe_allow_html=True)
+            c[1].markdown(f"<div class='tt-n'>{_f(awal)}</div>", unsafe_allow_html=True)
+            v = c[2].number_input(f"Terima {lb}", min_value=0, max_value=9999999, step=1, value=None, placeholder="0", key=f"{kp}_f_{pabrik}_{meja}_{lb}",
+                                  label_visibility="collapsed")
+            n = int(v or 0)
+            skr = sisa + n
+            c[3].markdown(f"<div class='tt-n {'min' if skr < 0 else ('ok' if n else '')}'>{_f(skr)}</div>", unsafe_allow_html=True)
+            if n > 0:
+                out.append((lb, n))
+        _tambah_type(kp, [r[0] for r in rows])
+    return out
+
+
+def _panel_meja_lain(pabrik, meja, tgl, kp):
+    """Dari meja lain: pilih type, tabel MEJA·PABRIK | STOK | DIAMBIL | SISA per type. Return [(lokasi_asal, label, diambil)]."""
+    st.markdown("<div class='ls-lbl'>TYPE LABEL YANG DITERIMA</div>", unsafe_allow_html=True)
+    tipe = st.multiselect("Type label", stok.semua_label(), key=f"{kp}_mltipe", placeholder="Ketik/pilih type label…", label_visibility="collapsed")
+    kt = f"{kp}_mltbl"
+    ambil, total, sumber_semua = [], {}, []
+    for it, lb in enumerate(tipe):
+        sumber = stok.stok_di_meja_lain(lb, tgl, (pabrik, meja))
+        st.markdown(f"<div class='ls-lbl' style='font-size:13px'>{html.escape(str(lb))} · label ini ada di meja:</div>", unsafe_allow_html=True)
+        if not sumber:
+            st.info(f"Tidak ada meja lain yang punya stok {lb}. Bila labelnya dari Foreman, pilih 'Foreman' di atas.")
+            continue
+        W = [1.7, 0.8, 1.05, 0.8]
+        with st.container(key=f"{kt}_{it}"):
+            st.markdown(_CSS_TBL.format(k=f"{kt}_{it}"), unsafe_allow_html=True)
+            h = st.columns(W)
+            for c, t, rr in zip(h, ["MEJA · PABRIK", "STOK", "DIAMBIL", "SISA"], ["", " r", " r", " r"]):
+                c.markdown(f"<div class='tt-th{rr}'>{t}</div>", unsafe_allow_html=True)
+            for lk, n in sumber:
+                c = st.columns(W, vertical_alignment="center")
+                c[0].markdown(f"<div class='tt-ty'><b style='font-size:.9rem'>{html.escape(stok.lok_nama(lk))}</b></div>", unsafe_allow_html=True)
+                c[1].markdown(f"<div class='tt-n'>{_f(n)}</div>", unsafe_allow_html=True)
+                v = c[2].number_input(f"Diambil {lb} {lk}", min_value=0, max_value=int(n), step=1, value=None, placeholder="0",
+                                      key=f"{kp}_ml_{pabrik}_{meja}_{lb}_{lk}", label_visibility="collapsed")
+                d = int(v or 0)
+                c[3].markdown(f"<div class='tt-n {'ok' if d else ''}'>{_f(n - d)}</div>", unsafe_allow_html=True)
+                if d > 0:
+                    ambil.append((lk, lb, d))
+                    total[lb] = total.get(lb, 0) + d
+                sumber_semua.append(lk)
+    if total:
+        skr = stok.stok_meja(pabrik, meja, tgl)
+        st.markdown("<div class='tt-tot'><span class='ls-nt'>Setelah disimpan, stok meja ini</span><br>" + "<br>".join(
+            f"<b>{html.escape(str(lb))}: {_f(skr.get(lb, 0))} → {_f(skr.get(lb, 0) + n)}</b> <span class='ls-nt'>(+{_f(n)} diambil dari meja lain)</span>"
+            for lb, n in total.items()) + "</div>", unsafe_allow_html=True)
+    return ambil, list(dict.fromkeys(sumber_semua))
+
+
+def _lapor(prn, nama, tgl, pabrik, meja, kp, lain=()):
+    """Tombol Laporkan: stok di sistem tidak sama dengan yang ada di meja. Foreman mendapat notifikasi untuk mengecek meja itu."""
+    with st.popover("Laporkan stok tidak sesuai", icon=":material/report:", width="stretch"):
+        pilihan = [stok.lok(pabrik, str(meja))] + [lk for lk in lain if lk != stok.lok(pabrik, str(meja))]
+        lk = st.selectbox("Meja yang dilaporkan", pilihan, format_func=stok.lok_nama, key=f"{kp}_lp_lk")
+        ada = stok.stok_lokasi(lk, tgl)
+        opsi = stok.urut_label(ada) if ada else stok.semua_label()
+        lb = st.selectbox("Type label", opsi, index=None, placeholder="Pilih type…", key=f"{kp}_lp_lb_{lk}")
+        sistem = int(ada.get(lb, 0)) if lb else 0
+        if lb:
+            st.markdown(f"Menurut sistem: **{_f(sistem)} pcs**")
+        n = st.number_input("Yang ada di meja (pcs)", min_value=0, max_value=9999999, step=1, value=None, placeholder="isi jumlah", key=f"{kp}_lp_n_{lk}_{lb}")
+        cat = st.text_input("Catatan (boleh kosong)", max_chars=200, key=f"{kp}_lp_c_{lk}_{lb}")
+        st.caption("Stok tidak berubah. Foreman akan menerima notifikasi untuk mengecek meja ini dan memperbaikinya.")
+        if st.button("KIRIM LAPORAN", type="primary", width="stretch", key=f"{kp}_lp_kirim", disabled=not (lb and n is not None)):
+            p2, m2 = stok._lok_pisah(lk)
+            g = stok.lapor_simpan(tgl, prn, nama, p2, m2, lb, sistem, n, cat)
+            if g:
+                st.error(g)
+            else:
+                st.toast("Laporan terkirim ke Foreman.", icon="✅")
+                for k_ in [k for k in st.session_state if str(k).startswith(f"{kp}_lp_")]:
+                    st.session_state.pop(k_, None)
+                st.rerun(scope="fragment")
+
+
 def form_terima(prn, nama, tgl, oleh, adm=False, kp="lt"):
-    """Tab INPUT LABEL: operator menerima label dari foreman (masuk stok meja)."""
+    """Tab INPUT LABEL: label diterima meja, dari Foreman (tabel stok meja diisi langsung) atau dari meja lain (otomatis menjadi Pindah Label)."""
     st.markdown(CSS, unsafe_allow_html=True)
     pabrik, meja = pilih_meja(kp, "", prn, tgl)
-    if pabrik and meja:
-        st.markdown("<div class='ls-lbl'>STOK LABEL DI MEJA INI</div>" + _tabel_stok_meja(pabrik, meja, tgl), unsafe_allow_html=True)
-    sudah = stok.meja_terima_daftar(prn, tgl)
-    tot_lama = {}
-    if not sudah.empty:
-        for r in sudah.itertuples():
-            tot_lama[r.label] = tot_lama.get(r.label, 0) + int(r.jumlah)
-        rinci = "; ".join(f"**{lb}** {n:,} pcs".replace(",", ".") + " (" + ", ".join(
-            f"jam {w[:5]}: {int(j):,} pcs".replace(",", ".") for w, j, l2 in zip(sudah["waktu"][::-1], sudah["jumlah"][::-1], sudah["label"][::-1]) if l2 == lb) + ")"
-            for lb, n in tot_lama.items())
-        st.warning(f"Pada tanggal ini label diterima **sudah pernah diinput**: {rinci}. "
-                   "Input baru **ditambahkan** ke jumlah itu (bukan mengganti).")
-    st.markdown("<div class='ls-lbl'>LABEL DITERIMA</div>", unsafe_allow_html=True)
-    st.caption("Klik + Label untuk memilih type. Kolom SNI muncul otomatis bila ada type CW; SNI juga boleh dipilih sendiri.")
-    import halaman_foreman as _hf  # jendela isian yang sama dengan Input Label Afkir
-    st.markdown(_hf.CSS_JENDELA, unsafe_allow_html=True)
-    st.html(_hf.JS_PILIH, unsafe_allow_javascript=True)
     ctx = (pabrik, str(meja), tgl)
-    if st.session_state.get(f"{kp}_ctx") != ctx:  # ganti meja/tanggal: kolom type diisi ulang dari stok meja itu
-        _reset(kp + "_isi")
+    if st.session_state.get(f"{kp}_ctx") != ctx:  # ganti meja/tanggal: isian lama dibuang
+        for k_ in [k for k in st.session_state if str(k).startswith((f"{kp}_f_", f"{kp}_ml_", f"{kp}_tipe", f"{kp}_mltipe"))]:
+            st.session_state.pop(k_, None)
         st.session_state[f"{kp}_ctx"] = ctx
-    ada_meja = {lb: 0 for lb, n in stok.stok_meja(pabrik, meja, tgl).items() if n > 0} if (pabrik and meja) else {}
-    if ada_meja:
-        st.caption("Type yang sudah ada di meja ini sudah tersedia di bawah; isi jumlahnya saja. Klik + Label hanya untuk type baru.")
-    baris = [(k, v) for k, v in _hf._grid_hitung(kp + "_isi", ada_meja).items() if v > 0]
-    lengkap = bool(pabrik and meja and baris)
-    for lb, n in baris:
-        if tot_lama.get(lb):
-            st.caption(f"{lb}: sudah {tot_lama[lb]:,} + baru {n:,} = **{tot_lama[lb] + n:,} pcs** hari ini".replace(",", "."))
     if not (pabrik and meja):
         st.caption("Pilih pabrik dan nomor meja dulu — tanpa alamat meja, stok tidak bisa dipetakan.")
-    if st.button("SIMPAN", type="primary", width="stretch", key=f"{kp}_simpan", disabled=not lengkap):
-        galat = stok.meja_terima_simpan(tgl, prn, nama, pabrik, meja, baris, oleh)
-        if galat:
-            st.error(galat)
-        else:
-            _reset(kp + "_isi")
-            st.toast("Label diterima tersimpan.", icon="✅")
-            st.rerun(scope="fragment")
+        _daftar_terima(prn, tgl, oleh, adm, kp)
+        return
+    st.markdown("<div class='ls-lbl'>LABEL DITERIMA DARI</div>", unsafe_allow_html=True)
+    sumber = st.segmented_control("Label diterima dari", ["Foreman", "Meja lain"], default="Foreman", key=f"{kp}_sumber", label_visibility="collapsed") or "Foreman"
+    sudah = stok.meja_terima_daftar(prn, tgl)
+    tot_lama = {}
+    for r in sudah.itertuples():
+        tot_lama[r.label] = tot_lama.get(r.label, 0) + int(r.jumlah)
+    if sumber == "Foreman":
+        st.markdown("<div class='ls-lbl'>STOK LABEL DI MEJA INI — isi kolom TERIMA</div>", unsafe_allow_html=True)
+        baris = _tabel_terima_foreman(pabrik, meja, tgl, kp)
+        for lb, n in baris:
+            if tot_lama.get(lb):
+                st.caption(f"{lb}: sudah {_f(tot_lama[lb])} hari ini + baru {_f(n)} = **{_f(tot_lama[lb] + n)} pcs**")
+        if tot_lama:
+            st.caption("Input yang sama pada tanggal ini **ditambahkan** ke jumlah sebelumnya (bukan mengganti).")
+        _lapor(prn, nama, tgl, pabrik, meja, kp)
+        if st.button("SIMPAN", type="primary", width="stretch", key=f"{kp}_simpan", disabled=not baris):
+            galat = stok.meja_terima_simpan(tgl, prn, nama, pabrik, meja, baris, oleh)
+            if galat:
+                st.error(galat)
+            else:
+                for k_ in [k for k in st.session_state if str(k).startswith((f"{kp}_f_", f"{kp}_tipe"))]:
+                    st.session_state.pop(k_, None)
+                st.toast("Label diterima tersimpan.", icon="✅")
+                st.rerun(scope="fragment")
+    else:
+        st.markdown("<div class='ls-lbl'>STOK LABEL DI MEJA INI SEKARANG</div>" + _tabel_stok_meja(pabrik, meja, tgl), unsafe_allow_html=True)
+        ambil, lain = _panel_meja_lain(pabrik, meja, tgl, kp)
+        st.caption("Label di rak dan tidak tahu dari meja berapa? Cukup pilih type; sistem menunjukkan meja yang punya stoknya. Isi DIAMBIL hanya pada meja yang labelnya kamu ambil.")
+        _lapor(prn, nama, tgl, pabrik, meja, kp, lain)
+        if st.button("SIMPAN PERPINDAHAN", type="primary", width="stretch", key=f"{kp}_simpan_ml", disabled=not ambil):
+            galat = stok.terima_dari_meja_lain(tgl, prn, (pabrik, meja), ambil, oleh)
+            if galat:
+                st.error(galat)
+            else:
+                for k_ in [k for k in st.session_state if str(k).startswith((f"{kp}_ml_", f"{kp}_mltipe"))]:
+                    st.session_state.pop(k_, None)
+                st.toast("Perpindahan label tersimpan.", icon="✅")
+                st.rerun(scope="fragment")
     _daftar_terima(prn, tgl, oleh, adm, kp)
 
 

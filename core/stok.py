@@ -681,6 +681,85 @@ def opname_koreksi(tgl, lokasi, perubahan, oleh):
     return None
 
 
+# ---------------------------------------------------------------- label diterima dari meja lain (input karyawan) + laporan stok tidak sesuai
+def stok_di_meja_lain(lb, tgl, kecuali):
+    """Meja QC (bukan Foreman, bukan meja `kecuali`=(pabrik, meja)) yang punya stok type lb: [(lokasi, stok)] dari stok terbanyak."""
+    sal, _ = saldo(tgl)
+    ex = lok(kecuali[0], str(kecuali[1]))
+    return sorted(((lk, int(n)) for (lk, b), n in sal.items() if b == lb and n > 0 and lk != ex and not adalah_foreman(lk) and dept_lokasi(lk) == "QC"),
+                  key=lambda x: (-x[1], x[0]))
+
+
+def terima_dari_meja_lain(tgl, prn, ke, ambil, oleh):
+    """ke=(pabrik, meja) meja karyawan. ambil = [(lokasi_asal, label, jumlah)]. Setiap meja asal dicatat sebagai Pindah Label ke meja ini. Return galat (str) atau None."""
+    ambil = [(lk, lb, _int(n)) for lk, lb, n in ambil if lk and lb and _int(n) > 0]
+    if not ambil:
+        return "Isi kolom DIAMBIL minimal satu baris."
+    per = {}
+    for lk, lb, n in ambil:
+        per.setdefault(lk, []).append((lb, n))
+    sal, _ = saldo(tgl)
+    for lk, brs in per.items():  # periksa semua dulu agar tidak tersimpan setengah-setengah
+        for lb, n in brs:
+            if n > sal.get((lk, lb), 0):
+                return f"{lb} di {lok_nama(lk)}: diambil {n} melebihi stok {max(sal.get((lk, lb), 0), 0)}."
+    for lk, brs in per.items():
+        ap, am = _lok_pisah(lk)
+        g = pindah_simpan(tgl, ap, am, (ke[0], str(ke[1])), brs, oleh, prn)
+        if g:
+            return g
+    return None
+
+
+def lapor_simpan(tgl, prn, nama, pabrik, meja, lb, sistem, aktual, catatan=""):
+    """Karyawan melaporkan stok meja tidak sama dengan sistem. Tidak mengubah stok; hanya notifikasi untuk foreman."""
+    if not pabrik or not meja or not lb:
+        return "Pilih pabrik, meja, dan type yang dilaporkan."
+    if _int(aktual) < 0:
+        return "Jumlah yang ada tidak boleh negatif."
+    d = pd.DataFrame([{"id": _id(), "tgl": tgl, "waktu": _waktu(), "prn": prn, "nama": nama, "pabrik": pabrik, "meja": str(meja), "label": lb,
+                       "sistem": _int(sistem), "aktual": _int(aktual), "catatan": str(catatan or "")[:200], "status": "buka", "oleh": "", "waktu_selesai": ""}],
+                     columns=["id", "tgl", "waktu", "prn", "nama", "pabrik", "meja", "label", "sistem", "aktual", "catatan", "status", "oleh", "waktu_selesai"])
+    data.upsert("label_lapor", d, ["id"])
+    data.catat_update("STOK LABEL")
+    return None
+
+
+def lapor_buka():
+    """Laporan karyawan yang belum diselesaikan foreman: list dict, terbaru dulu."""
+    d = data.baca("label_lapor")
+    if d.empty:
+        return []
+    d = d[d["status"] == "buka"].sort_values(["tgl", "waktu"], ascending=False)
+    return [dict(r) for _i, r in d.iterrows()]
+
+
+def lapor_selesai(id_, oleh, aktual=None):
+    """Tutup laporan. aktual (int) = foreman mengoreksi stok meja itu menjadi sejumlah itu (hitung ulang + ADJUST hari ini); None = hanya selesai."""
+    d = data.baca("label_lapor")
+    x = d[d["id"] == id_]
+    if x.empty:
+        return "Laporan tidak ditemukan."
+    r = x.iloc[0].copy()
+    if r["status"] != "buka":
+        return None
+    if aktual is not None:
+        lk, tg = lok(r["pabrik"], str(r["meja"])), hari_ini()
+        sudah = opname_status(tg).get(lk)
+        dasar = {lb: a for lb, (a, _s) in opname_baris(tg, lk).items()} if sudah is not None else dict(stok_lokasi(lk, tg))
+        dasar[r["label"]] = _int(aktual)
+        opname_simpan(tg, lk, dasar, oleh)
+        opname_adjust(tg, oleh, [lk])
+        catat_riwayat("koreksi dari laporan", f"{r['tgl']}|{lk}|{r['label']}", str(_int(r["sistem"])), str(_int(aktual)), oleh, tg)
+    r["status"] = "selesai" if aktual is None else "dikoreksi"
+    r["oleh"] = oleh
+    r["waktu_selesai"] = datetime.now(data.WIB).strftime("%Y-%m-%d %H:%M:%S")
+    data.upsert("label_lapor", pd.DataFrame([r]), ["id"])
+    data.catat_update("STOK LABEL")
+    _bersih()
+    return None
+
+
 # ---------------------------------------------------------------- notifikasi stok minus (butuh persetujuan foreman)
 def _id_notif(tgl, lk, lb, prn=""):
     return f"{tgl}|{lk}|{lb}"

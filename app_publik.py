@@ -585,7 +585,7 @@ if not st.session_state.get("me"):  # masuk dari halaman admin tanpa login ulang
     if _tk and _tk["p"] == akses.ADMIN and _pa:
         _k = data.baca("karyawan")
         _c = _k[_k["prn"] == _pa]
-        st.session_state["adm_habis"] = float(_tk["e"])
+        st.session_state["adm_habis"] = time.time() + akses.UMUR_TOKEN
         st.session_state.update({"me": _pa, "me_nama": _c.iloc[0]["nama_web"] if len(_c) else "Admin", "adm": True, "gagal": 0})
 atas, kanan = st.columns([6, 1.6], vertical_alignment="center")
 kol, _ = atas.columns([1.6, 3])

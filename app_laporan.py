@@ -8,7 +8,7 @@ st.set_page_config(page_title="Laporan QC TOTO", page_icon="📊", layout="wide"
 from core import ui as _ui_ping
 _ui_ping.jaga_koneksi()
 
-akses.gerbang()
+akses.gerbang(sesi=True)
 
 halaman = st.navigation(
     {"LABEL": [

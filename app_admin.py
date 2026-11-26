@@ -1,4 +1,5 @@
 """Halaman admin (Welcome Admin QC TOTO). Jalankan: streamlit run app_admin.py"""
+import html
 import difflib
 import io
 import time
@@ -810,60 +811,77 @@ def dlg_eval():
     kontrol_jendela("eval")
     kepala("evaluasi", "HALAMAN VERIFIKASI KARYAWAN")
     st.markdown("""<style>
-[class*='st-key-evV_'] button{background:#1a9c3c !important;color:#fff !important;border:2px solid #000 !important;font-weight:800}
-[class*='st-key-evX_'] button{background:#d50000 !important;color:#fff !important;border:2px solid #000 !important;font-weight:800}
-[class*='st-key-evU_'] button{min-height:0;padding:0 .4rem}
-[class*='st-key-evV_'] button,[class*='st-key-evX_'] button{min-width:2.2rem;padding:0 .5rem}
+[class*='st-key-evb_'] [data-testid='stHorizontalBlock']{flex-wrap:nowrap !important;gap:.5rem !important}
+[class*='st-key-evb_'] [data-testid='stColumn']{min-width:0 !important}
+[class*='st-key-evV_'] button{background:#1b9a47 !important;color:#fff !important;border:0 !important;font-weight:800;min-height:46px;border-radius:10px}
+[class*='st-key-evX_'] button{background:#d32f2f !important;color:#fff !important;border:0 !important;font-weight:800;min-height:46px;border-radius:10px}
+[class*='st-key-evU_'] button{min-height:46px;border-radius:10px;font-weight:700}
+[class*='st-key-evM_'] button{min-height:46px;border-radius:10px;font-weight:800}
+.ev-nm{font-weight:800;font-size:1.02rem;color:#0b3d91;line-height:1.2}
+.ev-tg{font-size:.78rem;color:#5b7399}
+.ev-pill{display:inline-block;border-radius:999px;padding:3px 11px;font-size:.78rem;font-weight:800;white-space:nowrap}
+.ev-g{display:grid;grid-template-columns:2fr 1fr;gap:6px;margin:6px 0 8px}
+.ev-g div{border:1px solid #d6e4f8;border-radius:10px;background:#f8fbff;padding:6px 10px}
+.ev-g small{display:block;font-size:.62rem;font-weight:800;letter-spacing:.4px;color:#5b7399}
+.ev-g b{font-size:.92rem;color:#1c2a44;font-weight:700}
+.ev-st{display:inline-block;border-radius:10px;padding:10px 14px;font-weight:800;font-size:.9rem;width:100%;text-align:center;box-sizing:border-box}
 </style>""", unsafe_allow_html=True)
-    semua = st.toggle("Tampilkan juga yang sudah diputuskan", key="ev_semua")
-    antre = logic.antrean_evaluasi(semua)
+    semua_ = logic.antrean_evaluasi(True)
+    jml = {"Menunggu": sum(1 for r in semua_ if r["status"] == "menunggu"), "Disetujui": sum(1 for r in semua_ if r["status"] == "V"),
+           "Ditolak": sum(1 for r in semua_ if r["status"] == "X")}
+    tab = st.segmented_control("Tampilkan", ["Menunggu", "Disetujui", "Ditolak"], default="Menunggu", key="ev_tab", label_visibility="collapsed") or "Menunggu"
+    st.caption(f"Menunggu {jml['Menunggu']} · Disetujui {jml['Disetujui']} · Ditolak {jml['Ditolak']}")
+    peta = {"Menunggu": "menunggu", "Disetujui": "V", "Ditolak": "X"}
+    antre = [r for r in semua_ if r["status"] == peta[tab]]
     if not antre:
-        st.info("Belum ada pengajuan alasan tidak target yang menunggu keputusan.")
-        return
-    st.caption("V = atasan menerima: target hari itu dikurangi sebesar waktu masalah. X = menolak: target 8 jam tetap, hasil tetap merah. "
-               "Setelah dipilih, tombol lain hilang (klik 'ubah' untuk memilih ulang). Lalu tekan SUBMIT.")
-    lebar = [2.2, 1.3, 1.0, 3.2, 0.8, 3.0]
-    for c, t in zip(st.columns(lebar), ["NAMA", "TANGGAL", "% HASIL", "ALASAN", "MENIT", "KEPUTUSAN"]):
-        c.markdown(f"**{t}**")
+        st.info("Belum ada pengajuan alasan tidak target yang menunggu keputusan." if tab == "Menunggu" else f"Belum ada pengajuan yang {tab.lower()}.")
+    else:
+        st.caption("SETUJUI: target hari itu dikurangi sebesar waktu masalah. TOLAK: target 8 jam tetap, hasil tetap merah. "
+                   "Pilih dulu untuk semua memo, lalu tekan SIMPAN KEPUTUSAN di bawah.")
     pilih = {}
     for r in antre:
         kid = f"{r['prn']}_{r['tgl']}"
         sekarang_ = st.session_state.get(f"ev_{kid}", "?")
         if sekarang_ == "?":
             sekarang_ = r["status"] if r["status"] in ("V", "X") else None
-        c = st.columns(lebar, vertical_alignment="center")
-        c[0].write(r["nama"])
-        c[1].write(f"{r['tgl'][8:]}-{r['tgl'][5:7]}-{r['tgl'][:4]}")
-        c[2].write(f"{r['persen']:.1f}%".replace(".", ",") if r["persen"] is not None else "-")
-        c[3].write(r["alasan"] or "–")
-        c[4].write(r["menit"])
-        with c[5]:
-            k1, k2, k3 = st.columns([1, 1, 1], vertical_alignment="center", gap="small")
-            if sekarang_ is None:
-                if k1.button("V", key=f"evV_{kid}"):
-                    st.session_state[f"ev_{kid}"] = "V"
-                    st.rerun(scope="fragment")
-                if k2.button("X", key=f"evX_{kid}"):
-                    st.session_state[f"ev_{kid}"] = "X"
-                    st.rerun(scope="fragment")
-            else:
-                warna = "#1a9c3c" if sekarang_ == "V" else "#d50000"
-                k1.markdown(f"<span style='background:{warna};color:#fff;border:2px solid #000;border-radius:6px;padding:2px 12px;"
-                            f"font-weight:800'>{sekarang_}</span>", unsafe_allow_html=True)
-                if k2.button("ubah", key=f"evU_{kid}"):
-                    st.session_state[f"ev_{kid}"] = None
-                    st.rerun(scope="fragment")
-                pilih[(r["prn"], r["tgl"])] = sekarang_
-            with k3.popover("hapus"):
-                st.write("Hapus pengajuan ini beserta foto? (Tidak bisa dibatalkan.)")
-                if st.button("YA, HAPUS", key=f"evH_{kid}", type="primary"):
-                    with st.spinner("Menghapus…"):
-                        data.hapus_pengajuan(r["prn"], r["tgl"])
-                    st.session_state["hapus_ok"] = "eval"
-                    st.rerun()
+        p_ = r["persen"]
+        warna = ("#eef2f8", "#5b7399") if p_ is None else ("#e3f6ea", "#1b7a3d") if (p_ is not None and p_ >= 90) else (("#fff1cf", "#7a5200") if (p_ is not None and p_ >= 75) else ("#fdeceb", "#8f1d16"))
+        ps = f"{p_:.1f}%".replace(".", ",") if p_ is not None else "-"
+        with st.container(border=True, key=f"evk_{kid}"):
+            st.markdown(f"<div style='display:flex;justify-content:space-between;align-items:flex-start;gap:8px'><div><div class='ev-nm'>{html.escape(str(r['nama']))}</div>"
+                        f"<div class='ev-tg'>{r['tgl'][8:]}-{r['tgl'][5:7]}-{r['tgl'][:4]}</div></div>"
+                        f"<span class='ev-pill' style='background:{warna[0]};color:{warna[1]}'>{ps}</span></div>"
+                        f"<div class='ev-g'><div><small>ALASAN</small><b>{html.escape(str(r['alasan'] or '–'))}</b></div><div><small>MENIT</small><b>{r['menit']}</b></div></div>",
+                        unsafe_allow_html=True)
+            with st.container(key=f"evb_{kid}"):
+                if sekarang_ is None:
+                    c = st.columns([2, 2, 1])
+                    if c[0].button("SETUJUI", key=f"evV_{kid}", width="stretch"):
+                        st.session_state[f"ev_{kid}"] = "V"
+                        st.rerun(scope="fragment")
+                    if c[1].button("TOLAK", key=f"evX_{kid}", width="stretch"):
+                        st.session_state[f"ev_{kid}"] = "X"
+                        st.rerun(scope="fragment")
+                else:
+                    c = st.columns([3, 1.4, 1])
+                    bg, fg, tx = ("#e3f6ea", "#1b7a3d", "DISETUJUI") if sekarang_ == "V" else ("#fdeceb", "#8f1d16", "DITOLAK")
+                    c[0].markdown(f"<div class='ev-st' style='background:{bg};color:{fg}'>{tx}</div>", unsafe_allow_html=True)
+                    if c[1].button("Ubah", key=f"evU_{kid}", width="stretch"):
+                        st.session_state[f"ev_{kid}"] = None
+                        st.rerun(scope="fragment")
+                    if sekarang_ != r["status"]:
+                        pilih[(r["prn"], r["tgl"])] = sekarang_
+                with c[-1].popover("⋯", width="stretch"):
+                    st.markdown(f"**Hapus memo {html.escape(str(r['nama']))}, {r['tgl'][8:]}-{r['tgl'][5:7]}-{r['tgl'][:4]}?**")
+                    st.caption("Pengajuan beserta foto dihapus dan tidak bisa dikembalikan.")
+                    if st.button("YA, HAPUS", key=f"evH_{kid}", type="primary", width="stretch"):
+                        with st.spinner("Menghapus…"):
+                            data.hapus_pengajuan(r["prn"], r["tgl"])
+                        st.session_state["hapus_ok"] = "eval"
+                        st.rerun()
     st.write("")
     ubah = {k: v for k, v in pilih.items() if v in ("V", "X")}
-    if st.button(f"SUBMIT ({len(ubah)})", type="primary", width="stretch", disabled=not ubah):
+    if st.button(f"SIMPAN KEPUTUSAN ({len(ubah)})", type="primary", width="stretch", disabled=not ubah):
         with st.spinner("Menyimpan keputusan…"):
             logic.simpan_keputusan(ubah)
             data.catat_update("EVALUASI KARYAWAN")
@@ -872,7 +890,7 @@ def dlg_eval():
             except Exception:
                 pass
         for k in list(st.session_state):
-            if k.startswith("ev_") and k != "ev_semua":
+            if k.startswith("ev_") and k not in ("ev_tab",):
                 del st.session_state[k]
         st.session_state["sukses"] = "KEPUTUSAN BERHASIL DISIMPAN"
         st.rerun()

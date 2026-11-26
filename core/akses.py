@@ -86,15 +86,13 @@ def peran():
     return st.session_state.get("peran")
 
 
-def _habis():
-    """Epoch detik batas sesi (diisi saat login / dari token). Dibuat bila belum ada."""
-    if "sesi_habis" not in st.session_state:
-        st.session_state["sesi_habis"] = time.time() + UMUR_TOKEN
-    return st.session_state["sesi_habis"]
+def ada_sesi():
+    """Batas waktu sesi hanya ada bila pengguna masuk lewat tombol dari halaman admin (ke halaman utama/laporan)."""
+    return bool(st.session_state.get("sesi_habis"))
 
 
 def sisa_sesi():
-    return int(_habis() - time.time())
+    return int(st.session_state.get("sesi_habis", 0) - time.time())
 
 
 def penghitung(sisa=None):
@@ -191,20 +189,24 @@ def pelaku():
     return f"{n} ({e})" if e else n
 
 
-def gerbang():
-    """Tampilkan login bila belum masuk, lalu st.stop(). Setelah lolos, peran() terisi."""
+def gerbang(sesi=False):
+    """Tampilkan login bila belum masuk, lalu st.stop(). Setelah lolos, peran() terisi.
+    sesi=True (app laporan): masuk lewat tombol dari halaman admin dibatasi 30 menit (hitung mundur). Login langsung, dan
+    halaman admin/foreman sendiri, tanpa batas waktu."""
     adm = _rahasia_admin()
     if not adm:
         st.error("Pengaturan [admin] belum ada di secrets. Aplikasi dikunci.")
         st.stop()
-    if peran() and sisa_sesi() <= 0:
+    if peran() and ada_sesi() and sisa_sesi() <= 0:
         keluar()
         st.session_state["sesi_habis_info"] = True
     if not peran():
         tk = terima_token()
         if tk:  # sudah diverifikasi di aplikasi asal (termasuk Google untuk admin)
             st.session_state.update({"peran": tk["p"], "nama_masuk": tk["n"], "prn_masuk": tk["x"], "gagal_masuk": 0,
-                                     "admin_ok": tk["p"] == ADMIN, "via_token": True, "sesi_habis": float(tk["e"])})
+                                     "admin_ok": tk["p"] == ADMIN, "via_token": True})
+            if sesi:
+                st.session_state["sesi_habis"] = time.time() + UMUR_TOKEN
     if peran() == ADMIN and not st.session_state.get("via_token") and not _google_ok(adm):
         st.markdown("<h1 style='text-align:center'>WELCOME ADMIN QC TOTO</h1>", unsafe_allow_html=True)
         if not st.user.is_logged_in:
@@ -240,7 +242,7 @@ def gerbang():
         hasil = cek_login(u, p, adm, data.baca("karyawan"))
         if hasil:
             st.session_state.update({"peran": hasil[0], "nama_masuk": hasil[1], "prn_masuk": hasil[2], "gagal_masuk": 0,
-                                     "admin_ok": hasil[0] == ADMIN, "sesi_habis": time.time() + UMUR_TOKEN})
+                                     "admin_ok": hasil[0] == ADMIN})
             st.rerun()
         st.session_state["gagal_masuk"] = st.session_state.get("gagal_masuk", 0) + 1
         tengah.error("User atau password salah.")
@@ -255,11 +257,12 @@ def _rahasia(kunci):
 
 
 # ---- masuk antar aplikasi tanpa login ulang: token bertanda tangan (HMAC) berumur pendek, di-Secrets: kunci_masuk
-UMUR_TOKEN = 30 * 60  # umur sesi admin/foreman sejak login; berpindah app TIDAK memperpanjang (batas yang sama ikut di token)
+UMUR_TOKEN = 30 * 60  # lama sesi di halaman utama/laporan sejak dibuka dari halaman admin (dihitung saat tiba)
+UMUR_TIKET = 4 * 3600  # tiket pindah aplikasi masih berlaku untuk diklik sampai sekian detik sejak halaman admin dimuat
 
 
 def buat_token(peran_, nama, prn, kunci, sekarang=None, habis=None):
-    isi = json.dumps({"p": peran_, "n": nama, "x": prn, "e": int(habis or ((sekarang or time.time()) + UMUR_TOKEN))}, separators=(",", ":"))
+    isi = json.dumps({"p": peran_, "n": nama, "x": prn, "e": int(habis or ((sekarang or time.time()) + UMUR_TIKET))}, separators=(",", ":"))
     b = base64.urlsafe_b64encode(isi.encode()).decode().rstrip("=")
     return b + "." + hmac.new(kunci.encode(), b.encode(), hashlib.sha256).hexdigest()[:40]
 
@@ -297,7 +300,7 @@ def _tautan(url):
     kunci = _rahasia("kunci_masuk")
     if not kunci or not peran():
         return url
-    t = buat_token(peran(), st.session_state.get("nama_masuk", ""), st.session_state.get("prn_masuk", ""), kunci, habis=_habis())
+    t = buat_token(peran(), st.session_state.get("nama_masuk", ""), st.session_state.get("prn_masuk", ""), kunci)
     return url + ("&" if "?" in url else "?") + "t=" + t
 
 
@@ -325,7 +328,8 @@ _IKON = {"Laporan": ":material/bar_chart:", "Halaman Utama": ":material/home:", 
 def bilah(halaman_lain=None, label_lain="", tautan=None):
     """Bar atas bergaya kartu: [navigasi antar halaman/aplikasi] ........ [avatar · nama · peran] [Keluar]."""
     st.markdown(CSS_BAR, unsafe_allow_html=True)
-    penghitung()
+    if ada_sesi():
+        penghitung()
     if (_rahasia("url_laporan") or _rahasia("url_utama") or _rahasia("url_admin")) and not _rahasia("kunci_masuk"):
         st.caption("⚠️ `kunci_masuk` belum ada di Secrets, jadi pindah aplikasi akan minta login lagi.")
     nama = st.session_state.get("nama_masuk", "")
