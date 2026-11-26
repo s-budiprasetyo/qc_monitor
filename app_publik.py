@@ -6,6 +6,7 @@ import html
 
 import altair as alt
 import pandas as pd
+import time
 import streamlit as st
 
 from datetime import datetime
@@ -584,11 +585,18 @@ if not st.session_state.get("me"):  # masuk dari halaman admin tanpa login ulang
     if _tk and _tk["p"] == akses.ADMIN and _pa:
         _k = data.baca("karyawan")
         _c = _k[_k["prn"] == _pa]
+        st.session_state["adm_habis"] = float(_tk["e"])
         st.session_state.update({"me": _pa, "me_nama": _c.iloc[0]["nama_web"] if len(_c) else "Admin", "adm": True, "gagal": 0})
 atas, kanan = st.columns([6, 1.6], vertical_alignment="center")
 kol, _ = atas.columns([1.6, 3])
 with kol:
     bulan = pilih_bulan("utama", tersedia=opsi)
+if st.session_state.get("adm_habis") and st.session_state.get("adm"):  # admin/atasan masuk lewat token: sesi 30 menit
+    if st.session_state["adm_habis"] <= time.time():
+        for k_ in ("me", "me_nama", "adm", "adm_habis"):
+            st.session_state.pop(k_, None)
+        st.rerun()
+    akses.penghitung(int(st.session_state["adm_habis"] - time.time()))
 if st.session_state.get("me"):
     kanan.caption(f"Halo, **{st.session_state['me_nama']}**" + (" (admin)" if st.session_state.get("adm") else ""))
     if kanan.button("KELUAR", width="stretch"):

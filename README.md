@@ -244,3 +244,8 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Bila login Google aktif, tambahkan email Google atasan ke `[admin] emails`.
 - Di halaman utama, token atasan membawa PRN-nya sendiri (bukan PRN admin utama).
 - Tombol Laporan / Halaman Utama di halaman admin muncul bila Secrets `url_laporan` dan `url_utama` terisi (lihat tahap 9d); `kunci_masuk` harus SAMA di ketiga app.
+
+## Tahap 10z+ — Sesi 30 menit dengan hitung mundur
+- Login admin/foreman berlaku **30 menit sejak login**; berpindah app (admin ⇄ laporan ⇄ utama) tidak perlu login ulang dan **tidak memperpanjang** batas itu (batas ikut di token). Kotak kecil "SESI mm:ss" di pojok kanan atas menghitung mundur (kuning < 5 menit, merah < 1 menit). Habis → halaman dimuat ulang → kembali ke login.
+- Bila token ditolak (kunci_masuk beda antar app / kedaluwarsa), layar login menampilkan penjelasannya. Di bar atas muncul peringatan bila url_* terisi tetapi kunci_masuk belum ada.
+- Catatan teknis: JS di st.html tidak boleh memuat karakter `<` (disaring); gunakan `>` / createElement.

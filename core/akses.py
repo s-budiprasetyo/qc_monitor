@@ -86,8 +86,36 @@ def peran():
     return st.session_state.get("peran")
 
 
+def _habis():
+    """Epoch detik batas sesi (diisi saat login / dari token). Dibuat bila belum ada."""
+    if "sesi_habis" not in st.session_state:
+        st.session_state["sesi_habis"] = time.time() + UMUR_TOKEN
+    return st.session_state["sesi_habis"]
+
+
+def sisa_sesi():
+    return int(_habis() - time.time())
+
+
+def penghitung(sisa=None):
+    """Kotak kecil hitung mundur sesi di pojok kanan atas. Habis -> halaman dimuat ulang (kembali ke login)."""
+    sisa = sisa_sesi() if sisa is None else sisa
+    st.html("""<script>(function(){var P=window.parent,D=P.document,e=Date.now()+""" + str(max(int(sisa), 0)) + """*1000;
+if(P.__qcSesi){P.clearInterval(P.__qcSesi);}
+var b=D.getElementById('qc-sesi');
+if(!b){b=D.createElement('div');b.id='qc-sesi';b.title='Sisa waktu login';
+b.style.cssText="position:fixed;top:10px;right:112px;z-index:999999;background:#fff;border:1px solid #cfe0f7;border-radius:10px;padding:4px 10px;font:800 12.5px/1.2 'Source Sans Pro',sans-serif;color:#0b3d91;box-shadow:0 2px 8px #2a5db01f;letter-spacing:.3px";
+var l=D.createElement('span');l.textContent='SESI ';l.style.cssText='font-weight:600;color:#5b7399';var n=D.createElement('span');n.id='qc-sesi-t';n.textContent='--:--';
+b.appendChild(l);b.appendChild(n);D.body.appendChild(b);}
+function t(){var d=D.getElementById('qc-sesi-t');if(!d){return;}
+var r=Math.max(0,Math.round((e-Date.now())/1000));var m=Math.floor(r/60),s=r%60;d.textContent=(10>m?'0':'')+m+':'+(10>s?'0':'')+s;
+b.style.color=60>r?'#b3261e':(300>r?'#a86a00':'#0b3d91');b.style.borderColor=60>r?'#f0b7b3':(300>r?'#f1d9a0':'#cfe0f7');
+if(1>r){P.clearInterval(P.__qcSesi);d.textContent='habis';setTimeout(function(){P.location.reload();},1200);}}
+t();P.__qcSesi=P.setInterval(t,1000);})();</script>""", unsafe_allow_javascript=True)
+
+
 def keluar():
-    for k in ("peran", "admin_ok", "nama_masuk", "prn_masuk", "gagal_masuk", "via_token"):
+    for k in ("peran", "admin_ok", "nama_masuk", "prn_masuk", "gagal_masuk", "via_token", "sesi_habis", "tiket_gagal"):
         st.session_state.pop(k, None)
 
 
@@ -169,11 +197,14 @@ def gerbang():
     if not adm:
         st.error("Pengaturan [admin] belum ada di secrets. Aplikasi dikunci.")
         st.stop()
+    if peran() and sisa_sesi() <= 0:
+        keluar()
+        st.session_state["sesi_habis_info"] = True
     if not peran():
         tk = terima_token()
         if tk:  # sudah diverifikasi di aplikasi asal (termasuk Google untuk admin)
             st.session_state.update({"peran": tk["p"], "nama_masuk": tk["n"], "prn_masuk": tk["x"], "gagal_masuk": 0,
-                                     "admin_ok": tk["p"] == ADMIN, "via_token": True})
+                                     "admin_ok": tk["p"] == ADMIN, "via_token": True, "sesi_habis": float(tk["e"])})
     if peran() == ADMIN and not st.session_state.get("via_token") and not _google_ok(adm):
         st.markdown("<h1 style='text-align:center'>WELCOME ADMIN QC TOTO</h1>", unsafe_allow_html=True)
         if not st.user.is_logged_in:
@@ -191,6 +222,10 @@ def gerbang():
         st.stop()
     if peran():
         return
+    if st.session_state.pop("sesi_habis_info", False):
+        st.warning("Sesi 30 menit habis. Silakan login lagi.")
+    if st.session_state.pop("tiket_gagal", False):
+        st.warning("Tiket masuk dari aplikasi lain tidak berlaku (kedaluwarsa, atau kunci_masuk di Secrets berbeda antar aplikasi). Silakan login.")
     st.markdown("<h1 style='text-align:center;font-weight:800'>QC TOTO</h1>"
                 "<p style='text-align:center;color:#5b7399'>Masuk sebagai admin atau foreman</p>", unsafe_allow_html=True)
     _, tengah, _ = st.columns([1, 1.2, 1])
@@ -205,7 +240,7 @@ def gerbang():
         hasil = cek_login(u, p, adm, data.baca("karyawan"))
         if hasil:
             st.session_state.update({"peran": hasil[0], "nama_masuk": hasil[1], "prn_masuk": hasil[2], "gagal_masuk": 0,
-                                     "admin_ok": hasil[0] == ADMIN})
+                                     "admin_ok": hasil[0] == ADMIN, "sesi_habis": time.time() + UMUR_TOKEN})
             st.rerun()
         st.session_state["gagal_masuk"] = st.session_state.get("gagal_masuk", 0) + 1
         tengah.error("User atau password salah.")
@@ -220,11 +255,11 @@ def _rahasia(kunci):
 
 
 # ---- masuk antar aplikasi tanpa login ulang: token bertanda tangan (HMAC) berumur pendek, di-Secrets: kunci_masuk
-UMUR_TOKEN = 30 * 60
+UMUR_TOKEN = 30 * 60  # umur sesi admin/foreman sejak login; berpindah app TIDAK memperpanjang (batas yang sama ikut di token)
 
 
-def buat_token(peran_, nama, prn, kunci, sekarang=None):
-    isi = json.dumps({"p": peran_, "n": nama, "x": prn, "e": int((sekarang or time.time()) + UMUR_TOKEN)}, separators=(",", ":"))
+def buat_token(peran_, nama, prn, kunci, sekarang=None, habis=None):
+    isi = json.dumps({"p": peran_, "n": nama, "x": prn, "e": int(habis or ((sekarang or time.time()) + UMUR_TOKEN))}, separators=(",", ":"))
     b = base64.urlsafe_b64encode(isi.encode()).decode().rstrip("=")
     return b + "." + hmac.new(kunci.encode(), b.encode(), hashlib.sha256).hexdigest()[:40]
 
@@ -251,7 +286,10 @@ def terima_token():
         del st.query_params["t"]
     except Exception:
         pass
-    return baca_token(t, _rahasia("kunci_masuk"))
+    hasil = baca_token(t, _rahasia("kunci_masuk"))
+    if hasil is None:
+        st.session_state["tiket_gagal"] = True
+    return hasil
 
 
 def _tautan(url):
@@ -259,7 +297,7 @@ def _tautan(url):
     kunci = _rahasia("kunci_masuk")
     if not kunci or not peran():
         return url
-    t = buat_token(peran(), st.session_state.get("nama_masuk", ""), st.session_state.get("prn_masuk", ""), kunci)
+    t = buat_token(peran(), st.session_state.get("nama_masuk", ""), st.session_state.get("prn_masuk", ""), kunci, habis=_habis())
     return url + ("&" if "?" in url else "?") + "t=" + t
 
 
@@ -287,6 +325,9 @@ _IKON = {"Laporan": ":material/bar_chart:", "Halaman Utama": ":material/home:", 
 def bilah(halaman_lain=None, label_lain="", tautan=None):
     """Bar atas bergaya kartu: [navigasi antar halaman/aplikasi] ........ [avatar · nama · peran] [Keluar]."""
     st.markdown(CSS_BAR, unsafe_allow_html=True)
+    penghitung()
+    if (_rahasia("url_laporan") or _rahasia("url_utama") or _rahasia("url_admin")) and not _rahasia("kunci_masuk"):
+        st.caption("⚠️ `kunci_masuk` belum ada di Secrets, jadi pindah aplikasi akan minta login lagi.")
     nama = st.session_state.get("nama_masuk", "")
     item = []
     if halaman_lain is not None and peran() == ADMIN:
