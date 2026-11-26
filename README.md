@@ -249,3 +249,6 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Login admin/foreman berlaku **30 menit sejak login**; berpindah app (admin ⇄ laporan ⇄ utama) tidak perlu login ulang dan **tidak memperpanjang** batas itu (batas ikut di token). Kotak kecil "SESI mm:ss" di pojok kanan atas menghitung mundur (kuning < 5 menit, merah < 1 menit). Habis → halaman dimuat ulang → kembali ke login.
 - Bila token ditolak (kunci_masuk beda antar app / kedaluwarsa), layar login menampilkan penjelasannya. Di bar atas muncul peringatan bila url_* terisi tetapi kunci_masuk belum ada.
 - Catatan teknis: JS di st.html tidak boleh memuat karakter `<` (disaring); gunakan `>` / createElement.
+
+## Tahap 10z3 — Stok per meja disederhanakan
+- Stok Label → PER MEJA: baris = meja saja, kolom = tanggal; angka = total pcs semua type di meja pada akhir hari (merah bila ada type yang minus). Klik angka → tabel TYPE, STOK AWAL, DITERIMA, PAKAI SAP, AFKIR, SISA, PIC + baris TOTAL, dengan tombol ◀ Sebelumnya / Berikutnya ▶ antar tanggal.

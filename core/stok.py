@@ -1102,14 +1102,17 @@ def meja_ringkas(pabrik, meja, tgl):
             awal = {kk[1]: vv for kk, vv in sal.items() if kk[0] == lk}
         if tg == tgl and lk2 == lk and lb and jenis in ("tambah", "set"):
             g = _GRUP.get(k[0][0], "KOREKSI") if k else "KOREKSI"
-            d = out.setdefault(lb, {"terima": 0, "keluar": 0, "pakai": 0, "kor": 0})
+            d = out.setdefault(lb, {"terima": 0, "keluar": 0, "pakai": 0, "sap": 0, "afkir": 0, "kor": 0, "orang": []})
             dv = (v - sal.get((lk2, lb), 0)) if jenis == "set" else v
+            if k and len(k[0]) > 1 and k[0][1] and k[0][1] not in d["orang"] and g in ("MASUK", "SAP", "AFKIR"):
+                d["orang"].append(k[0][1])
             if g == "MASUK":
                 d["terima"] += dv
             elif g == "KELUAR":
                 d["keluar"] += dv
             elif g in ("SAP", "AFKIR"):
                 d["pakai"] += dv
+                d["sap" if g == "SAP" else "afkir"] += dv
             else:
                 d["kor"] += dv
         _terap(sal, jenis, lk2, lb, v)
@@ -1118,8 +1121,8 @@ def meja_ringkas(pabrik, meja, tgl):
         awal = dict(akhir)
     hasil = {}
     for lb in set(awal) | set(akhir) | set(out):
-        d = out.get(lb, {"terima": 0, "keluar": 0, "pakai": 0, "kor": 0})
-        if awal.get(lb, 0) or akhir.get(lb, 0) or any(d.values()):
+        d = out.get(lb, {"terima": 0, "keluar": 0, "pakai": 0, "sap": 0, "afkir": 0, "kor": 0, "orang": []})
+        if awal.get(lb, 0) or akhir.get(lb, 0) or any(v for k_, v in d.items() if k_ != "orang"):
             hasil[lb] = {"awal": awal.get(lb, 0), **d, "sisa": akhir.get(lb, 0)}
     return hasil
 
