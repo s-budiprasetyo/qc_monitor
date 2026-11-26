@@ -238,3 +238,9 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - **Afkir aktif di ledger stok**: selain label afkir input foreman, *afkir proses dari SAP* (M+LA+LB+F, type CW/CE9 beserta CE7/SNI pendamping) untuk karyawan/hari/type yang belum punya baris input afkir kini ikut mengurangi stok meja (dibebankan ke meja operator hari itu). Berlaku di semua laporan stok, notifikasi, opname, dan Excel karena semuanya memakai ledger yang sama.
 - **Stok Label → PER MEJA**: matriks MEJA + TYPE × tanggal 1..31 (stok akhir hari). Klik kotak → rincian: PIC, stok awal, menerima, dipindah keluar, pakai SAP, afkir, sisa, daftar kejadian; tombol ◀ Sebelumnya / Berikutnya ▶. Filter bulan, pabrik, meja.
 - **Input label (halaman utama)**: tabel stok meja: stok awal (sisa kemarin), menerima hari ini, stok saat ini + keterangan terpakai/keluar.
+
+## Tahap 10z — Akun atasan (QC-SUTANTO)
+- `QC-SUTANTO` (akun di tabel karyawan, password yang sama dengan halaman utama) masuk sebagai **admin penuh**: langsung ke halaman admin, bisa ke halaman Foreman, Laporan, dan Halaman Utama tanpa login ulang (token ?t=). Diatur di `core/akses.py: USER_ATASAN` atau Secrets `[admin] atasan = ["QC-SUTANTO"]`.
+- Bila login Google aktif, tambahkan email Google atasan ke `[admin] emails`.
+- Di halaman utama, token atasan membawa PRN-nya sendiri (bukan PRN admin utama).
+- Tombol Laporan / Halaman Utama di halaman admin muncul bila Secrets `url_laporan` dan `url_utama` terisi (lihat tahap 9d); `kunci_masuk` harus SAMA di ketiga app.

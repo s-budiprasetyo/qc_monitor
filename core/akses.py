@@ -18,11 +18,24 @@ ADMIN, FOREMAN = "admin", "foreman"
 # Bisa diganti lewat Secrets: [admin] foreman = ["QC-THOFA", ...]
 USER_FOREMAN = ["QC-NURMUS", "QC-RIZKI", "QC-SATRIO"]  # Musthofa(THOFA), Rizki Senja, Satrio
 # Akun khusus halaman admin yang tidak ada di tabel karyawan: user -> (prn, nama, sha256 password)
+# Atasan: akun karyawan (tabel karyawan, password yang sama dengan halaman utama) yang berhak penuh seperti admin.
+# Bisa diganti lewat Secrets: [admin] atasan = ["QC-SUTANTO"]. Bila login Google aktif, email Google atasan juga harus ada di [admin] emails.
+USER_ATASAN = ["QC-SUTANTO"]
 AKUN_KHUSUS = {"QC-PAMBUDI": ("901", "HARIS RIZAL PAMBUDI", "fa88d374b9cf5e059fad4a2fe406feae4c49cbf4803083ec521d3c75ee22557c")}
 
 
 def _kunci(u):
     return "".join(ch for ch in str(u).upper() if ch.isalnum())
+
+
+def user_atasan(adm=None):
+    daftar = USER_ATASAN
+    try:
+        if adm and adm.get("atasan"):
+            daftar = list(adm["atasan"])
+    except Exception:
+        pass
+    return {_kunci(x) for x in daftar}
 
 
 def user_foreman(adm=None):
@@ -106,6 +119,9 @@ def cek_login(user, password, adm, karyawan):
                 return FOREMAN, anama, aprn
             return None
     k = karyawan[karyawan["user"].map(_kunci) == _kunci(u)]
+    ka = k[k["user"].map(_kunci).isin(user_atasan(adm))]  # atasan: akses penuh seperti admin
+    if len(ka) and hmac.compare_digest(parsers.hash_pw(password), str(ka.iloc[0]["pass_hash"])):
+        return ADMIN, str(ka.iloc[0]["nama_web"]), str(ka.iloc[0]["prn"])
     k = k[k["user"].map(_kunci).isin(user_foreman(adm))]  # hanya akun yang terdaftar (daftar putih); admin lewat Secrets
     if len(k) and hmac.compare_digest(parsers.hash_pw(password), str(k.iloc[0]["pass_hash"])):
         return FOREMAN, str(k.iloc[0]["nama_web"]), str(k.iloc[0]["prn"])
