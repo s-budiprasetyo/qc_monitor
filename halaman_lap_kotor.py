@@ -45,9 +45,10 @@ def _muat(b):
     if t.empty:
         return t
     peta = stok._peta_meja()
+    idx = stok._idx_meja(peta)
 
     def _p(r):
-        lk = peta.get((r.prn, r.tgl))
+        lk = stok._meja_operator(peta, idx, r.prn, r.tgl, 3650)
         if lk:
             return stok._lok_pisah(lk)[0]
         return "QC SK" if r.bagian == "QC SK" else ""

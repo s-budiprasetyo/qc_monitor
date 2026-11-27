@@ -307,16 +307,15 @@ def _tautan(url):
 def tautan_luar(app):
     """Tombol pindah antar aplikasi menurut peran. app = 'admin' | 'laporan'.
     Alamat dibaca dari Secrets: url_admin, url_laporan, url_utama (kosong = tombol tidak muncul).
-    Admin dari app admin: Laporan + Halaman Utama. Foreman: Laporan. Dari app laporan: kembali ke halaman admin/foreman."""
+    Dari app admin (admin maupun foreman): Laporan + Halaman Utama. Dari app laporan: kembali ke halaman admin/foreman + Halaman Utama."""
+    hasil = []
     if app == "laporan":
         u = _rahasia("url_admin")
-        if not u:
-            return []
-        return [("Halaman Admin", _tautan(u + "/upload-admin"))] if peran() == ADMIN else [("Halaman Foreman", _tautan(u + "/upload-foreman"))]
-    hasil = []
-    if _rahasia("url_laporan"):
+        if u:
+            hasil.append(("Halaman Admin", _tautan(u + "/upload-admin")) if peran() == ADMIN else ("Halaman Foreman", _tautan(u + "/upload-foreman")))
+    elif _rahasia("url_laporan"):
         hasil.append(("Laporan", _tautan(_rahasia("url_laporan"))))
-    if peran() == ADMIN and _rahasia("url_utama"):
+    if _rahasia("url_utama"):
         hasil.append(("Halaman Utama", _tautan(_rahasia("url_utama"))))
     return hasil
 

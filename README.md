@@ -265,3 +265,13 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 - Revisi 11b: **Dari meja lain** — type dipilih satu per satu lewat "+ Tambah type" (pilihan menutup sendiri setelah satu type dipilih; tombol Hapus per type). Tabel "Stok label di meja ini" di atas ikut berubah langsung sesuai isian DIAMBIL (type baru muncul hijau "belum disimpan", hilang lagi bila DIAMBIL dikembalikan ke 0).
 - Revisi 11c: Dari meja lain menampilkan SATU type sekali waktu dengan tombol **Ganti type**; jumlah DIAMBIL tersimpan sementara di sesi (muncul hijau di tabel atas) dan tidak hilang saat ganti type; permanen (Pindah Label per meja asal) saat SIMPAN PERPINDAHAN; DIAMBIL 0 = batal.
 - Revisi 11d: Stok Label → PER MEJA → jendela meja: kolom **DIAMBIL** (label keluar dari meja itu) dipisah dari DITERIMA, plus tabel "Label yang diambil dari meja ini" (jam, type, jumlah, diambil oleh, dipindah ke meja mana, keterangan pindah label / dibawa pindah meja) dari `stok.keluar_rinci`.
+- Revisi 11e: bilah atas foreman kini punya Laporan + Halaman Utama (dari app laporan: Halaman Foreman/Admin + Halaman Utama). Pemilih type baru `label_ui.pilih_type` (tombol selebar layar → jenis → daftar type sebagai tombol sentuh, tanpa papan ketik) dipakai di input label (Foreman / meja lain) dan tabel foreman (Label Bagus, Diinput karyawan).
+
+## Tahap 11f
+- Perbaikan bug: pemakaian SAP (pcs bagus + afkir proses) kini ikut mengurangi stok meja walau operator tidak punya input alamat di hari itu — dipakai meja terakhir operator (maks. 14 hari ke belakang), sama seperti PIC. Berlaku juga di Afkir Label.
+- Stok Label › Per Meja: kolom DITERIMA dipecah jadi DARI FOREMAN dan DARI MEJA LAIN (asal meja + jumlah), ditambah kolom PIC PINDAH (yang memindahkan) di samping PIC (menerima/memakai).
+
+## Tahap 11g
+- Pemakaian SAP (pcs bagus + afkir proses) operator yang tidak input alamat meja kini dipetakan lewat STOK meja (tanpa batas 14 hari): meja terakhir operator bila stok type itu cukup; bila hanya satu meja yang cukup, meja itu; bila beberapa / tidak ada yang cukup, sistem memilih tebakan dan masuk lonceng Notifikasi Foreman ("Meja pemakaian SAP").
+- Foreman / admin bisa menetapkan meja (tabel baru `label_pakaimeja`: tgl, prn, label, pabrik, meja, oleh, waktu — buat tab di Google Sheet bila perlu). Bila stok meja pilihan tidak cukup muncul peringatan. Daftar "Ubah meja pemakaian SAP lainnya" untuk mengubah yang otomatis.
+- Stok Label › Per Meja: kolom DARI FOREMAN, DARI MEJA LAIN (asal meja + jumlah), PIC MENERIMA, PIC MEMAKAI.

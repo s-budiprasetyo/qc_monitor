@@ -500,10 +500,7 @@ def _baris_tambah(pref, ent, W, ganda):
     SNI hadir otomatis bila type CW dipilih, CE7 bila label warna dipilih (aturan lama)."""
     sudah = set() if ganda else {x[1] for x in ent}
     opsi = [(t, k) for t, k in _semua_type_pilihan() if t not in sudah]
-    kat = dict(opsi)
-    r = st.columns([1], vertical_alignment="center")
-    pilih = r[0].selectbox("Tambah type", [t for t, _k in opsi], index=None, key=f"{pref}_add_{st.session_state.get(pref + '_na', 0)}",
-                           label_visibility="collapsed", placeholder="＋ klik di sini untuk menambah type…", format_func=lambda t: f"{kat.get(t, '')} · {t}")
+    pilih = label_ui.pilih_type(f"{pref}_ad", opsi, tombol="＋ Tambah type")
     if pilih:
         tambah = [pilih]
         ada = {x[1] for x in ent}
@@ -1195,9 +1192,7 @@ def _baris_cek(pref, cur, awal):
             hasil[t] = v
             r[3].markdown(f"<div class='ck-sb tot'>{aw + v:,}</div>".replace(",", "."), unsafe_allow_html=True)
         # baris kosong: klik untuk menambah type (SNI boleh berdiri sendiri, tanpa type induknya)
-        r = st.columns(W, vertical_alignment="center")
-        pilih = r[0].selectbox("Tambah type", [t for t, _k in opsi], index=None, key=f"{pref}_add_{st.session_state.get(pref + '_na', 0)}",
-                               label_visibility="collapsed", placeholder="＋ tambah type…", format_func=lambda t: f"{kat_dari.get(t, '')} · {t}")
+        pilih = label_ui.pilih_type(f"{pref}_ad", opsi, tombol="＋ Tambah type")
         if pilih:
             ent.append([st.session_state[f"{pref}_nid"], pilih])
             st.session_state[f"{pref}_nid"] += 1
@@ -1443,6 +1438,43 @@ def _lapor_hitung():
         return []
 
 
+def _pakai_hitung():
+    try:
+        return stok.pakai_buka()
+    except Exception:
+        return []
+
+
+def _kartu_pakai(a, oleh, semua, lengkap=False):
+    """Pemakaian SAP operator tanpa input alamat: sistem memilih meja lewat stok; foreman / admin bisa menetapkan meja lain."""
+    tg = f"{a['tgl'][8:]}/{a['tgl'][5:7]}"
+    k = a["id"].replace(" ", "_").replace("|", "_")
+    stk = dict(a["kandidat"])
+    opsi = list(dict.fromkeys([a["lokasi"]] + [l_ for l_, _v in a["kandidat"]]))
+    for l_ in semua:
+        if l_ not in opsi:
+            opsi.append(l_)
+    with st.container(border=True, key=f"pk_{k}"):
+        tanda = "Diputuskan" if a["status"] == "putus" else "Dipilih sistem"
+        st.markdown(f"**{tg} · {a['nama']}** memakai **{a['label']}** {_ang(a['n'])} pcs (hasil kerja SAP), tidak ada input alamat meja. "
+                    f"<span style='background:#e8f0fe;color:#0b3d91;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:800'>{tanda}: {html.escape(stok.lok_nama(a['lokasi']))}</span>",
+                    unsafe_allow_html=True)
+        if a["alasan"]:
+            st.caption(a["alasan"])
+        if a["kurang"]:
+            st.warning(f"Stok {a['label']} di {stok.lok_nama(a['lokasi'])} tidak mencukupi (menjadi {_ang(a['sisa'])}). "
+                       "Periksa ketersediaan stok di meja itu, atau pilih meja lain yang memang berisi label ini.")
+        baru = st.selectbox("Dipakai di meja", opsi, index=opsi.index(a["lokasi"]),
+                            format_func=lambda x: f"{stok.lok_nama(x)} (stok {_ang(stk.get(x, 0))})", key=f"pkm_{k}")
+        if st.button("SIMPAN MEJA" if a["status"] == "putus" or baru != a["lokasi"] else "SETUJUI MEJA INI", type="primary", key=f"pks_{k}", width="stretch"):
+            g = stok.pakai_putus(a["tgl"], a["prn"], a["label"], baru, oleh)
+            if g:
+                st.error(g)
+            else:
+                st.session_state["pf_toast"] = "Meja pemakaian ditetapkan."
+                st.rerun(scope="fragment")
+
+
 def _kartu_lapor(n, oleh):
     """Laporan karyawan: stok meja tidak sama dengan sistem. Foreman cek fisik meja, lalu koreksi stok atau selesai."""
     lk = stok.lok(n["pabrik"], str(n["meja"]))
@@ -1525,12 +1557,27 @@ def dlg_notif_stok():
         st.caption("Karyawan melihat stok meja di sistem tidak sama dengan label yang ada. Cek meja itu, lalu koreksi bila memang berbeda.")
         for n in lapor[:25]:
             _kartu_lapor(n, oleh)
+    pak = _pakai_hitung()
+    semua_ = sorted({lk_ for (lk_, _b) in stok.saldo()[0] if not stok.adalah_foreman(lk_) and stok.dept_lokasi(lk_) == "QC"}) if pak or stok.pakai_auto() else []
+    if pak:
+        st.markdown(f"**MEJA PEMAKAIAN SAP ({len(pak)})**")
+        st.caption("Operator ini mengerjakan type tersebut di SAP tetapi tidak input alamat meja. Sistem memilih meja dari stok label; tentukan meja yang benar. "
+                   "Bila stok meja pilihan tidak cukup, muncul peringatan agar stok di meja itu diperiksa.")
+        for a in pak[:25]:
+            _kartu_pakai(a, oleh, semua_)
+        st.markdown("---")
     daftar = _notif_hitung()
+    sem = [a for a in stok.pakai_auto() if a not in pak][:30]
+    if sem:
+        with st.expander(f"Ubah meja pemakaian SAP lainnya ({len(sem)} terbaru)"):
+            st.caption("Daftar pemakaian yang mejanya ditentukan sistem secara otomatis (stok cukup, tidak perlu dicek). Ubah bila ada yang keliru.")
+            for a in sem:
+                _kartu_pakai(a, oleh, semua_, lengkap=True)
     if not daftar:
-        if not lapor:
+        if not lapor and not pak:
             st.success("Tidak ada notifikasi stok yang perlu ditinjau. ✅")
         return
-    if lapor:
+    if lapor or pak:
         st.markdown("---")
         st.markdown(f"**STOK MINUS ({len(daftar)})**")
     st.caption(f"{len(daftar)} pemakaian label melebihi stok meja. Setujui bila memang label berpindah, atau abaikan bila bukan. "
@@ -1570,7 +1617,7 @@ def _hub():
         t_op = t_op[0] if t_op else None
     except Exception:
         t_op = None
-    n_nt = len(_notif_hitung()) + len(_lapor_hitung())
+    n_nt = len(_notif_hitung()) + len(_lapor_hitung()) + len(_pakai_hitung())
     ket_nt = f"{n_nt} perlu ditinjau" if n_nt else "Tidak ada"
     ket_op = f"Opname terakhir: {t_op[8:10]}/{t_op[5:7]}/{t_op[:4]}" if t_op else "Belum ada opname"
     MENU = {"afkir": ("INPUT LABEL AFKIR", "Catat label kotor per karyawan, pabrik, dan meja", "tag", _buka_jendela, "Fungsi", "Input harian"),
@@ -1615,7 +1662,8 @@ def tampil(halaman_admin=None):
     _hub()
     nt = _notif_hitung()
     lp = _lapor_hitung()
-    if nt or lp:
+    pk_ = _pakai_hitung()
+    if nt or lp or pk_:
         with st.container(border=True):
             c = st.columns([4, 1.4], vertical_alignment="center")
             ket_ = []
@@ -1623,6 +1671,8 @@ def tampil(halaman_admin=None):
                 ket_.append(f"**{len(nt)} stok label minus** (pemakaian melebihi stok meja)")
             if lp:
                 ket_.append(f"**{len(lp)} laporan karyawan** (stok meja tidak sesuai)")
+            if pk_:
+                ket_.append(f"**{len(pk_)} pemakaian SAP** yang mejanya perlu ditentukan")
             c[0].markdown("⚠️ " + " dan ".join(ket_) + " — perlu ditinjau Foreman.")
             c[1].button("Tinjau", key="nt_buka", type="primary", width="stretch", on_click=dlg_notif_stok)
     st.write("")

@@ -165,26 +165,60 @@ def _baris_foreman(pabrik, meja, tgl, kp):
     return [(lb, int(dasar[lb]["awal"]), int(dasar[lb]["sisa"]), int(dasar[lb]["terima"])) for lb in stok.urut_label(dasar)]
 
 
-def _tambah_type(kp, ada, daftar="tipe", n="tb"):
-    """Tombol '+ Tambah type': membuka pilihan SATU type (bisa diketik); setelah dipilih daftar menutup sendiri dan type menjadi baris baru."""
-    kb = f"{kp}_{n}"
-    if not st.session_state.get(kb):
-        if st.button("+ Tambah type", key=f"{kp}_{n}btn", type="tertiary"):
-            st.session_state[kb] = True
-            st.rerun(scope="fragment")
-        return
-    opsi = [t for t in stok.semua_label() if t not in ada]
+_CSS_PT = """<style>
+.st-key-{k} button{{min-height:46px;font-size:1rem}}
+.st-key-{k} [data-testid='stButtonGroup'] button{{min-height:44px;padding:.4rem .9rem}}
+.pt-j{{font-size:.72rem;font-weight:800;letter-spacing:.5px;color:#5b7399;margin:.2rem 0 .1rem}}
+</style>"""
 
-    def _pilih():
-        v = st.session_state.get(f"{kp}_{n}pilih")
-        if v:
-            st.session_state[f"{kp}_{daftar}"] = list(st.session_state.get(f"{kp}_{daftar}", [])) + [v]
-        st.session_state[kb] = False
-        st.session_state.pop(f"{kp}_{n}pilih", None)
-    c = st.columns([4, 1.2], vertical_alignment="center")
-    c[0].selectbox("Tambah type", opsi, index=None, placeholder="Ketik / pilih satu type…", key=f"{kp}_{n}pilih", on_change=_pilih, label_visibility="collapsed")
-    if c[1].button("Batal", key=f"{kp}_{n}batal"):
-        st.session_state[kb] = False
+
+def opsi_type(kecuali=()):
+    """[(type, kategori)] semua type berurutan seperti tabel jenis label (SNI satu, kategori 'SNI')."""
+    hasil, lihat = [], set()
+    for r in label.jenis_tabel().itertuples():
+        if r.label and r.label not in lihat and r.label not in kecuali:
+            lihat.add(r.label)
+            hasil.append((r.label, r.kategori or "Lainnya"))
+    if label.SNI not in lihat and label.SNI not in kecuali and any(label.punya_sni(x) for x, _k in hasil):
+        hasil.append((label.SNI, "SNI"))
+    return hasil
+
+
+def pilih_type(kp, opsi, tombol="＋ Tambah type", terpilih=None):
+    """Pemilih type yang lega di HP: tombol selebar layar → jenis (Closet, Lavatory, …) → daftar type sebagai tombol sentuh. Tanpa papan ketik.
+    opsi = [(type, kategori)]. Return type yang dipilih (sekali, lalu pemilih menutup sendiri) atau None."""
+    kb, kn = f"{kp}_pt_buka", f"{kp}_pt_n"
+    st.session_state.setdefault(kn, 0)
+    i = st.session_state[kn]
+    with st.container(key=f"{kp}_ptc"):
+        st.markdown(_CSS_PT.format(k=f"{kp}_ptc"), unsafe_allow_html=True)
+        if not st.session_state.get(kb):
+            st.button(tombol, key=f"{kp}_pt_btn_{i}", width="stretch", type="secondary", on_click=lambda: st.session_state.__setitem__(kb, True))
+            return None
+        kat = list(dict.fromkeys(k for _t, k in opsi))
+        st.markdown("<div class='pt-j'>1. PILIH JENIS</div>", unsafe_allow_html=True)
+        if len(kat) == 1:
+            kk = kat[0]
+        else:
+            kk = st.pills("Jenis", kat, selection_mode="single", key=f"{kp}_pt_k_{i}", label_visibility="collapsed")
+        hasil = None
+        if kk:
+            st.markdown(f"<div class='pt-j'>2. PILIH TYPE ({html.escape(str(kk))})</div>", unsafe_allow_html=True)
+            hasil = st.pills("Type", [t for t, k in opsi if k == kk], selection_mode="single", key=f"{kp}_pt_t_{i}_{kk}", label_visibility="collapsed")
+        if hasil:
+            st.session_state[kb] = False
+            st.session_state[kn] = i + 1
+            return hasil
+        if st.button("Batal", key=f"{kp}_pt_batal_{i}", width="stretch", on_click=lambda: st.session_state.__setitem__(kb, False)):
+            pass
+    return None
+
+
+def _tambah_type(kp, ada, daftar="tipe", n="tb"):
+    """Tombol '+ Tambah type' (selebar layar): pilih jenis lalu type; type terpilih menjadi baris baru."""
+    v = pilih_type(f"{kp}_{n}", opsi_type(kecuali=set(ada)))
+    if v:
+        st.session_state[f"{kp}_{daftar}"] = list(st.session_state.get(f"{kp}_{daftar}", [])) + [v]
         st.rerun(scope="fragment")
 
 
@@ -216,25 +250,10 @@ def _tabel_terima_foreman(pabrik, meja, tgl, kp):
 
 
 def _ganti_type(kp, cur):
-    """Tombol 'Ganti type' (atau '+ Pilih type' bila belum ada): membuka pilihan SATU type; setelah dipilih daftar menutup dan type itu yang tampil."""
-    kb = f"{kp}_mlbuka"
-    if not st.session_state.get(kb):
-        if st.button("Ganti type" if cur else "+ Pilih type", key=f"{kp}_mlbtn", width="stretch", type="secondary" if cur else "primary"):
-            st.session_state[kb] = True
-            st.rerun(scope="fragment")
-        return
-
-    def _pilih():
-        v = st.session_state.get(f"{kp}_mlpilih")
-        if v:
-            st.session_state[f"{kp}_mlcur"] = v
-        st.session_state[kb] = False
-        st.session_state.pop(f"{kp}_mlpilih", None)
-    c = st.columns([4, 1.4], vertical_alignment="center")
-    c[0].selectbox("Pilih type", [t for t in stok.semua_label() if t != cur], index=None, placeholder="Ketik / pilih satu type…", key=f"{kp}_mlpilih",
-                   on_change=_pilih, label_visibility="collapsed")
-    if c[1].button("Batal", key=f"{kp}_mlbatal"):
-        st.session_state[kb] = False
+    """Tombol 'Ganti type' (atau '+ Pilih type' bila belum ada): pilih jenis lalu SATU type; type itu yang tampil."""
+    v = pilih_type(f"{kp}_ml", opsi_type(kecuali={cur} if cur else set()), tombol="Ganti type" if cur else "＋ Pilih type")
+    if v:
+        st.session_state[f"{kp}_mlcur"] = v
         st.rerun(scope="fragment")
 
 
