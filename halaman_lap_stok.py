@@ -322,9 +322,9 @@ def _dlg_meja(lk, tg0):
     for lb in stok.urut_label(r):
         v = r[lb]
         orang = v["orang"] or pic_meja
-        baris.append({"TYPE": lb, "STOK AWAL": _f(v["awal"]), "DITERIMA": sv(v["terima"] + v["keluar"]), "PAKAI SAP": sv(v["sap"]),
+        baris.append({"TYPE": lb, "STOK AWAL": _f(v["awal"]), "DITERIMA": sv(v["terima"]), "DIAMBIL": sv(v["keluar"]), "PAKAI SAP": sv(v["sap"]),
                       "AFKIR": sv(v["afkir"]), "SISA": _f(v["sisa"]), "PIC": ", ".join(orang) if orang else "–"})
-    tot = {"TYPE": "TOTAL", "STOK AWAL": _f(sum(v["awal"] for v in r.values())), "DITERIMA": sv(sum(v["terima"] + v["keluar"] for v in r.values())),
+    tot = {"TYPE": "TOTAL", "STOK AWAL": _f(sum(v["awal"] for v in r.values())), "DITERIMA": sv(sum(v["terima"] for v in r.values())), "DIAMBIL": sv(sum(v["keluar"] for v in r.values())),
            "PAKAI SAP": sv(sum(v["sap"] for v in r.values())), "AFKIR": sv(sum(v["afkir"] for v in r.values())),
            "SISA": _f(sum(v["sisa"] for v in r.values())), "PIC": ", ".join(pic_meja) if pic_meja else "–"}
     y = pd.DataFrame(baris + [tot])
@@ -337,11 +337,20 @@ def _dlg_meja(lk, tg0):
         g.loc[len(df) - 1, :] = "font-weight:800;background-color:#eef4ff"
         return g
     st.dataframe(y.style.apply(_g, axis=None), hide_index=True, width="stretch", height=min(62 + 36 * len(y), 560),
-                 column_config={**{c: st.column_config.TextColumn(c, alignment="right", width="small") for c in ("STOK AWAL", "DITERIMA", "PAKAI SAP", "AFKIR", "SISA")},
+                 column_config={**{c: st.column_config.TextColumn(c, alignment="right", width="small") for c in ("STOK AWAL", "DITERIMA", "DIAMBIL", "PAKAI SAP", "AFKIR", "SISA")},
                                 "TYPE": st.column_config.TextColumn("TYPE", width="small"), "PIC": st.column_config.TextColumn("PIC (menerima / memakai)", width="medium")})
     if minus:
         st.error("Ada type MINUS. Kemungkinan karyawan menyimpan label, mengambil dari meja lain, atau salah input. Perbaiki lewat Perbaikan Data / Notifikasi Stok di halaman Foreman.")
-    st.caption("DITERIMA = label masuk dari Foreman / pindahan (dikurangi yang keluar). SISA hari ini = STOK AWAL besok.")
+    kl = stok.keluar_rinci(pab, mj, tg)
+    if kl:
+        st.markdown("**Label yang diambil dari meja ini**")
+        st.dataframe(pd.DataFrame([{"JAM": x["jam"], "TYPE": x["label"], "DIAMBIL": f"-{_f(x['jumlah'])}", "DIAMBIL OLEH": x["siapa"], "DIPINDAH KE": x["ke"],
+                                    "KET": "dibawa pindah meja" if x["jenis"] == "dibawa" else "pindah label"} for x in kl]),
+                     hide_index=True, width="stretch", height=min(62 + 36 * len(kl), 360),
+                     column_config={"DIAMBIL": st.column_config.TextColumn("DIAMBIL", alignment="right", width="small"),
+                                    "JAM": st.column_config.TextColumn("JAM", width="small"), "TYPE": st.column_config.TextColumn("TYPE", width="small")})
+    st.caption("DITERIMA = label masuk dari Foreman / meja lain. DIAMBIL = label keluar dari meja ini (diambil operator lain, dibawa pindah meja, atau dikembalikan ke Foreman). "
+               "SISA hari ini = STOK AWAL besok.")
 
 
 def _tab_meja():

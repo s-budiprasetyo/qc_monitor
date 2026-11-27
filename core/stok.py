@@ -1206,6 +1206,30 @@ def meja_ringkas(pabrik, meja, tgl):
     return hasil
 
 
+def keluar_rinci(pabrik, meja, tgl):
+    """Label yang diambil / dibawa KELUAR dari satu meja pada satu tanggal: [dict(jam, label, jumlah, siapa, ke, jenis)] urut jam.
+    jenis 'diambil' = Pindah Label (termasuk 'diterima dari meja lain' / Perbaikan), 'dibawa' = Pindah Meja operator. siapa = yang mengambil/membawa."""
+    kar = data.baca("karyawan")
+    nama = dict(zip(kar["prn"].astype(str), kar["nama_web"])) if len(kar) else {}
+    lk_, out = str(meja), []
+
+    def _tujuan(p, m):
+        return "Foreman" if not p else label.nama_meja(p, m)
+    d = pindah_daftar(None, tgl)
+    if len(d):
+        d = d[(d["dari_pabrik"] == pabrik) & (d["dari_meja"].astype(str) == lk_)]
+        for r in d.itertuples():
+            siapa = nama.get(str(r.prn)) or str(r.oleh).split(" (")[0] or "-"
+            out.append({"jam": str(r.waktu)[:5], "label": r.label, "jumlah": int(r.jumlah), "siapa": siapa, "ke": _tujuan(r.ke_pabrik, r.ke_meja), "jenis": "diambil"})
+    p = pindahmeja_daftar(None, tgl)
+    if len(p):
+        p = p[(p["dari_pabrik"] == pabrik) & (p["dari_meja"].astype(str) == lk_) & (p["bawa"] > 0)]
+        for r in p.itertuples():
+            out.append({"jam": str(r.waktu)[:5], "label": r.label, "jumlah": int(r.bawa), "siapa": (r.nama or nama.get(str(r.prn)) or "-"),
+                        "ke": _tujuan(r.ke_pabrik, r.ke_meja), "jenis": "dibawa"})
+    return sorted(out, key=lambda x: (x["jam"], x["label"]))
+
+
 def stok_foreman(sampai=None, dept="QC"):
     return stok_lokasi(foreman_dept(dept), sampai)
 
