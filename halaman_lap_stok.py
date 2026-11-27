@@ -327,17 +327,17 @@ def _dlg_meja(lk, tg0):
     baris = []
     for lb in stok.urut_label(r):
         v = r[lb]
-        orang = v["orang"]
+        orang = v["orang"] or ([] if v["pic_pindah"] else pic_meja)
         baris.append({"TYPE": lb, "STOK AWAL": _f(v["awal"]), "DARI FOREMAN": sv(v["foreman"]),
                       "DARI MEJA LAIN": _asal(v).replace("\n", " · ") if v["meja_lain"] else "–",
-                      "PIC MENERIMA": ", ".join(v["pic_pindah"]) if v["pic_pindah"] else "–",
+                      "PIC PINDAH": ", ".join(v["pic_pindah"]) if v["pic_pindah"] else "–",
                       "DIAMBIL": sv(v["keluar"]), "PAKAI SAP": sv(v["sap"]),
                       "AFKIR": sv(v["afkir"]), "SISA": _f(v["sisa"]), "PIC": ", ".join(orang) if orang else "–"})
     tot = {"TYPE": "TOTAL", "STOK AWAL": _f(sum(v["awal"] for v in r.values())), "DARI FOREMAN": sv(sum(v["foreman"] for v in r.values())),
-           "DARI MEJA LAIN": sv(sum(v["meja_lain"] for v in r.values())), "PIC MENERIMA": ", ".join(sorted({n_ for v in r.values() for n_ in v["pic_pindah"]})) or "–",
+           "DARI MEJA LAIN": sv(sum(v["meja_lain"] for v in r.values())), "PIC PINDAH": "",
            "DIAMBIL": sv(sum(v["keluar"] for v in r.values())),
            "PAKAI SAP": sv(sum(v["sap"] for v in r.values())), "AFKIR": sv(sum(v["afkir"] for v in r.values())),
-           "SISA": _f(sum(v["sisa"] for v in r.values())), "PIC": ", ".join(sorted({n_ for v in r.values() for n_ in v["orang"]})) or "–"}
+           "SISA": _f(sum(v["sisa"] for v in r.values())), "PIC": ", ".join(pic_meja) if pic_meja else "–"}
     y = pd.DataFrame(baris + [tot])
     minus = {i for i, b_ in enumerate(baris) if r[b_["TYPE"]]["sisa"] < 0}
 
@@ -352,8 +352,8 @@ def _dlg_meja(lk, tg0):
                                 "TYPE": st.column_config.TextColumn("TYPE", width="small"),
                                 "DARI FOREMAN": st.column_config.TextColumn("DARI FOREMAN", alignment="right", width="medium"),
                                 "DARI MEJA LAIN": st.column_config.TextColumn("DARI MEJA LAIN (asal meja)", width="medium"),
-                                "PIC MENERIMA": st.column_config.TextColumn("PIC MENERIMA (label dari Foreman / meja lain)", width="medium"),
-                                "PIC": st.column_config.TextColumn("PIC MEMAKAI (hasil kerja SAP)", width="medium")})
+                                "PIC PINDAH": st.column_config.TextColumn("PIC PINDAH (yang memindahkan)", width="medium"),
+                                "PIC": st.column_config.TextColumn("PIC (menerima / memakai)", width="medium")})
     if minus:
         st.error("Ada type MINUS. Kemungkinan karyawan menyimpan label, mengambil dari meja lain, atau salah input. Perbaiki lewat Perbaikan Data / Notifikasi Stok di halaman Foreman.")
     kl = stok.keluar_rinci(pab, mj, tg)
@@ -364,7 +364,7 @@ def _dlg_meja(lk, tg0):
                      hide_index=True, width="stretch", height=min(62 + 36 * len(kl), 360),
                      column_config={"DIAMBIL": st.column_config.TextColumn("DIAMBIL", alignment="right", width="small"),
                                     "JAM": st.column_config.TextColumn("JAM", width="small"), "TYPE": st.column_config.TextColumn("TYPE", width="small")})
-    st.caption("DARI FOREMAN = label diterima dari Foreman. DARI MEJA LAIN = label yang dipindah/diambil dari meja lain (asal meja dan jumlahnya). PIC MENERIMA = yang menerima label dari Foreman / meja lain; PIC MEMAKAI = operator yang mengerjakan type itu (hasil kerja SAP). DIAMBIL = label keluar dari meja ini (diambil operator lain, dibawa pindah meja, atau dikembalikan ke Foreman). "
+    st.caption("DARI FOREMAN = label diterima dari Foreman. DARI MEJA LAIN = label yang dipindah/diambil dari meja lain (asal meja dan PIC yang memindahkan). DIAMBIL = label keluar dari meja ini (diambil operator lain, dibawa pindah meja, atau dikembalikan ke Foreman). "
                "SISA hari ini = STOK AWAL besok.")
 
 

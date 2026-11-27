@@ -48,7 +48,7 @@ def _muat(b):
     idx = stok._idx_meja(peta)
 
     def _p(r):
-        lk = stok._meja_operator(peta, idx, r.prn, r.tgl, 3650)
+        lk = stok._meja_operator(peta, idx, r.prn, r.tgl)
         if lk:
             return stok._lok_pisah(lk)[0]
         return "QC SK" if r.bagian == "QC SK" else ""

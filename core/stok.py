@@ -941,7 +941,7 @@ def _idx_meja(peta):
 
 def _ledger(sampai, abaikan=None):
     """Daftar kejadian stok terurut (tgl, urutan, jenis, lokasi, label, nilai) dan pemakaian SAP yang belum terpetakan ke meja."""
-    data.muat(["label_terima", "label_distribusi", "label_meja", "label_pindah", "label_kosong", "label_hitung", "label_afkir", "label_pindahmeja", "label_pakaimeja",
+    data.muat(["label_terima", "label_distribusi", "label_meja", "label_pindah", "label_kosong", "label_hitung", "label_afkir", "label_pindahmeja",
                "karyawan", "alias"] + [f"hasil_{b}" for b in pd.period_range(MULAI[:7], sampai[:7], freq="M")])
     ev = []  # (tgl, urutan, jenis, lokasi, label, nilai)
     for r in data.baca("label_terima").itertuples():
@@ -995,137 +995,33 @@ def _ledger(sampai, abaikan=None):
         if bawa:
             ev.append((r.tgl, 2, "tambah", dari, r.label, -bawa, ("PM_KELUAR", r.nama, f"dibawa ke {lok_nama(ke)}")))
             ev.append((r.tgl, 2, "tambah", ke, r.label, bawa, ("PM_MASUK", r.nama, f"dibawa dari {lok_nama(dari)}")))
-    # Pemakaian SAP (pcs bagus + afkir proses) per (operator, hari, type): meja ditentukan berurutan —
-    # 1) keputusan foreman/admin (label_pakaimeja), 2) alamat operator hari itu (input label / pindah meja), 3) otomatis lewat stok meja (_tentukan_meja).
-    putus = {}
-    pk = data.baca("label_pakaimeja")
-    if len(pk):
-        for r in pk.sort_values("waktu").itertuples():
-            putus[(str(r.prn), r.tgl, r.label)] = lok(r.pabrik, str(r.meja))
+    tanpa = []
+    # afkir proses dari SAP (M+LA+LB+F) untuk karyawan/hari/type yang TIDAK punya baris input afkir foreman: tetap memakai label (CW, CE9, serta CE7/SNI pendampingnya)
     sudah_input = {(r.prn, r.tgl, r.type) for r in a.itertuples()} if len(a) else set()
-    antri = {}
     for r in pem.itertuples():
-        if abaikan == (r.prn, r.tgl):
-            continue
-        pr = _int(getattr(r, "proses", 0)) if (r.prn, r.tgl, r.label) not in sudah_input else 0
-        bagus = _int(r.bagus) - pakai.get((r.prn, r.tgl, r.label), 0)
-        if pr <= 0 and bagus <= 0:
-            continue
-        pr, bagus = max(pr, 0), max(bagus, 0)
-        lk = putus.get((str(r.prn), r.tgl, r.label))
-        tetap = bool(lk)
-        lk = lk or peta.get((r.prn, r.tgl))
-        if lk and not tetap:
-            if pr:
+        pr = _int(getattr(r, "proses", 0))
+        if pr > 0 and (r.prn, r.tgl, r.label) not in sudah_input and abaikan != (r.prn, r.tgl):
+            lk = _meja_operator(peta, idx, r.prn, r.tgl)
+            if lk is None:
+                tanpa.append({"tgl": r.tgl, "prn": r.prn, "nama": r.nama, "label": r.label, "n": pr})
+            else:
                 ev.append((r.tgl, 2, "tambah", lk, r.label, -pr, ("AFKIR", r.nama, "afkir proses dari SAP (belum ada input afkir foreman)", r.prn)))
-            if bagus:
-                ev.append((r.tgl, 2, "tambah", lk, r.label, -int(bagus), ("SAP", r.nama, "pcs bagus SAP", r.prn)))
+    # pcs bagus SAP: per (operator, hari, label); sisanya (di luar pemakaian meja lama) dibebankan ke meja terakhir operator itu hari itu
+    for r in pem.itertuples():
+        bagus = _int(r.bagus)
+        if bagus <= 0 or abaikan == (r.prn, r.tgl):
             continue
-        k = (r.prn, r.tgl, r.label)
-        q = antri.setdefault(k, {"tgl": r.tgl, "prn": r.prn, "nama": r.nama, "label": r.label, "bagus": 0, "proses": 0, "tetap": lk if tetap else None})
-        q["bagus"] += bagus
-        q["proses"] += pr
+        sisa = bagus - pakai.get((r.prn, r.tgl, r.label), 0)
+        if sisa > 0:
+            lk = _meja_operator(peta, idx, r.prn, r.tgl)
+            if lk is None:
+                tanpa.append({"tgl": r.tgl, "prn": r.prn, "nama": r.nama, "label": r.label, "n": int(sisa)})
+            else:
+                ev.append((r.tgl, 2, "tambah", lk, r.label, -int(sisa), ("SAP", r.nama, "pcs bagus SAP", r.prn)))
     ev = [e for e in ev if e[0] >= MULAI]  # catatan uji sebelum tanggal mulai tidak ikut dihitung
-    ev, tanpa, auto = _tentukan_meja(ev, list(antri.values()), idx)
-    tanpa = pd.DataFrame(tanpa, columns=["tgl", "prn", "nama", "label", "n"])
-    tanpa.attrs["auto"] = auto
     ev.sort(key=lambda e: (e[0], e[1]))
     ev = _sapu_sk(ev)
-    return ev, tanpa
-
-
-def _terakhir(idx, prn, tgl):
-    """Meja terakhir operator sebelum tgl (tanpa batas hari)."""
-    for t, lk in reversed(idx.get(prn, [])):
-        if t < tgl:
-            return lk
-    return None
-
-
-def _tentukan_meja(ev, antri, idx):
-    """Tentukan meja untuk pemakaian SAP yang operatornya tidak punya alamat hari itu, lewat stok meja (sambil menelusuri saldo hari demi hari).
-    Urutan pilihan: meja terakhir operator bila stok type itu cukup; satu-satunya meja yang cukup; (butuh dicek foreman:) beberapa meja cukup -> stok terbanyak;
-    tidak ada yang cukup -> meja terakhir operator / stok terbanyak. Tanpa stok dan tanpa meja terakhir -> 'tanpa meja'.
-    Return (ev baru, tanpa meja, auto) ; auto = [dict(id,tgl,prn,nama,label,n,lokasi,status,perlu,kurang,alasan,kandidat)]."""
-    per_hari = defaultdict(list)
-    for q in antri:
-        per_hari[q["tgl"]].append(q)
-    ev = sorted(ev, key=lambda e: (e[0], e[1]))
-    sal, out, auto, tanpa = defaultdict(int), [], [], []
-    i, n = 0, len(ev)
-    for tgl in sorted({e[0] for e in ev} | set(per_hari)):
-        hari = []
-        while i < n and ev[i][0] == tgl:
-            hari.append(ev[i])
-            i += 1
-        for e in hari:
-            if e[1] <= 2:
-                _terap(sal, e[2], e[3], e[4], e[5])
-        for q in sorted(per_hari.get(tgl, []), key=lambda q: (str(q["prn"]), q["label"])):
-            lb, tot = q["label"], q["bagus"] + q["proses"]
-            terakhir = _terakhir(idx, q["prn"], tgl)
-            kand = {l_: v for (l_, b_), v in sal.items() if b_ == lb and v > 0 and not adalah_foreman(l_) and dept_lokasi(l_) == "QC"}
-            perlu, alasan, lk = False, "", q["tetap"]
-            if lk:
-                pass
-            elif terakhir and dept_lokasi(terakhir) == "SK":
-                lk = terakhir
-            else:
-                cukup = {l_: v for l_, v in kand.items() if v >= tot}
-                if terakhir in cukup:
-                    lk = terakhir
-                elif len(cukup) == 1:
-                    lk = next(iter(cukup))
-                elif cukup:
-                    lk, perlu, alasan = max(cukup, key=cukup.get), True, "Beberapa meja punya stok type ini; sistem memilih yang stoknya terbanyak."
-                elif kand:
-                    lk = terakhir if terakhir in kand else max(kand, key=kand.get)
-                    perlu, alasan = True, "Stok type ini di meja mana pun tidak mencukupi pemakaian."
-                elif terakhir:
-                    lk, perlu, alasan = terakhir, True, "Tidak ada meja yang punya stok type ini; dipakai meja terakhir operator."
-            if not lk:
-                tanpa.append({"tgl": tgl, "prn": q["prn"], "nama": q["nama"], "label": lb, "n": int(tot)})
-                continue
-            if q["proses"]:
-                out.append((tgl, 2, "tambah", lk, lb, -q["proses"], ("AFKIR", q["nama"], "afkir proses dari SAP (belum ada input afkir foreman)", q["prn"])))
-            if q["bagus"]:
-                out.append((tgl, 2, "tambah", lk, lb, -int(q["bagus"]), ("SAP", q["nama"], "pcs bagus SAP", q["prn"])))
-            _terap(sal, "tambah", lk, lb, -int(tot))
-            kurang = sal.get((lk, lb), 0) < 0 and dept_lokasi(lk) == "QC"
-            auto.append({"id": f"{tgl}|{q['prn']}|{lb}", "tgl": tgl, "prn": q["prn"], "nama": q["nama"], "label": lb, "n": int(tot), "lokasi": lk,
-                         "status": "putus" if q["tetap"] else "otomatis", "perlu": perlu and not q["tetap"], "kurang": bool(kurang),
-                         "sisa": int(sal.get((lk, lb), 0)), "alasan": alasan,
-                         "kandidat": sorted(((l_, int(v)) for l_, v in kand.items()), key=lambda x: -x[1])})
-        for e in hari:
-            if e[1] >= 3:
-                _terap(sal, e[2], e[3], e[4], e[5])
-        out += hari
-    return out, tanpa, auto
-
-
-def pakai_auto(sampai=None):
-    """Semua pemakaian SAP yang mejanya ditentukan sistem / diputuskan foreman (bukan dari alamat input operator), terbaru dulu."""
-    _ev, t = _ledger_c(sampai or hari_ini())
-    return sorted(t.attrs.get("auto", []), key=lambda a: (a["tgl"], a["nama"]), reverse=True)
-
-
-def pakai_buka(sampai=None):
-    """Yang perlu ditinjau foreman: tebakan sistem yang tidak pasti (perlu) atau keputusan foreman yang stok mejanya tidak cukup (kurang)."""
-    return [a for a in pakai_auto(sampai) if a["perlu"] or (a["status"] == "putus" and a["kurang"])]
-
-
-def pakai_putus(tgl, prn, label_, lokasi, oleh):
-    """Foreman / admin menetapkan meja pemakaian SAP untuk (operator, hari, type). Return galat (str) atau None."""
-    if not lokasi or "|" not in lokasi:
-        return "Pilih meja."
-    pabrik, meja = _lok_pisah(lokasi)
-    d = pd.DataFrame([{"tgl": tgl, "prn": str(prn), "label": label_, "pabrik": pabrik, "meja": str(meja), "oleh": oleh, "waktu": _waktu()}],
-                     columns=["tgl", "prn", "label", "pabrik", "meja", "oleh", "waktu"])
-    data.upsert("label_pakaimeja", d, ["tgl", "prn", "label"])
-    catat_riwayat("tetapkan meja pemakaian SAP", f"{tgl}|{prn}|{label_}", "", lok_nama(lokasi), oleh, tgl)
-    data.catat_update("STOK LABEL")
-    _bersih()
-    return None
+    return ev, pd.DataFrame(tanpa, columns=["tgl", "prn", "nama", "label", "n"])
 
 
 def _sapu_sk(ev):
@@ -1315,7 +1211,7 @@ def meja_ringkas(pabrik, meja, tgl):
             nm_ = k[0][1] if k and len(k[0]) > 1 else ""
             pindah_ = kat_ in ("PINDAH_MASUK", "PM_MASUK")
             if nm_ and g in ("MASUK", "SAP", "AFKIR"):
-                tujuan_ = d["orang"] if g != "MASUK" else d["pic_pindah"]  # orang = PIC memakai (SAP/afkir); pic_pindah = PIC menerima (dari Foreman / meja lain)
+                tujuan_ = d["pic_pindah"] if pindah_ else d["orang"]
                 if nm_ not in tujuan_:
                     tujuan_.append(nm_)
             if g == "MASUK":

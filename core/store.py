@@ -38,7 +38,6 @@ KOLOM = {
     "label_kosong": ["id", "tgl", "waktu", "pabrik", "oleh"],  # tombol Kosongkan Label Meja
     "label_riwayat": ["waktu", "tgl", "oleh", "jenis", "kunci", "sebelum", "sesudah"],  # riwayat perubahan/hapus input label
     "label_lapor": ["id", "tgl", "waktu", "prn", "nama", "pabrik", "meja", "label", "sistem", "aktual", "catatan", "status", "oleh", "waktu_selesai"],  # laporan karyawan: stok meja tidak sama dengan sistem (menunggu dicek foreman)
-    "label_pakaimeja": ["tgl", "prn", "label", "pabrik", "meja", "oleh", "waktu"],  # keputusan foreman/admin: pemakaian SAP (operator, hari, type) dipotong dari meja mana
     "label_notif": ["id", "tgl", "oleh", "waktu", "status"],  # notifikasi stok minus yang diputuskan foreman (abaikan / disetujui)
     "operator": ["prn", "kode_opr", "oleh", "waktu"],  # Daftar Operator: siapa yang bisa dipilih di Monitoring Label
     "meja_abaikan": ["tgl", "shift", "pabrik", "meja", "oleh", "waktu"],  # meja yang tidak perlu dicek (diabaikan foreman)

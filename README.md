@@ -270,8 +270,3 @@ Jadwal Kerja (upload QC/SK + Setting Manual), Absensi, Lembur, tampilan admin ba
 ## Tahap 11f
 - Perbaikan bug: pemakaian SAP (pcs bagus + afkir proses) kini ikut mengurangi stok meja walau operator tidak punya input alamat di hari itu — dipakai meja terakhir operator (maks. 14 hari ke belakang), sama seperti PIC. Berlaku juga di Afkir Label.
 - Stok Label › Per Meja: kolom DITERIMA dipecah jadi DARI FOREMAN dan DARI MEJA LAIN (asal meja + jumlah), ditambah kolom PIC PINDAH (yang memindahkan) di samping PIC (menerima/memakai).
-
-## Tahap 11g
-- Pemakaian SAP (pcs bagus + afkir proses) operator yang tidak input alamat meja kini dipetakan lewat STOK meja (tanpa batas 14 hari): meja terakhir operator bila stok type itu cukup; bila hanya satu meja yang cukup, meja itu; bila beberapa / tidak ada yang cukup, sistem memilih tebakan dan masuk lonceng Notifikasi Foreman ("Meja pemakaian SAP").
-- Foreman / admin bisa menetapkan meja (tabel baru `label_pakaimeja`: tgl, prn, label, pabrik, meja, oleh, waktu — buat tab di Google Sheet bila perlu). Bila stok meja pilihan tidak cukup muncul peringatan. Daftar "Ubah meja pemakaian SAP lainnya" untuk mengubah yang otomatis.
-- Stok Label › Per Meja: kolom DARI FOREMAN, DARI MEJA LAIN (asal meja + jumlah), PIC MENERIMA, PIC MEMAKAI.
